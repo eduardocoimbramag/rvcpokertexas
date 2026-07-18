@@ -1,0 +1,804 @@
+@import 'tailwindcss';
+
+/* Tokens de design do Bac Bo Arena (Tailwind v4 theme-first). */
+@theme {
+  --color-arena-950: #05080f;
+  --color-arena-900: #0b1020;
+  --color-arena-800: #121a30;
+  --color-arena-700: #1c2745;
+  --color-arena-line: #283457;
+
+  --color-player: #3b82f6;
+  --color-player-soft: #93c5fd;
+  --color-opponent: #ef4444;
+  --color-opponent-soft: #fca5a5;
+  --color-gold: #fbbf24;
+  --color-felt: #14532d;
+
+  /* Cenário — mesa de couro Bac Bo (superfície contínua com os poços) */
+  --color-table-500: #c9b795;
+  --color-table-700: #b2a07c;
+  --color-table-900: #7e6b47;
+  --color-rail-900: #3a2417;
+  --color-rail-700: #5a3a24;
+  --color-spot: #fde68a;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-arena-950);
+  color: #f8fafc;
+  font-family:
+    ui-rounded,
+    'SF Pro Rounded',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Viewport fixo: o jogo ocupa exatamente a tela e NUNCA cresce/rola —
+   qualquer fase mais alta comprime o espaço da dealer (dealer-spacer),
+   não a página. Vale para mobile e web. */
+#root {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Casca do app respeitando as safe areas de dispositivos com notch. */
+.app-shell {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 480px;
+  margin-inline: auto;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ---------- Cenário: ambiente global (docs/scenario.md §6.4) ---------- */
+
+.scene-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    /* poças de luz dos lustres nos cantos do salão */
+    radial-gradient(34% 22% at 12% 0%, rgba(255, 196, 110, 0.17), transparent 70%),
+    radial-gradient(34% 22% at 88% 0%, rgba(255, 196, 110, 0.17), transparent 70%),
+    /* halo de luz descendo sobre o dealer */
+    radial-gradient(120% 60% at 50% 12%, rgba(253, 230, 138, 0.12), transparent 55%),
+    /* colunas laterais do salão apanhando luz quente */
+    linear-gradient(
+        90deg,
+        rgba(255, 190, 120, 0.06) 0%,
+        transparent 10%,
+        transparent 90%,
+        rgba(255, 190, 120, 0.06) 100%
+      ),
+    /* profundidade do salão: vinho de cassino escurecendo nas bordas */
+    radial-gradient(140% 100% at 50% 40%, #241019 0%, #0d060c 70%),
+    #07040a;
+}
+
+/* Luzes desfocadas do salão ao fundo (bokeh estático, só gradientes). */
+.scene-ambient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(4px 4px at 11% 7%, rgba(255, 214, 140, 0.9), transparent 60%),
+    radial-gradient(3px 3px at 21% 13%, rgba(255, 190, 120, 0.7), transparent 60%),
+    radial-gradient(5px 5px at 33% 5%, rgba(255, 222, 160, 0.8), transparent 60%),
+    radial-gradient(3px 3px at 47% 11%, rgba(255, 200, 130, 0.6), transparent 60%),
+    radial-gradient(4px 4px at 62% 6%, rgba(255, 214, 140, 0.85), transparent 60%),
+    radial-gradient(3px 3px at 74% 12%, rgba(255, 190, 120, 0.65), transparent 60%),
+    radial-gradient(5px 5px at 88% 8%, rgba(255, 222, 160, 0.8), transparent 60%),
+    radial-gradient(3px 3px at 95% 15%, rgba(255, 200, 130, 0.55), transparent 60%),
+    /* halos suaves de candelabros distantes */
+    radial-gradient(60px 40px at 18% 9%, rgba(255, 190, 110, 0.1), transparent 70%),
+    radial-gradient(70px 45px at 82% 7%, rgba(255, 190, 110, 0.1), transparent 70%);
+  filter: blur(1px);
+  opacity: 0.85;
+}
+
+/* Vinheta para focar o olhar no centro. */
+.scene-ambient::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0, 0, 0, 0.55));
+}
+
+/* Partículas de poeira dourada subindo lentamente (só em qualidade alta). */
+.scene-particle {
+  position: absolute;
+  bottom: -6px;
+  left: var(--x);
+  width: var(--size, 3px);
+  height: var(--size, 3px);
+  border-radius: 9999px;
+  background: rgba(253, 230, 138, 0.35);
+  animation: scene-particle-float var(--dur) linear infinite;
+  animation-delay: var(--delay);
+  opacity: 0;
+}
+
+@keyframes scene-particle-float {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.5;
+  }
+  85% {
+    opacity: 0.12;
+  }
+  100% {
+    transform: translate3d(20px, -104vh, 0);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-particle {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* ---------- Cenário: palco da mesa + dealer (docs/scenario.md §4) ---------- */
+
+.scene-stage {
+  /* Geometria ÚNICA da cena: dealer, mesa e área de jogo têm o mesmo
+     tamanho em todas as fases — nada cresce ou encolhe entre apostar,
+     rolar e ver o resultado. O corte de câmera troca apenas o pano de
+     fundo, nunca o layout. Dimensionada pela ALTURA do viewport (dvh,
+     com fallback vh) para caber a fase mais alta (resultado) sem
+     estourar em aparelhos baixos. */
+  --dealer-h: clamp(160px, 28vh, 260px);
+  --dealer-h: clamp(160px, 28dvh, 260px);
+}
+
+.dealer-slot {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50%;
+  height: var(--dealer-h);
+  display: flex;
+  justify-content: center;
+  z-index: 0;
+}
+
+.dealer-slot svg {
+  height: 100%;
+  width: auto;
+  overflow: visible;
+}
+
+/* Dealer em rig SVG (modelo em camadas, recorte cintura para cima). */
+.dealer-rig {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 720 / 1440;
+  /* Luz quente sutil por trás da figura, casando com o spotlight da cena. */
+  filter: drop-shadow(0 0 22px rgba(253, 230, 138, 0.12));
+}
+
+.dealer-rig svg {
+  width: 100%;
+  height: 100%;
+  /* Gestos dos braços podem ultrapassar o enquadramento sem cortar. */
+  overflow: visible;
+}
+
+/* Espaço em fluxo que a dealer ocupa (o desenho fica no backdrop).
+   ALTURA FIXA em todas as fases e câmeras — a área de jogo começa
+   sempre no mesmo y, do início ao fim da partida.
+   flex-shrink 1: com o viewport fixo, se o conteúdo de uma fase for
+   mais alto que a tela (ex.: resultado em aparelhos baixos), é este
+   espaço que cede — o jogo nunca cresce nem rola. */
+.dealer-spacer {
+  height: calc(var(--dealer-h) * 0.95);
+  flex-shrink: 1;
+}
+
+/* Mesa: o ápice da curva do trilho cruza a dealer na cintura —
+   ela fica de pé ATRÁS da mesa, visível da cintura para cima. */
+.scene-table {
+  position: absolute;
+  left: -12%;
+  right: -12%;
+  top: calc(var(--dealer-h) * 0.6);
+  bottom: -2%;
+  z-index: 1;
+}
+
+.scene-table svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Logo da casa gravada no couro: multiply em tom-sobre-tom lê como
+   baixo-relevo estampado a quente, não como adesivo colado. Aparece
+   APENAS na câmera vertical do sorteio (OverheadTableLayer). */
+.scene-monogram {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.scene-monogram img {
+  width: clamp(96px, 30vw, 132px);
+  height: auto;
+  mix-blend-mode: multiply;
+  opacity: 0.3;
+  filter: grayscale(1) contrast(1.15);
+}
+
+/* ---------- Câmera vertical: mesa vista de cima (OverheadTableLayer) ---------- */
+
+/* Preenche o palco inteiro; um leve sangramento lateral esconde a
+   moldura durante o zoom-out do corte de câmera. */
+.scene-table-overhead {
+  position: absolute;
+  inset: 0 -2%;
+}
+
+.scene-table-overhead svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Na vista de cima a logo assenta na faixa de couro sob os poços. */
+.scene-monogram--overhead {
+  top: auto;
+  bottom: 8%;
+}
+
+/* Luz zenital: poça quente sobre a zona de dados + vinheta que fecha o
+   quadro nas bordas — o olho cai direto nos poços. */
+.overhead-light {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(85% 55% at 50% 36%, rgba(255, 244, 214, 0.12), transparent 60%),
+    radial-gradient(130% 100% at 50% 45%, transparent 52%, rgba(0, 0, 0, 0.42));
+}
+
+/* ---------- Placar flanqueando a dealer (fase completed) ---------- */
+
+/* Placa de placar: navy lapidado com aro na cor do lado, posicionada na
+   altura da cabeça da dealer (deriva de --dealer-h, como toda a cena). */
+.score-plate {
+  position: absolute;
+  top: calc(var(--dealer-h) * 0.14);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125rem;
+  min-width: 26%;
+  max-width: 34%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(27, 36, 64, 0.94) 0%, rgba(13, 19, 38, 0.94) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 10px 24px rgba(0, 0, 0, 0.4);
+}
+
+.score-plate--player {
+  left: 2%;
+  border: 2px solid var(--color-player);
+}
+
+.score-plate--opponent {
+  right: 2%;
+  border: 2px solid var(--color-opponent);
+}
+
+.score-plate__name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e2e8f0;
+}
+
+.score-plate__total {
+  font-size: 2rem;
+  line-height: 1;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: #f8fafc;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* O vencedor ganha aro dourado, halo e o total em ouro. */
+.score-plate--winner {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 224, 138, 0.25),
+    0 0 0 1.5px #d99a06,
+    0 0 18px rgba(251, 191, 36, 0.45),
+    0 10px 24px rgba(0, 0, 0, 0.4);
+}
+
+.score-plate--winner .score-plate__total {
+  color: #ffd970;
+}
+
+.score-plate__crown {
+  position: absolute;
+  top: -15px;
+  font-size: 17px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+}
+
+/* ---------- Poços vibradores rebaixados na mesa (DiceShaker) ---------- */
+
+/* Faixa (bezel) plana e fosca, nivelada com o couro, com filete dourado
+   na borda externa — nenhuma sombra projetada: o poço é parte da mesa. */
+.shaker {
+  /* Limitado por largura E altura do viewport (fallback só-largura em
+     navegadores sem dvh): os 4 poços + rótulos sempre cabem na área de
+     jogo, de telas estreitas a paisagem baixa. */
+  --shaker-size: clamp(4.25rem, 19.5vw, 6rem);
+  --shaker-size: clamp(4.25rem, min(19.5vw, 11.5dvh), 6rem);
+  position: relative;
+  width: var(--shaker-size);
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #93846f 0%, #7d6f5c 100%);
+  box-shadow:
+    /* filete dourado externo, nivelado com o couro */
+    0 0 0 2px #dcbf78,
+    0 0 0 3px #7d5f28,
+    /* oclusão do couro em volta do embutido (simétrica, sem offset) */ 0 0 10px 1px
+      rgba(0, 0, 0, 0.3),
+    /* a faixa afunda de leve em relação ao couro */ inset 0 3px 6px rgba(0, 0, 0, 0.35),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.22);
+  display: grid;
+  place-items: center;
+}
+
+/* Poço fundo: camurça iluminada ao centro, parede superior na sombra
+   (iluminação de rebaixo — o oposto de um relevo). */
+.shaker__well {
+  position: relative;
+  width: 78%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 50% 40%, #b8a897 0%, #a5947f 50%, #5f5142 100%);
+  box-shadow:
+    /* filete dourado interno + aro escuro do corte */
+    0 0 0 1.5px #dcbf78,
+    0 0 0 3px rgba(0, 0, 0, 0.55),
+    /* profundidade do poço */ inset 0 12px 22px rgba(0, 0, 0, 0.6),
+    inset 0 -3px 8px rgba(255, 255, 255, 0.1);
+  display: grid;
+  place-items: center;
+}
+
+/* Anel de brilho que pulsa quando o copo para e o dado assenta. */
+.shaker__flash {
+  position: absolute;
+  inset: -5px;
+  border-radius: 9999px;
+  border: 2px solid rgba(253, 230, 138, 0.95);
+  box-shadow:
+    0 0 16px rgba(253, 230, 138, 0.6),
+    inset 0 0 12px rgba(253, 230, 138, 0.35);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Dado 3D (CSS puro + Framer Motion na rotação) ---------- */
+
+.die-scene {
+  width: var(--die-size);
+  height: var(--die-size);
+  perspective: calc(var(--die-size) * 10);
+}
+
+.die-cube {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.die-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 20%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  place-items: center;
+  padding: 14%;
+  background: linear-gradient(145deg, #ffffff 0%, #dbe2ee 100%);
+  box-shadow: inset 0 0 calc(var(--die-size) * 0.08) rgb(0 0 0 / 25%);
+}
+
+.die-face--player {
+  background: linear-gradient(145deg, #60a5fa 0%, #1d4ed8 100%);
+}
+
+.die-face--opponent {
+  background: linear-gradient(145deg, #f87171 0%, #b91c1c 100%);
+}
+
+.die-face-front {
+  transform: rotateY(0deg) translateZ(calc(var(--die-size) / 2));
+}
+.die-face-back {
+  transform: rotateY(180deg) translateZ(calc(var(--die-size) / 2));
+}
+.die-face-right {
+  transform: rotateY(90deg) translateZ(calc(var(--die-size) / 2));
+}
+.die-face-left {
+  transform: rotateY(-90deg) translateZ(calc(var(--die-size) / 2));
+}
+.die-face-top {
+  transform: rotateX(90deg) translateZ(calc(var(--die-size) / 2));
+}
+.die-face-bottom {
+  transform: rotateX(-90deg) translateZ(calc(var(--die-size) / 2));
+}
+
+.die-pip {
+  width: 55%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: #f8fafc;
+  box-shadow: inset 0 calc(var(--die-size) * -0.015) 0 rgb(0 0 0 / 30%);
+}
+
+/* ---------- Tipografia sobre o couro ---------- */
+
+/* Tinta gravada: sombra clara rente embaixo = impressão prensada no
+   couro (letterpress). Dá nitidez sem mudar a cor da tinta. */
+.text-engraved {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+/* Marca "VS" da apresentação de duelo: ouro metálico com contorno. */
+.vs-mark {
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -0.02em;
+  background: linear-gradient(180deg, #ffe08a 0%, #fbbf24 55%, #c88a05 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(58, 36, 4, 0.85)) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
+}
+
+/* ---------- Botões premium ---------- */
+
+/* Pilha de ações padrão das fases (buscar, confirmar/recusar, jogar de
+   novo/início): ocupa a largura toda menos uma margem de segurança.
+   Botões internos usam size="md" — um único tamanho em todo o jogo. */
+.action-stack {
+  display: flex;
+  width: 100%;
+  max-width: 24rem;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-inline: auto;
+}
+
+/* Casca comum: cantos, transições e o brilho que varre no hover. */
+.btn {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 1rem;
+  transition:
+    box-shadow 0.2s ease,
+    filter 0.2s ease,
+    transform 0.12s ease;
+}
+
+/* Faixa de brilho diagonal, estacionada fora do botão. */
+.btn::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  bottom: -40%;
+  left: 0;
+  width: 40%;
+  transform: skewX(-20deg) translateX(-180%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .btn:not(:disabled):hover::after {
+    transform: skewX(-20deg) translateX(420%);
+    transition: transform 0.65s ease;
+  }
+}
+
+.btn:focus-visible {
+  outline: 2px solid #ffd970;
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  background: #262e48;
+  color: #737d95;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.22);
+  filter: none;
+}
+
+/* Ouro maciço: bisel (luz em cima, quina escura embaixo) + halo. */
+.btn--primary:not(:disabled) {
+  background: linear-gradient(180deg, #ffe08a 0%, #fbbf24 42%, #e8a70c 78%, #c88a05 100%);
+  color: #2a1703;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -2px 0 rgba(120, 72, 4, 0.45),
+    0 0 0 1px #a87608,
+    0 6px 14px rgba(200, 138, 5, 0.35),
+    0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+@media (hover: hover) {
+  .btn--primary:not(:disabled):hover {
+    filter: brightness(1.06);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.65),
+      inset 0 -2px 0 rgba(120, 72, 4, 0.45),
+      0 0 0 1px #a87608,
+      0 10px 22px rgba(200, 138, 5, 0.45),
+      0 2px 4px rgba(0, 0, 0, 0.4);
+  }
+}
+
+.btn--primary:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(120, 72, 4, 0.45),
+    0 0 0 1px #a87608,
+    0 3px 8px rgba(200, 138, 5, 0.3),
+    0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* Navy lapidado: relevo sutil + aro claro. */
+.btn--secondary:not(:disabled) {
+  background: linear-gradient(180deg, #2a3657 0%, #161f38 100%);
+  color: #eef2fb;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 0 1px rgba(148, 163, 184, 0.4),
+    0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+@media (hover: hover) {
+  .btn--secondary:not(:disabled):hover {
+    filter: brightness(1.18);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 0 0 1px rgba(203, 213, 225, 0.55),
+      0 6px 16px rgba(0, 0, 0, 0.4);
+  }
+}
+
+.btn--secondary:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+/* Fantasma legível: vidro escuro com aro, nunca texto solto. */
+.btn--ghost:not(:disabled) {
+  background: rgba(11, 16, 32, 0.4);
+  color: #dbe3f2;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.35);
+}
+
+@media (hover: hover) {
+  .btn--ghost:not(:disabled):hover {
+    background: rgba(11, 16, 32, 0.6);
+    box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.5);
+  }
+}
+
+.btn--danger:not(:disabled) {
+  background: linear-gradient(180deg, #f87171 0%, #dc2626 60%, #b91c1c 100%);
+  color: #fff5f5;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -2px 0 rgba(90, 12, 12, 0.5),
+    0 0 0 1px #7f1d1d,
+    0 6px 14px rgba(185, 28, 28, 0.35);
+}
+
+.btn--danger:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+/* Fichas de aposta: pastilhas de resina com bisel e estado dourado. */
+.stake-chip {
+  background: linear-gradient(180deg, #202b4a 0%, #101830 100%);
+  color: #e6ebf7;
+  border-radius: 1rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(148, 163, 184, 0.35),
+    0 4px 10px rgba(0, 0, 0, 0.35);
+  transition:
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+
+@media (hover: hover) {
+  .stake-chip:not(:disabled):hover {
+    filter: brightness(1.15);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 0 0 1px rgba(203, 213, 225, 0.5),
+      0 8px 18px rgba(0, 0, 0, 0.4);
+  }
+}
+
+.stake-chip--selected {
+  background: linear-gradient(180deg, #4a3a12 0%, #241a06 100%);
+  color: #ffd970;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 224, 138, 0.35),
+    0 0 0 1.5px #d99a06,
+    0 0 16px rgba(251, 191, 36, 0.35),
+    0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+.stake-chip:disabled {
+  opacity: 0.35;
+}
+
+/* ---------- Confirmação dupla (ConfirmPanel) ---------- */
+
+/* Aro de estado em volta do avatar: tracejado girando na espera,
+   anel esmeralda desenhado na confirmação. */
+.confirm-ring {
+  position: absolute;
+  inset: -7px;
+  width: calc(100% + 14px);
+  height: calc(100% + 14px);
+  pointer-events: none;
+}
+
+/* Selo de confirmado: pastilha esmeralda com aro claro, carimbada
+   sobre a borda do avatar. */
+.confirm-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #34d399 0%, #059669 100%);
+  color: #ecfdf5;
+  font-size: 15px;
+  font-weight: 900;
+  box-shadow:
+    0 0 0 2px #d1fae5,
+    0 0 0 3.5px rgba(5, 150, 105, 0.55),
+    0 4px 10px rgba(0, 0, 0, 0.45);
+}
+
+/* Anel que explode para fora no instante da confirmação. */
+.confirm-flash {
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  border: 2px solid rgba(52, 211, 153, 0.9);
+  box-shadow: 0 0 18px rgba(52, 211, 153, 0.55);
+  pointer-events: none;
+}
+
+/* Pílula "aguardando oponente": vidro escuro no lugar dos botões. */
+.confirm-waiting {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  font-weight: 700;
+  color: #dbe3f2;
+  background: rgba(11, 16, 32, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.35);
+}
+
+.waiting-dot {
+  display: inline-block;
+  animation: waiting-dot 1.2s infinite ease-in-out;
+}
+
+.waiting-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.waiting-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes waiting-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .waiting-dot {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* Faixa dourada que fecha o pacto quando os dois confirmam. */
+.confirm-locked {
+  display: grid;
+  place-items: center;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #2a1703;
+  background: linear-gradient(180deg, #ffe08a 0%, #fbbf24 42%, #e8a70c 78%, #c88a05 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -2px 0 rgba(120, 72, 4, 0.45),
+    0 0 0 1px #a87608,
+    0 0 24px rgba(251, 191, 36, 0.45);
+}
+
+/* Conteúdo visível apenas para leitores de tela. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
