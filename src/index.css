@@ -1,19 +1,25 @@
 @import 'tailwindcss';
 
-/* Tokens de design do Bac Bo Arena (Tailwind v4 theme-first). */
+/* Tokens de design do Bac Bo Arena (Tailwind v4 theme-first).
+   Paleta da plataforma — Dark Luxury + Royal Gaming (docs/paletamod.md):
+   fundos em preto-ameixa/roxo, cards grafite arroxeado, dourados
+   envelhecido/champagne, textos marfim/lavanda. A mesa de couro
+   permanece como material físico (Rota A da documentação). */
 @theme {
-  --color-arena-950: #05080f;
-  --color-arena-900: #0b1020;
-  --color-arena-800: #121a30;
-  --color-arena-700: #1c2745;
-  --color-arena-line: #283457;
+  --color-arena-950: #09070d; /* fundo principal — preto ameixa */
+  --color-arena-900: #15101c; /* fundo secundário — roxo muito escuro */
+  --color-arena-800: #201927; /* cards e campos — grafite arroxeado */
+  --color-arena-700: #2a2133; /* cards elevados (derivado) */
+  --color-arena-line: #3b3043; /* bordas — roxo acinzentado */
 
   --color-player: #3b82f6;
   --color-player-soft: #93c5fd;
   --color-opponent: #ef4444;
   --color-opponent-soft: #fca5a5;
-  --color-gold: #fbbf24;
-  --color-felt: #14532d;
+  --color-gold: #c6a15b; /* dourado principal — ouro envelhecido */
+  --color-gold-bright: #e5ca86; /* dourado iluminado — champagne */
+  --color-ivory: #f4f0e8; /* texto principal — marfim */
+  --color-lavender: #a69eac; /* texto secundário — cinza lavanda */
 
   /* Cenário — mesa de couro Bac Bo (superfície contínua com os poços) */
   --color-table-500: #c9b795;
@@ -21,14 +27,14 @@
   --color-table-900: #7e6b47;
   --color-rail-900: #3a2417;
   --color-rail-700: #5a3a24;
-  --color-spot: #fde68a;
+  --color-spot: #e5ca86;
 }
 
 html,
 body {
   height: 100%;
   background: var(--color-arena-950);
-  color: #f8fafc;
+  color: var(--color-ivory);
   font-family:
     ui-rounded,
     'SF Pro Rounded',
@@ -76,22 +82,22 @@ body {
   z-index: 0;
   pointer-events: none;
   background:
-    /* poças de luz dos lustres nos cantos do salão */
-    radial-gradient(34% 22% at 12% 0%, rgba(255, 196, 110, 0.17), transparent 70%),
-    radial-gradient(34% 22% at 88% 0%, rgba(255, 196, 110, 0.17), transparent 70%),
+    /* poças de luz champagne dos lustres nos cantos do salão */
+    radial-gradient(34% 22% at 12% 0%, rgba(229, 202, 134, 0.16), transparent 70%),
+    radial-gradient(34% 22% at 88% 0%, rgba(229, 202, 134, 0.16), transparent 70%),
     /* halo de luz descendo sobre o dealer */
-    radial-gradient(120% 60% at 50% 12%, rgba(253, 230, 138, 0.12), transparent 55%),
+    radial-gradient(120% 60% at 50% 12%, rgba(229, 202, 134, 0.12), transparent 55%),
     /* colunas laterais do salão apanhando luz quente */
     linear-gradient(
         90deg,
-        rgba(255, 190, 120, 0.06) 0%,
+        rgba(229, 202, 134, 0.06) 0%,
         transparent 10%,
         transparent 90%,
-        rgba(255, 190, 120, 0.06) 100%
+        rgba(229, 202, 134, 0.06) 100%
       ),
-    /* profundidade do salão: vinho de cassino escurecendo nas bordas */
-    radial-gradient(140% 100% at 50% 40%, #241019 0%, #0d060c 70%),
-    #07040a;
+    /* profundidade do salão: ameixa escurecendo nas bordas */
+    radial-gradient(140% 100% at 50% 40%, #1b1122 0%, #0c0812 70%),
+    #09070d;
 }
 
 /* Luzes desfocadas do salão ao fundo (bokeh estático, só gradientes). */
@@ -100,17 +106,17 @@ body {
   position: absolute;
   inset: 0;
   background-image:
-    radial-gradient(4px 4px at 11% 7%, rgba(255, 214, 140, 0.9), transparent 60%),
-    radial-gradient(3px 3px at 21% 13%, rgba(255, 190, 120, 0.7), transparent 60%),
-    radial-gradient(5px 5px at 33% 5%, rgba(255, 222, 160, 0.8), transparent 60%),
-    radial-gradient(3px 3px at 47% 11%, rgba(255, 200, 130, 0.6), transparent 60%),
-    radial-gradient(4px 4px at 62% 6%, rgba(255, 214, 140, 0.85), transparent 60%),
-    radial-gradient(3px 3px at 74% 12%, rgba(255, 190, 120, 0.65), transparent 60%),
-    radial-gradient(5px 5px at 88% 8%, rgba(255, 222, 160, 0.8), transparent 60%),
-    radial-gradient(3px 3px at 95% 15%, rgba(255, 200, 130, 0.55), transparent 60%),
+    radial-gradient(4px 4px at 11% 7%, rgba(229, 202, 134, 0.9), transparent 60%),
+    radial-gradient(3px 3px at 21% 13%, rgba(214, 183, 118, 0.7), transparent 60%),
+    radial-gradient(5px 5px at 33% 5%, rgba(240, 220, 170, 0.8), transparent 60%),
+    radial-gradient(3px 3px at 47% 11%, rgba(222, 192, 126, 0.6), transparent 60%),
+    radial-gradient(4px 4px at 62% 6%, rgba(229, 202, 134, 0.85), transparent 60%),
+    radial-gradient(3px 3px at 74% 12%, rgba(214, 183, 118, 0.65), transparent 60%),
+    radial-gradient(5px 5px at 88% 8%, rgba(240, 220, 170, 0.8), transparent 60%),
+    radial-gradient(3px 3px at 95% 15%, rgba(222, 192, 126, 0.55), transparent 60%),
     /* halos suaves de candelabros distantes */
-    radial-gradient(60px 40px at 18% 9%, rgba(255, 190, 110, 0.1), transparent 70%),
-    radial-gradient(70px 45px at 82% 7%, rgba(255, 190, 110, 0.1), transparent 70%);
+    radial-gradient(60px 40px at 18% 9%, rgba(214, 183, 118, 0.1), transparent 70%),
+    radial-gradient(70px 45px at 82% 7%, rgba(214, 183, 118, 0.1), transparent 70%);
   filter: blur(1px);
   opacity: 0.85;
 }
@@ -131,7 +137,7 @@ body {
   width: var(--size, 3px);
   height: var(--size, 3px);
   border-radius: 9999px;
-  background: rgba(253, 230, 138, 0.35);
+  background: rgba(229, 202, 134, 0.35);
   animation: scene-particle-float var(--dur) linear infinite;
   animation-delay: var(--delay);
   opacity: 0;
@@ -197,7 +203,7 @@ body {
   height: 100%;
   aspect-ratio: 720 / 1440;
   /* Luz quente sutil por trás da figura, casando com o spotlight da cena. */
-  filter: drop-shadow(0 0 22px rgba(253, 230, 138, 0.12));
+  filter: drop-shadow(0 0 22px rgba(229, 202, 134, 0.12));
 }
 
 .dealer-rig svg {
@@ -282,14 +288,14 @@ body {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(85% 55% at 50% 36%, rgba(255, 244, 214, 0.12), transparent 60%),
+    radial-gradient(85% 55% at 50% 36%, rgba(240, 228, 196, 0.12), transparent 60%),
     radial-gradient(130% 100% at 50% 45%, transparent 52%, rgba(0, 0, 0, 0.42));
 }
 
 /* ---------- Placar flanqueando a dealer (fase completed) ---------- */
 
-/* Placa de placar: navy lapidado com aro na cor do lado, posicionada na
-   altura da cabeça da dealer (deriva de --dealer-h, como toda a cena). */
+/* Placa de placar: grafite arroxeado lapidado com aro na cor do lado,
+   posicionada na altura da cabeça da dealer (deriva de --dealer-h). */
 .score-plate {
   position: absolute;
   top: calc(var(--dealer-h) * 0.14);
@@ -302,7 +308,7 @@ body {
   max-width: 34%;
   padding: 0.5rem 0.75rem;
   border-radius: 1rem;
-  background: linear-gradient(180deg, rgba(27, 36, 64, 0.94) 0%, rgba(13, 19, 38, 0.94) 100%);
+  background: linear-gradient(180deg, rgba(42, 33, 51, 0.94) 0%, rgba(21, 16, 28, 0.94) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 10px 24px rgba(0, 0, 0, 0.4);
@@ -327,7 +333,7 @@ body {
   font-weight: 900;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #e2e8f0;
+  color: var(--color-ivory);
 }
 
 .score-plate__total {
@@ -335,21 +341,21 @@ body {
   line-height: 1;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
-  color: #f8fafc;
+  color: var(--color-ivory);
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 
-/* O vencedor ganha aro dourado, halo e o total em ouro. */
+/* O vencedor ganha aro dourado, halo e o total em champagne. */
 .score-plate--winner {
   box-shadow:
-    inset 0 1px 0 rgba(255, 224, 138, 0.25),
-    0 0 0 1.5px #d99a06,
-    0 0 18px rgba(251, 191, 36, 0.45),
+    inset 0 1px 0 rgba(229, 202, 134, 0.28),
+    0 0 0 1.5px #c6a15b,
+    0 0 18px rgba(198, 161, 91, 0.5),
     0 10px 24px rgba(0, 0, 0, 0.4);
 }
 
 .score-plate--winner .score-plate__total {
-  color: #ffd970;
+  color: var(--color-gold-bright);
 }
 
 .score-plate__crown {
@@ -376,8 +382,8 @@ body {
   background: linear-gradient(180deg, #93846f 0%, #7d6f5c 100%);
   box-shadow:
     /* filete dourado externo, nivelado com o couro */
-    0 0 0 2px #dcbf78,
-    0 0 0 3px #7d5f28,
+    0 0 0 2px #e5ca86,
+    0 0 0 3px #8f7340,
     /* oclusão do couro em volta do embutido (simétrica, sem offset) */ 0 0 10px 1px
       rgba(0, 0, 0, 0.3),
     /* a faixa afunda de leve em relação ao couro */ inset 0 3px 6px rgba(0, 0, 0, 0.35),
@@ -396,7 +402,7 @@ body {
   background: radial-gradient(circle at 50% 40%, #b8a897 0%, #a5947f 50%, #5f5142 100%);
   box-shadow:
     /* filete dourado interno + aro escuro do corte */
-    0 0 0 1.5px #dcbf78,
+    0 0 0 1.5px #e5ca86,
     0 0 0 3px rgba(0, 0, 0, 0.55),
     /* profundidade do poço */ inset 0 12px 22px rgba(0, 0, 0, 0.6),
     inset 0 -3px 8px rgba(255, 255, 255, 0.1);
@@ -409,10 +415,10 @@ body {
   position: absolute;
   inset: -5px;
   border-radius: 9999px;
-  border: 2px solid rgba(253, 230, 138, 0.95);
+  border: 2px solid rgba(229, 202, 134, 0.95);
   box-shadow:
-    0 0 16px rgba(253, 230, 138, 0.6),
-    inset 0 0 12px rgba(253, 230, 138, 0.35);
+    0 0 16px rgba(229, 202, 134, 0.6),
+    inset 0 0 12px rgba(229, 202, 134, 0.35);
   opacity: 0;
   pointer-events: none;
 }
@@ -493,21 +499,23 @@ body {
   font-weight: 900;
   font-style: italic;
   letter-spacing: -0.02em;
-  background: linear-gradient(180deg, #ffe08a 0%, #fbbf24 55%, #c88a05 100%);
+  background: linear-gradient(180deg, #e5ca86 0%, #c6a15b 55%, #8f7340 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 2px 0 rgba(58, 36, 4, 0.85)) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 2px 0 rgba(35, 26, 12, 0.85)) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
 }
 
 /* ---------- Botões premium ---------- */
 
 /* Pilha de ações padrão das fases (buscar, confirmar/recusar, jogar de
-   novo/início): ocupa a largura toda menos uma margem de segurança.
+   novo/início): margem de segurança horizontal de ~10% da largura da
+   tela em cada lado (80vw), limitada a 24rem no desktop — garante o
+   respiro tanto no mobile quanto na web.
    Botões internos usam size="md" — um único tamanho em todo o jogo. */
 .action-stack {
   display: flex;
-  width: 100%;
+  width: min(100%, 80vw);
   max-width: 24rem;
   flex-direction: column;
   gap: 0.75rem;
@@ -547,26 +555,27 @@ body {
 }
 
 .btn:focus-visible {
-  outline: 2px solid #ffd970;
+  outline: 2px solid #e5ca86;
   outline-offset: 2px;
 }
 
 .btn:disabled {
-  background: #262e48;
-  color: #737d95;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.22);
+  background: #241c2c;
+  color: #7e7686;
+  box-shadow: inset 0 0 0 1px rgba(166, 158, 172, 0.22);
   filter: none;
 }
 
-/* Ouro maciço: bisel (luz em cima, quina escura embaixo) + halo. */
+/* Ouro envelhecido maciço: bisel (luz champagne em cima, quina escura
+   embaixo) + halo. */
 .btn--primary:not(:disabled) {
-  background: linear-gradient(180deg, #ffe08a 0%, #fbbf24 42%, #e8a70c 78%, #c88a05 100%);
-  color: #2a1703;
+  background: linear-gradient(180deg, #e5ca86 0%, #c6a15b 42%, #b08a47 78%, #8f7340 100%);
+  color: #201608;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    inset 0 -2px 0 rgba(120, 72, 4, 0.45),
-    0 0 0 1px #a87608,
-    0 6px 14px rgba(200, 138, 5, 0.35),
+    inset 0 -2px 0 rgba(74, 58, 28, 0.5),
+    0 0 0 1px #6e5730,
+    0 6px 14px rgba(198, 161, 91, 0.35),
     0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
@@ -575,9 +584,9 @@ body {
     filter: brightness(1.06);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.65),
-      inset 0 -2px 0 rgba(120, 72, 4, 0.45),
-      0 0 0 1px #a87608,
-      0 10px 22px rgba(200, 138, 5, 0.45),
+      inset 0 -2px 0 rgba(74, 58, 28, 0.5),
+      0 0 0 1px #6e5730,
+      0 10px 22px rgba(198, 161, 91, 0.45),
       0 2px 4px rgba(0, 0, 0, 0.4);
   }
 }
@@ -586,19 +595,19 @@ body {
   transform: translateY(1px);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    inset 0 -1px 0 rgba(120, 72, 4, 0.45),
-    0 0 0 1px #a87608,
-    0 3px 8px rgba(200, 138, 5, 0.3),
+    inset 0 -1px 0 rgba(74, 58, 28, 0.5),
+    0 0 0 1px #6e5730,
+    0 3px 8px rgba(198, 161, 91, 0.3),
     0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/* Navy lapidado: relevo sutil + aro claro. */
+/* Grafite arroxeado lapidado: relevo sutil + aro roxo acinzentado. */
 .btn--secondary:not(:disabled) {
-  background: linear-gradient(180deg, #2a3657 0%, #161f38 100%);
-  color: #eef2fb;
+  background: linear-gradient(180deg, #2a2133 0%, #15101c 100%);
+  color: var(--color-ivory);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 0 0 1px rgba(148, 163, 184, 0.4),
+    0 0 0 1px rgba(166, 158, 172, 0.4),
     0 4px 10px rgba(0, 0, 0, 0.35);
 }
 
@@ -607,7 +616,7 @@ body {
     filter: brightness(1.18);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.18),
-      0 0 0 1px rgba(203, 213, 225, 0.55),
+      0 0 0 1px rgba(196, 189, 204, 0.55),
       0 6px 16px rgba(0, 0, 0, 0.4);
   }
 }
@@ -616,17 +625,17 @@ body {
   transform: translateY(1px);
 }
 
-/* Fantasma legível: vidro escuro com aro, nunca texto solto. */
+/* Fantasma legível: vidro ameixa com aro, nunca texto solto. */
 .btn--ghost:not(:disabled) {
-  background: rgba(11, 16, 32, 0.4);
-  color: #dbe3f2;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.35);
+  background: rgba(21, 16, 28, 0.45);
+  color: #ede8df;
+  box-shadow: inset 0 0 0 1px rgba(166, 158, 172, 0.35);
 }
 
 @media (hover: hover) {
   .btn--ghost:not(:disabled):hover {
-    background: rgba(11, 16, 32, 0.6);
-    box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.5);
+    background: rgba(21, 16, 28, 0.65);
+    box-shadow: inset 0 0 0 1px rgba(196, 189, 204, 0.5);
   }
 }
 
@@ -646,12 +655,12 @@ body {
 
 /* Fichas de aposta: pastilhas de resina com bisel e estado dourado. */
 .stake-chip {
-  background: linear-gradient(180deg, #202b4a 0%, #101830 100%);
-  color: #e6ebf7;
+  background: linear-gradient(180deg, #2a2133 0%, #191320 100%);
+  color: var(--color-ivory);
   border-radius: 1rem;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 0 0 1px rgba(148, 163, 184, 0.35),
+    0 0 0 1px rgba(166, 158, 172, 0.35),
     0 4px 10px rgba(0, 0, 0, 0.35);
   transition:
     box-shadow 0.2s ease,
@@ -663,18 +672,18 @@ body {
     filter: brightness(1.15);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.16),
-      0 0 0 1px rgba(203, 213, 225, 0.5),
+      0 0 0 1px rgba(196, 189, 204, 0.5),
       0 8px 18px rgba(0, 0, 0, 0.4);
   }
 }
 
 .stake-chip--selected {
-  background: linear-gradient(180deg, #4a3a12 0%, #241a06 100%);
-  color: #ffd970;
+  background: linear-gradient(180deg, #3e3220 0%, #1f1810 100%);
+  color: var(--color-gold-bright);
   box-shadow:
-    inset 0 1px 0 rgba(255, 224, 138, 0.35),
-    0 0 0 1.5px #d99a06,
-    0 0 16px rgba(251, 191, 36, 0.35),
+    inset 0 1px 0 rgba(229, 202, 134, 0.35),
+    0 0 0 1.5px #c6a15b,
+    0 0 16px rgba(198, 161, 91, 0.4),
     0 4px 10px rgba(0, 0, 0, 0.35);
 }
 
@@ -725,7 +734,7 @@ body {
   pointer-events: none;
 }
 
-/* Pílula "aguardando oponente": vidro escuro no lugar dos botões. */
+/* Pílula "aguardando oponente": vidro ameixa no lugar dos botões. */
 .confirm-waiting {
   display: flex;
   align-items: baseline;
@@ -734,9 +743,9 @@ body {
   padding: 0.9rem 1rem;
   border-radius: 1rem;
   font-weight: 700;
-  color: #dbe3f2;
-  background: rgba(11, 16, 32, 0.55);
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.35);
+  color: #ede8df;
+  background: rgba(21, 16, 28, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(166, 158, 172, 0.35);
 }
 
 .waiting-dot {
@@ -781,13 +790,13 @@ body {
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #2a1703;
-  background: linear-gradient(180deg, #ffe08a 0%, #fbbf24 42%, #e8a70c 78%, #c88a05 100%);
+  color: #201608;
+  background: linear-gradient(180deg, #e5ca86 0%, #c6a15b 42%, #b08a47 78%, #8f7340 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    inset 0 -2px 0 rgba(120, 72, 4, 0.45),
-    0 0 0 1px #a87608,
-    0 0 24px rgba(251, 191, 36, 0.45);
+    inset 0 -2px 0 rgba(74, 58, 28, 0.5),
+    0 0 0 1px #6e5730,
+    0 0 24px rgba(198, 161, 91, 0.5);
 }
 
 /* Conteúdo visível apenas para leitores de tela. */

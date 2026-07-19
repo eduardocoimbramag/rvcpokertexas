@@ -12,7 +12,7 @@ export interface HistorySheetProps {
 const OUTCOME_BADGE: Record<RoundOutcome, { label: string; className: string }> = {
   win: { label: 'V', className: 'bg-gold/20 text-gold' },
   lose: { label: 'D', className: 'bg-opponent/20 text-opponent-soft' },
-  tie: { label: 'E', className: 'bg-slate-500/20 text-slate-300' },
+  tie: { label: 'E', className: 'bg-lavender/20 text-lavender' },
 };
 
 /** Histórico das últimas rodadas persistidas. */
@@ -22,7 +22,7 @@ export function HistorySheet({ open, onClose }: HistorySheetProps) {
   return (
     <Sheet open={open} title="Histórico" onClose={onClose}>
       {history.length === 0 ? (
-        <p className="py-8 text-center text-sm text-slate-400" data-testid="history-empty">
+        <p className="py-8 text-center text-sm text-lavender" data-testid="history-empty">
           Nenhuma rodada jogada ainda. Bora pro primeiro duelo? 🎲
         </p>
       ) : (
@@ -51,9 +51,9 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold">
           {entry.playerTotal} × {entry.opponentTotal}
-          <span className="font-normal text-slate-400"> vs {entry.opponentName}</span>
+          <span className="font-normal text-lavender"> vs {entry.opponentName}</span>
         </p>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-lavender/70">
           {formatTime(entry.completedAt)} · dados {entry.playerDice.join('+')} contra{' '}
           {entry.opponentDice.join('+')}
         </p>
@@ -64,7 +64,7 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
             ? 'text-gold'
             : entry.netChange < 0
               ? 'text-opponent-soft'
-              : 'text-slate-400'
+              : 'text-lavender'
         }`}
       >
         {formatDelta(entry.netChange)}

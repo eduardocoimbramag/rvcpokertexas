@@ -57,7 +57,7 @@ export function HomeScreen({ onOpenTutorial, onOpenHistory, onOpenSettings }: Ho
         <h1 className="text-4xl font-black tracking-tight">
           BAC BO <span className="text-gold">ARENA</span>
         </h1>
-        <p className="max-w-60 text-sm text-slate-400">
+        <p className="max-w-60 text-sm text-lavender">
           Duelo de dados. Maior soma vence. Empate devolve seus créditos.
         </p>
       </motion.div>

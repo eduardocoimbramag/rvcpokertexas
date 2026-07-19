@@ -38,7 +38,7 @@ function DuelPlate({ avatar, name, accent, fromX, delay, instant }: PlateProps) 
   const border = accent === 'player' ? 'border-player' : 'border-opponent';
   return (
     <motion.div
-      className={`flex w-[clamp(5.5rem,26vw,8rem)] flex-col items-center gap-1 rounded-2xl border-2 ${border} bg-gradient-to-b from-[#1b2440] to-[#0d1326] px-3 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.1)]`}
+      className={`flex w-[clamp(5.5rem,26vw,8rem)] flex-col items-center gap-1 rounded-2xl border-2 ${border} bg-gradient-to-b from-[#2a2133] to-[#15101c] px-3 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.1)]`}
       initial={instant ? false : { x: fromX, opacity: 0, rotate: fromX < 0 ? -5 : 5 }}
       animate={{ x: 0, opacity: 1, rotate: 0 }}
       transition={instant ? { duration: 0 } : { ...SPRING, delay }}
@@ -46,7 +46,7 @@ function DuelPlate({ avatar, name, accent, fromX, delay, instant }: PlateProps) 
       <span className="text-[clamp(2.25rem,9vw,3rem)]" aria-hidden="true">
         {avatar}
       </span>
-      <span className="max-w-full truncate text-sm font-black uppercase tracking-widest text-slate-100">
+      <span className="max-w-full truncate text-sm font-black uppercase tracking-widest text-ivory">
         {name}
       </span>
     </motion.div>

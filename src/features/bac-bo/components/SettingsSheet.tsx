@@ -56,14 +56,14 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
                 className={`min-h-11 rounded-xl border-2 text-sm font-bold transition-colors ${
                   scenery === option.value
                     ? 'border-gold bg-gold/15 text-gold'
-                    : 'border-arena-line bg-arena-800 text-slate-200'
+                    : 'border-arena-line bg-arena-800 text-ivory'
                 }`}
               >
                 {option.label}
               </button>
             ))}
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-lavender/70">
             Em aparelhos mais simples, o jogo reduz os efeitos automaticamente.
           </p>
         </div>

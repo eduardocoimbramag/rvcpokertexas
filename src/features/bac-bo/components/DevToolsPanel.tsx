@@ -29,7 +29,7 @@ export function DevToolsPanel() {
     <div className="fixed bottom-2 left-2 z-40 flex flex-col items-start gap-2 text-xs">
       {open && (
         <div className="flex flex-col gap-2 rounded-xl border border-arena-line bg-arena-900/95 p-3 shadow-xl">
-          <p className="font-bold text-slate-400">Forçar próxima rodada:</p>
+          <p className="font-bold text-lavender">Forçar próxima rodada:</p>
           <div className="flex gap-1">
             {outcomes.map((outcome) => (
               <button
@@ -42,7 +42,7 @@ export function DevToolsPanel() {
                 className={`rounded-lg px-2 py-1 font-bold ${
                   forcedOutcome === outcome.value
                     ? 'bg-gold text-arena-950'
-                    : 'bg-arena-700 text-slate-200'
+                    : 'bg-arena-700 text-ivory'
                 }`}
               >
                 {outcome.label}
@@ -53,7 +53,7 @@ export function DevToolsPanel() {
             type="button"
             onClick={() => devAddCredits(1000)}
             data-testid="dev-add-credits"
-            className="rounded-lg bg-arena-700 px-2 py-1 text-left font-bold text-slate-200"
+            className="rounded-lg bg-arena-700 px-2 py-1 text-left font-bold text-ivory"
           >
             +1000 créditos
           </button>

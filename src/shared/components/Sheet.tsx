@@ -59,7 +59,7 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
                 type="button"
                 onClick={onClose}
                 aria-label="Fechar"
-                className="grid h-11 w-11 place-items-center rounded-full bg-arena-700 text-slate-300 active:brightness-125"
+                className="grid h-11 w-11 place-items-center rounded-full bg-arena-700 text-lavender active:brightness-125"
               >
                 ✕
               </button>

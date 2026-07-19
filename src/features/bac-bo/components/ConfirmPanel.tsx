@@ -61,7 +61,7 @@ function ReadySeat({ avatar, name, accent, confirmed, instant }: ReadySeatProps)
               cy="50"
               r="47"
               fill="none"
-              stroke="rgba(148, 163, 184, 0.6)"
+              stroke="rgba(166, 158, 172, 0.6)"
               strokeWidth="3"
               strokeDasharray="10 8"
               strokeLinecap="round"
@@ -178,7 +178,7 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
         </div>
 
         <div className="rounded-2xl border border-arena-line bg-arena-800 px-8 py-3 text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Aposta</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-lavender">Aposta</p>
           <p className="text-2xl font-black tabular-nums text-gold">{formatCredits(match.stake)}</p>
         </div>
       </div>

@@ -60,7 +60,7 @@ export function TutorialSheet({ open, onClose, continueToGame = false }: Tutoria
           {current.icon}
         </span>
         <h3 className="text-xl font-extrabold">{current.title}</h3>
-        <p className="min-h-16 text-sm text-slate-300">{current.text}</p>
+        <p className="min-h-16 text-sm text-lavender">{current.text}</p>
 
         <div className="flex gap-2" aria-label={`Passo ${step + 1} de ${STEPS.length}`}>
           {STEPS.map((_, index) => (

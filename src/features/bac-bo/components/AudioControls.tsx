@@ -19,7 +19,7 @@ export function AudioControls() {
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-sm font-semibold text-slate-300">🎵 Música</span>
+        <span className="text-sm font-semibold text-lavender">🎵 Música</span>
         <input
           type="range"
           min={0}
@@ -34,7 +34,7 @@ export function AudioControls() {
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-sm font-semibold text-slate-300">🔊 Efeitos sonoros</span>
+        <span className="text-sm font-semibold text-lavender">🔊 Efeitos sonoros</span>
         <input
           type="range"
           min={0}

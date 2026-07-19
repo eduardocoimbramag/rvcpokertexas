@@ -21,11 +21,19 @@ export function StakeSelector() {
   const broke = isBroke(balance);
 
   return (
-    <div className="flex flex-1 flex-col justify-between gap-6">
-      <div>
-        <h2 className="mb-6 text-center text-2xl font-extrabold">Escolha sua aposta</h2>
+    <div className="flex flex-1 flex-col">
+      {/* Título + fichas centralizados verticalmente no couro livre acima
+          do botão (não colados no trilho). */}
+      <div className="flex flex-1 flex-col justify-center gap-7">
+        {/* Mesma tinta escura da fonte do botão primário (#201608),
+            gravada no couro. */}
+        <h2 className="text-engraved text-center text-2xl font-extrabold text-[#201608]">
+          Escolha sua aposta
+        </h2>
 
-        <div className="grid grid-cols-3 gap-3" role="radiogroup" aria-label="Valor da aposta">
+        {/* Margem negativa -mx-3 reduz pela metade o padding horizontal
+            do conteúdo (px-6 = 24px → 12px), alargando as fichas. */}
+        <div className="-mx-3 grid grid-cols-3 gap-3" role="radiogroup" aria-label="Valor da aposta">
           {STAKE_PRESETS.map((stake) => {
             const disabled = !validateStake(balance, stake).ok;
             const selected = selectedStake === stake;
@@ -40,14 +48,16 @@ export function StakeSelector() {
                 whileHover={disabled ? undefined : { y: -2 }}
                 onClick={() => selectStake(stake)}
                 data-testid={`stake-${stake}`}
-                className={`stake-chip flex min-h-20 flex-col items-center justify-center font-black tabular-nums ${
+                className={`stake-chip flex min-h-24 w-3/4 flex-col items-center justify-center gap-0.5 justify-self-center font-black tabular-nums ${
                   selected ? 'stake-chip--selected' : ''
                 }`}
               >
-                <span className="text-xl">{formatCredits(stake)}</span>
+                <span className="text-[clamp(2.4rem,9vw,3rem)] leading-none">
+                  {formatCredits(stake)}
+                </span>
                 <span
                   className={`text-[10px] font-semibold uppercase tracking-widest ${
-                    selected ? 'text-gold/80' : 'text-slate-400'
+                    selected ? 'text-gold-bright/80' : 'text-lavender'
                   }`}
                 >
                   créditos
