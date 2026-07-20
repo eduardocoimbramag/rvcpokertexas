@@ -101,12 +101,6 @@ function ReadySeat({ avatar, name, accent, confirmed, instant }: ReadySeatProps)
       </div>
 
       <span className={`text-engraved font-black ${ink}`}>{name}</span>
-      <span
-        className={`text-[11px] font-bold uppercase tracking-widest ${confirmed ? 'text-emerald-600' : 'text-engraved text-[#33261a]/70'}`}
-        data-testid={`confirm-status-${accent}`}
-      >
-        {confirmed ? '✓ Pronto' : 'Aguardando…'}
-      </span>
     </div>
   );
 }
@@ -127,13 +121,15 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
   const bothReady = confirmations.player && confirmations.opponent;
 
   return (
-    <div className="flex flex-1 flex-col justify-between gap-6">
-      {/* O título fica acima do trilho (fundo escuro) e permanece claro;
-          o restante assenta sobre o couro claro e usa tinta escura.
-          Gaps enxutos: esta é a fase mais alta do fluxo e precisa caber
-          no viewport fixo mesmo em aparelhos baixos. */}
-      <div className="flex flex-col items-center gap-4">
-        <h2 className="text-2xl font-extrabold">
+    <div className="flex flex-1 flex-col">
+      {/* Conteúdo centralizado verticalmente no couro livre (docs/
+          centralizacao.md): título, assentos e aposta ficam no meio da
+          mesa, não colados no trilho. Gaps enxutos: esta é a fase mais
+          alta do fluxo e precisa caber no viewport fixo mesmo em
+          aparelhos baixos (o dealer-spacer cede primeiro). */}
+      <div className="flex flex-1 flex-col items-center justify-center gap-4">
+        {/* Tinta escura gravada no couro, igual ao "Escolha sua aposta". */}
+        <h2 className="text-engraved text-center text-2xl font-extrabold text-[#201608]">
           {bothReady ? 'Que vença o melhor!' : 'Confirmar duelo?'}
         </h2>
 
@@ -183,9 +179,9 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
         </div>
       </div>
 
-      {/* pb-2 espelha a margem inferior do ResultBanner — todas as fases
-          terminam com o mesmo respiro entre ações e a borda da tela. */}
-      <div className="mx-auto flex min-h-28 w-full max-w-96 flex-col justify-end gap-3 pb-2">
+      {/* pb-4 espelha a margem inferior do CTA da tela de aposta
+          (docs/margemdeseguranca.md) — mesmo respiro entre ações e borda. */}
+      <div className="mx-auto flex min-h-28 w-full max-w-96 flex-col justify-end gap-3 pb-4">
         <AnimatePresence mode="wait" initial={false}>
           {bothReady ? (
             <motion.div
@@ -238,7 +234,7 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
                 fullWidth
                 data-testid="decline-match"
               >
-                Recusar
+                RECUSAR
               </Button>
             </motion.div>
           )}
