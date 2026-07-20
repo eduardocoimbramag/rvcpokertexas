@@ -31,9 +31,14 @@ export function StakeSelector() {
           Escolha sua aposta
         </h2>
 
-        {/* Margem negativa -mx-3 reduz pela metade o padding horizontal
-            do conteúdo (px-6 = 24px → 12px), alargando as fichas. */}
-        <div className="-mx-3 grid grid-cols-3 gap-3" role="radiogroup" aria-label="Valor da aposta">
+        {/* Mesmos limites horizontais do botão (min(100%, 80vw), 24rem):
+            as fichas alinham com a margem de segurança do CTA. Gap menor
+            para não afastar demais as fichas dentro da faixa estreita. */}
+        <div
+          className="mx-auto grid w-[min(100%,80vw)] max-w-96 grid-cols-3 gap-2"
+          role="radiogroup"
+          aria-label="Valor da aposta"
+        >
           {STAKE_PRESETS.map((stake) => {
             const disabled = !validateStake(balance, stake).ok;
             const selected = selectedStake === stake;
@@ -48,7 +53,7 @@ export function StakeSelector() {
                 whileHover={disabled ? undefined : { y: -2 }}
                 onClick={() => selectStake(stake)}
                 data-testid={`stake-${stake}`}
-                className={`stake-chip flex min-h-24 w-3/4 flex-col items-center justify-center gap-0.5 justify-self-center font-black tabular-nums ${
+                className={`stake-chip flex min-h-24 flex-col items-center justify-center gap-0.5 font-black tabular-nums ${
                   selected ? 'stake-chip--selected' : ''
                 }`}
               >
@@ -69,7 +74,7 @@ export function StakeSelector() {
       </div>
 
       {broke ? (
-        <div className="action-stack pb-2 text-center">
+        <div className="action-stack pb-4 text-center">
           <p className="text-engraved text-sm font-extrabold text-[#33261a]">
             Seus créditos acabaram!
           </p>
@@ -78,7 +83,7 @@ export function StakeSelector() {
           </Button>
         </div>
       ) : (
-        <div className="action-stack pb-2">
+        <div className="action-stack pb-4">
           <Button
             onClick={() => void startSearch()}
             disabled={selectedStake === null}
