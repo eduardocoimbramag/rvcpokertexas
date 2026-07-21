@@ -47,25 +47,29 @@ export function HomeScreen({
       </header>
 
       <motion.div
-        className="flex flex-col items-center gap-3 text-center"
+        className="flex flex-col items-center gap-4 text-center"
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
         <motion.span
-          className="text-6xl"
+          className="text-7xl"
           aria-hidden="true"
           animate={{ rotate: [0, -8, 8, 0] }}
           transition={{ repeat: Infinity, repeatDelay: 3, duration: 0.8 }}
         >
           🎲
         </motion.span>
-        <h1 className="text-4xl font-black tracking-tight">
-          BAC BO <span className="text-gold">ARENA</span>
+        <h1 className="flex flex-col items-center gap-1.5 text-6xl font-black leading-none tracking-tight">
+          <span>BAC BO</span>
+          {/* Letras distribuídas para que "ARENA" tenha a mesma largura de "BAC BO". */}
+          <span className="flex w-full justify-between text-gold" aria-hidden="true">
+            {['A', 'R', 'E', 'N', 'A'].map((letter, index) => (
+              <span key={`${letter}-${index}`}>{letter}</span>
+            ))}
+          </span>
+          <span className="sr-only">ARENA</span>
         </h1>
-        <p className="max-w-60 text-sm text-lavender">
-          Duelo de dados. Maior soma vence. Empate devolve seus créditos.
-        </p>
       </motion.div>
 
       <div className="flex w-full flex-col gap-3">
