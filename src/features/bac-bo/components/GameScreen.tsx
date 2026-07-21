@@ -44,7 +44,9 @@ export function GameScreen() {
 
   return (
     <main className="flex flex-1 flex-col px-6 py-4">
-      <header className="mb-4 flex items-center justify-between">
+      {/* relative z-20: na câmera vertical a mesa toma a tela inteira
+          (o recorte da cena sobe além do header) — o HUD flutua acima. */}
+      <header className="relative z-20 mb-4 flex items-center justify-between">
         {canGoBack ? (
           <button
             type="button"

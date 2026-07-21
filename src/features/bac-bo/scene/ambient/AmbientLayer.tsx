@@ -2,6 +2,7 @@ import { useReducedMotion } from 'framer-motion';
 import type { CSSProperties } from 'react';
 
 import { useGameStore } from '../../store/gameStore';
+import { useTournamentStore } from '../../tournament/tournamentStore';
 import { resolveSceneQuality } from '../sceneQuality';
 
 /** Posições/durações fixas das partículas (determinístico e barato). */
@@ -22,13 +23,25 @@ const PARTICLES: readonly { x: string; dur: string; delay: string; size: string 
  */
 export function AmbientLayer() {
   const scenery = useGameStore((state) => state.settings.scenery);
+  const phase = useGameStore((state) => state.phase);
+  const tournamentStage = useTournamentStore((state) => state.stage);
   const reducedMotion = useReducedMotion();
   const quality = resolveSceneQuality(scenery, reducedMotion ?? false);
+
+  // Enquadramento do salão: nos momentos de JOGO (mesa em cena — fluxo
+  // 1v1 inteiro ou partida do torneio) a foto sobe para mostrar colunas
+  // e arandelas atrás da dealer, não o teto. Menu, lobby e chaveamento
+  // mantêm o enquadramento original com o lustre em cena.
+  const atTable = phase !== 'idle' || tournamentStage === 'match';
 
   if (quality === 'off') return null;
 
   return (
-    <div className="scene-ambient" aria-hidden="true" data-testid="scene-ambient">
+    <div
+      className={`scene-ambient ${atTable ? 'scene-ambient--game' : ''}`}
+      aria-hidden="true"
+      data-testid="scene-ambient"
+    >
       {quality === 'high' &&
         PARTICLES.map((particle, index) => (
           <span

@@ -130,7 +130,9 @@ export function TournamentMatchScreen() {
 
   return (
     <main className="flex flex-1 flex-col px-6 py-4">
-      <header className="mb-4 flex items-center justify-center">
+      {/* relative z-20: na câmera vertical a mesa toma a tela inteira —
+          o selo da partida flutua acima do recorte expandido. */}
+      <header className="relative z-20 mb-4 flex items-center justify-center">
         <span className="rounded-full bg-arena-900/75 px-4 py-1 text-xs font-black uppercase tracking-[0.3em] text-gold">
           Partida do torneio
         </span>

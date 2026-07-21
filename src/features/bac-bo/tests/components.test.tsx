@@ -129,8 +129,9 @@ describe('DiceArena — totais sob as colunas', () => {
 
   it('esconde os totais antes de completed (revelação escalonada)', () => {
     render(<DiceArena phase="reveal" match={match} result={sampleResult} />);
-    expect(screen.getByTestId('player-total')).toHaveTextContent('–');
-    expect(screen.getByTestId('opponent-total')).toHaveTextContent('–');
+    // Sem placeholder: antes da revelação só os nomes aparecem.
+    expect(screen.queryByTestId('player-total')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('opponent-total')).not.toBeInTheDocument();
   });
 
   it('exibe os totais calculados pela engine em completed', () => {

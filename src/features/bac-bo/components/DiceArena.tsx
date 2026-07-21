@@ -190,32 +190,38 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
           label="Dado 2 do oponente"
         />
 
-        {/* Nome + total impressos no couro sob cada coluna (câmera
-            vertical). Em completed o placar migra para as placas ao
-            lado da dealer — exceto com o cenário desligado. */}
+        {/* Nome sob cada coluna (câmera vertical); o TOTAL só aparece
+            quando a engine revela o resultado — antes disso não há
+            placeholder nenhum, só o nome. Em completed o placar migra
+            para as placas ao lado da dealer — exceto com o cenário
+            desligado, quando o número fica aqui mesmo. */}
         {!flankScoreboard && (
           <>
             <div className="flex items-baseline justify-center gap-2">
               <span className="text-engraved text-sm font-black uppercase tracking-widest text-[#1e3a8a]">
                 🫵 Você
               </span>
-              <span
-                className={`text-engraved text-3xl font-black tabular-nums text-[#1e3a8a] ${completed ? '' : 'opacity-40'}`}
-                data-testid="player-total"
-              >
-                {completed && result ? result.playerTotal : '–'}
-              </span>
+              {completed && result && (
+                <span
+                  className="text-engraved text-3xl font-black tabular-nums text-[#1e3a8a]"
+                  data-testid="player-total"
+                >
+                  {result.playerTotal}
+                </span>
+              )}
             </div>
             <div className="flex items-baseline justify-center gap-2">
               <span className="text-engraved text-sm font-black uppercase tracking-widest text-[#7f1d1d]">
                 {match.opponent.avatar} {match.opponent.name}
               </span>
-              <span
-                className={`text-engraved text-3xl font-black tabular-nums text-[#7f1d1d] ${completed ? '' : 'opacity-40'}`}
-                data-testid="opponent-total"
-              >
-                {completed && result ? result.opponentTotal : '–'}
-              </span>
+              {completed && result && (
+                <span
+                  className="text-engraved text-3xl font-black tabular-nums text-[#7f1d1d]"
+                  data-testid="opponent-total"
+                >
+                  {result.opponentTotal}
+                </span>
+              )}
             </div>
           </>
         )}

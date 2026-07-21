@@ -83,12 +83,18 @@ h2 {
 
 /* ---------- Cenário: ambiente global (docs/scenario.md §6.4) ---------- */
 
+/* Fundo do salão em camadas (de cima para baixo):
+   luzes âmbar translúcidas (mantidas) → scrim que assenta a foto na
+   paleta → a FOTO do salão Art Déco (docs/geracaofundo.md) → cor-base.
+   A foto substitui o antigo radial opaco de "profundidade": agora a
+   profundidade é real — lustre, colunas e arandelas atrás de tudo. */
 .scene-ambient {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
+  background-color: #140404; /* fallback (carregamento) e além da foto */
+  background-image:
     /* poças de luz âmbar dos lustres nos cantos do salão */
     radial-gradient(34% 22% at 12% 0%, rgba(245, 183, 111, 0.16), transparent 70%),
     radial-gradient(34% 22% at 88% 0%, rgba(245, 183, 111, 0.16), transparent 70%),
@@ -96,15 +102,46 @@ h2 {
     radial-gradient(120% 60% at 50% 12%, rgba(245, 183, 111, 0.12), transparent 55%),
     /* colunas laterais do salão apanhando luz quente */
     linear-gradient(
-        90deg,
-        rgba(245, 183, 111, 0.06) 0%,
-        transparent 10%,
-        transparent 90%,
-        rgba(245, 183, 111, 0.06) 100%
-      ),
-    /* profundidade do salão: vinho borgonha escurecendo nas bordas */
-    radial-gradient(140% 100% at 50% 40%, #3a0a12 0%, #180509 70%),
-    #140404;
+      90deg,
+      rgba(245, 183, 111, 0.06) 0%,
+      transparent 10%,
+      transparent 90%,
+      rgba(245, 183, 111, 0.06) 100%
+    ),
+    /* scrim: escurece de leve no topo (contraste do saldo/HUD) e mais
+       firme na base (onde a mesa assenta), fundindo a foto à paleta
+       vinho sem apagar o lustre nem as arandelas */
+    linear-gradient(
+      180deg,
+      rgba(20, 4, 4, 0.22) 0%,
+      rgba(20, 4, 4, 0.08) 24%,
+      rgba(26, 6, 9, 0.34) 68%,
+      rgba(20, 4, 4, 0.66) 100%
+    ),
+    /* o salão Art Déco em si (1024×1536, ancorado no lustre) */
+    url('/fundocassino.webp');
+  background-size: auto, auto, auto, auto, auto, cover;
+  background-position: center, center, center, center, center, center top;
+  background-repeat: no-repeat;
+}
+
+/* Enquadramento de JOGO (mesa em cena): a câmera desce ao nível da
+   mesa. A foto passa a ancorar pela LARGURA (colunas e arandelas
+   inteiras, sem o corte lateral do cover) e sobe ~20% da própria
+   altura: o lustre sai do quadro (sobra só a franja no topo, atrás do
+   HUD) e atrás da dealer ficam o friso e as arandelas — não o teto.
+   O trecho que a foto deixa de cobrir embaixo fica atrás da mesa
+   (opaca), então nunca aparece. Menu, lobby e chaveamento seguem no
+   enquadramento original com o lustre em cena. */
+.scene-ambient--game {
+  background-size: auto, auto, auto, auto, auto, 100% auto;
+  background-position:
+    center,
+    center,
+    center,
+    center,
+    center,
+    center -30vw;
 }
 
 /* Luzes desfocadas do salão ao fundo (bokeh estático, só gradientes). */
@@ -185,6 +222,40 @@ h2 {
      estourar em aparelhos baixos. */
   --dealer-h: clamp(160px, 28vh, 260px);
   --dealer-h: clamp(160px, 28dvh, 260px);
+}
+
+/* Recorte do pano de fundo da cena (dealer + mesa): estende o clip até
+   as bordas REAIS da tela — cancela o padding do <main> (px-6/py-4) e o
+   safe-area inferior da casca — para a mesa sangrar de borda a borda.
+   Sem isso o corte acontecia 24px antes da borda e o fundo vazava num
+   "trilho" ao lado da mesa (invisível com o fundo escuro antigo,
+   gritante com a foto do salão). O sangramento extra que o clip esconde
+   durante os cortes de câmera continua funcionando — só que agora o
+   limite é a borda da tela, não o box acolchoado do main. */
+.scene-clip {
+  position: absolute;
+  top: 0;
+  left: -1.5rem; /* px-6 do <main> */
+  right: -1.5rem;
+  bottom: calc(-1rem - env(safe-area-inset-bottom, 0px)); /* py-4 + notch */
+  overflow: hidden;
+  pointer-events: none;
+  /* Mesma curva/duração da grua de câmera (TableScene CAMERA_EASE):
+     a expansão do recorte acompanha o corte para a vista vertical. */
+  transition: top 0.65s cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+
+/* Câmera vertical (sorteio): a mesa toma a tela INTEIRA — o recorte
+   sobe além do cabeçalho (py-4 + header do GameScreen ≈ 76px) até a
+   borda superior; o HUD (saldo/título) flutua por cima com z-index. */
+.scene-stage--overhead .scene-clip {
+  top: -5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-clip {
+    transition: none;
+  }
 }
 
 .dealer-slot {

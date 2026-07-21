@@ -57,7 +57,7 @@ export function TableScene({ reaction, camera = 'front', children }: TableSceneP
       data-testid="table-scene"
       data-camera={camera}
     >
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      <div className="scene-clip" aria-hidden="true">
         {/* Câmera frontal: dealer de pé atrás da mesa. */}
         <motion.div
           className="absolute inset-0"

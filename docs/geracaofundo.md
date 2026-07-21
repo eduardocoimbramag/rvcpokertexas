@@ -1,6 +1,19 @@
 # 🎨 Geração do fundo de cassino (atrás da dealer)
 
-**Versão:** 1.0 · **Data:** 2026-07-20
+**Versão:** 1.1 · **Data:** 2026-07-20
+
+> **Status: ✅ implementado (2026-07-21).** A arte foi gerada com o
+> Prompt B (Art Déco) em 1024×1536 e entregue em
+> `public/fundocassino.webp` (54 KB, VP8). Integração: a foto entrou como
+> a camada de BASE do `.scene-ambient` ([`src/index.css`](../src/index.css)),
+> substituindo o radial opaco de "profundidade" — as poças de luz, halo,
+> bokeh, vinheta e partículas seguem POR CIMA dela. Um scrim vertical
+> (`rgba(20,4,4)` 0.22→0.08→0.34→0.66) assenta a foto na paleta e garante
+> o contraste do HUD/mesa. `cover` ancorado em `center top` mantém o
+> lustre coroando a dealer em qualquer viewport; preload no
+> [`index.html`](../index.html) evita o "pop" da foto no primeiro paint.
+> O reenquadramento 1080×2400 (§2.1) ficou desnecessário: o corte lateral
+> do `cover` em telas altas é absorvido pela vinheta.
 **Escopo:** especificação para **gerar** (no GPT Image) uma imagem de
 fundo de salão de cassino que fica **atrás da dealer**, na paleta oficial
 Royal VIP Club. Este documento **não implementa nada** — é só o briefing
