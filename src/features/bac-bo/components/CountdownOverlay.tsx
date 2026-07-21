@@ -15,7 +15,7 @@ export function CountdownOverlay({ value }: CountdownOverlayProps) {
       <AnimatePresence mode="popLayout">
         <motion.span
           key={value}
-          className="text-9xl font-black text-gold tabular-nums [text-shadow:0_4px_18px_rgba(0,0,0,0.45),0_1px_2px_rgba(0,0,0,0.4)]"
+          className="font-display text-9xl font-bold text-gold tabular-nums [text-shadow:0_4px_18px_rgba(0,0,0,0.45),0_1px_2px_rgba(0,0,0,0.4)]"
           initial={{ scale: 2.2, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.6, opacity: 0 }}

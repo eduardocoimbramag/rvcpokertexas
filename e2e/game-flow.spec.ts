@@ -69,7 +69,7 @@ test('primeira jogada: tutorial completo e vitória paga 1:1', async ({ page }) 
   await playRound(page, 50);
 
   await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/);
-  await expect(page.getByTestId('result-delta')).toHaveText(/\+50/);
+  // A variação sobe para a pílula de saldo e o contador chega ao total.
   await expect(page.getByTestId('balance')).toContainText('1.050');
   // ...e comemora a vitória do jogador.
   await expect(page.getByTestId('dealer')).toHaveAttribute('data-reaction', 'celebrate');

@@ -61,7 +61,7 @@ function ReadySeat({ avatar, name, accent, confirmed, instant }: ReadySeatProps)
               cy="50"
               r="47"
               fill="none"
-              stroke="rgba(166, 158, 172, 0.6)"
+              stroke="rgba(203, 115, 73, 0.6)"
               strokeWidth="3"
               strokeDasharray="10 8"
               strokeLinecap="round"

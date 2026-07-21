@@ -34,6 +34,14 @@ export function GameScreen() {
 
   const canGoBack = phase === 'stake';
 
+  // Saldo segurado: enquanto a rodada corre (stake já debitado no
+  // lock-in), a pílula continua exibindo o saldo PRÉ-rodada — o débito
+  // fica invisível e só aparece na animação do resultado. No completed
+  // a pílula recebe o saldo final + o netChange para animar a variação.
+  const roundActive = phase === 'countdown' || phase === 'rolling' || phase === 'reveal';
+  const displayBalance = roundActive && match ? balance + match.stake : balance;
+  const balanceDelta = phase === 'completed' && result ? result.netChange : null;
+
   return (
     <main className="flex flex-1 flex-col px-6 py-4">
       <header className="mb-4 flex items-center justify-between">
@@ -50,7 +58,7 @@ export function GameScreen() {
         ) : (
           <span className="h-11 w-11" aria-hidden="true" />
         )}
-        <BalancePill balance={balance} />
+        <BalancePill balance={displayBalance} delta={balanceDelta} />
       </header>
 
       {/* A TableScene fica FORA do AnimatePresence: o dealer e a mesa

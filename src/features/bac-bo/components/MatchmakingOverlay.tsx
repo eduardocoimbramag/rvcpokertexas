@@ -14,7 +14,7 @@ export function MatchmakingOverlay() {
         {[0, 1, 2].map((ring) => (
           <motion.span
             key={ring}
-            className="absolute inset-0 rounded-full border-2 border-[#8f7340]/60"
+            className="absolute inset-0 rounded-full border-2 border-[#cb7349]/70"
             initial={{ scale: 0.4, opacity: 0.9 }}
             animate={{ scale: 1.15, opacity: 0 }}
             transition={{ repeat: Infinity, duration: 1.6, delay: ring * 0.5, ease: 'easeOut' }}

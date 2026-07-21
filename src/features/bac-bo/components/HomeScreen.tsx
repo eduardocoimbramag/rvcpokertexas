@@ -9,10 +9,16 @@ export interface HomeScreenProps {
   onOpenTutorial: () => void;
   onOpenHistory: () => void;
   onOpenSettings: () => void;
+  onOpenTournament: () => void;
 }
 
-/** Tela inicial: logotipo, saldo e a chamada principal para jogar. */
-export function HomeScreen({ onOpenTutorial, onOpenHistory, onOpenSettings }: HomeScreenProps) {
+/** Tela inicial: logotipo, saldo e os dois modos de jogo. */
+export function HomeScreen({
+  onOpenTutorial,
+  onOpenHistory,
+  onOpenSettings,
+  onOpenTournament,
+}: HomeScreenProps) {
   const balance = useGameStore((state) => state.balance);
   const tutorialSeen = useGameStore((state) => state.settings.tutorialSeen);
   const goToStake = useGameStore((state) => state.goToStake);
@@ -64,7 +70,15 @@ export function HomeScreen({ onOpenTutorial, onOpenHistory, onOpenSettings }: Ho
 
       <div className="flex w-full flex-col gap-3">
         <Button onClick={handlePlay} fullWidth data-testid="play-button">
-          JOGAR
+          🎲 1V1
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={onOpenTournament}
+          fullWidth
+          data-testid="tournament-button"
+        >
+          🏆 TORNEIO
         </Button>
         <div className="grid grid-cols-2 gap-3">
           <Button

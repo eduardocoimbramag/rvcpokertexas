@@ -108,12 +108,17 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
   const stagger = TIMINGS.revealStaggerMs;
 
   return (
-    // Em completed os poços centram verticalmente no couro livre (entre
-    // o trilho e o banner) — a grade desliza até lá via layout FLIP.
-    // Nas demais fases ficam ancorados no topo, como parte da mesa.
+    // Em completed os poços descem ao centro VISUAL da mesa (não ao
+    // centro do couro-livre): como o couro segue até a base atrás dos
+    // botões, centralizar no couro-livre deixaria os dados altos. Os
+    // dois espaçadores com grow 3:2 enviesam a grade ~60% para baixo, e
+    // encolhem sozinhos em telas baixas (o dealer-spacer cede primeiro).
+    // Nas demais fases os poços ficam ancorados no topo (parte da mesa).
     <div
-      className={`flex flex-1 flex-col items-center pt-1 ${flankScoreboard ? 'justify-center' : 'justify-start'}`}
+      className={`flex flex-1 flex-col items-center pt-1 ${flankScoreboard ? '' : 'justify-start'}`}
     >
+      {flankScoreboard && <div aria-hidden className="w-full grow-[3]" />}
+
       {flankScoreboard && result && (
         <>
           <ScorePlate
@@ -207,6 +212,8 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
           </>
         )}
       </motion.div>
+
+      {flankScoreboard && <div aria-hidden className="w-full grow-[2]" />}
     </div>
   );
 }

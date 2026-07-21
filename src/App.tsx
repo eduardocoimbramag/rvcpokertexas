@@ -6,6 +6,8 @@ import { HistorySheet } from '@/features/bac-bo/components/HistorySheet';
 import { HomeScreen } from '@/features/bac-bo/components/HomeScreen';
 import { SettingsSheet } from '@/features/bac-bo/components/SettingsSheet';
 import { TutorialSheet } from '@/features/bac-bo/components/TutorialSheet';
+import { TournamentApp } from '@/features/bac-bo/tournament/TournamentApp';
+import { useTournamentStore } from '@/features/bac-bo/tournament/tournamentStore';
 import { AmbientLayer } from '@/features/bac-bo/scene/ambient/AmbientLayer';
 import { useGameStore } from '@/features/bac-bo/store/gameStore';
 import { appEnv } from '@/shared/config/env';
@@ -13,21 +15,33 @@ import { formatDelta } from '@/shared/lib/format';
 
 type OpenSheet = 'none' | 'tutorial' | 'history' | 'settings';
 
-/** Raiz da aplicação: alterna Home/Jogo pela fase e hospeda os sheets. */
+/**
+ * Raiz da aplicação: escolhe entre Home, o jogo 1v1 (dirigido pela fase do
+ * gameStore) e o modo Torneio (fluxo próprio), e hospeda os sheets.
+ */
 export default function App() {
   const phase = useGameStore((state) => state.phase);
   const result = useGameStore((state) => state.result);
+  const tournamentStage = useTournamentStore((state) => state.stage);
+  const openBrowse = useTournamentStore((state) => state.openBrowse);
+  const leaveTournament = useTournamentStore((state) => state.leaveTournament);
   const [openSheet, setOpenSheet] = useState<OpenSheet>('none');
-  // O tutorial aberto pelo botão JOGAR continua para a mesa ao terminar.
+  // O tutorial aberto pelo botão 1v1 continua para a mesa ao terminar.
   const [tutorialContinues, setTutorialContinues] = useState(false);
 
   const closeSheet = () => setOpenSheet('none');
+  // O 1v1 tem prioridade: se uma rodada casual está em andamento, ela manda.
+  const inTournament = phase === 'idle' && tournamentStage !== 'closed';
 
   return (
     <>
       <AmbientLayer />
       <div className="app-shell">
-        {phase === 'idle' ? (
+        {phase !== 'idle' ? (
+          <GameScreen />
+        ) : inTournament ? (
+          <TournamentApp onExit={leaveTournament} />
+        ) : (
           <HomeScreen
             onOpenTutorial={() => {
               setTutorialContinues(!useGameStore.getState().settings.tutorialSeen);
@@ -35,9 +49,8 @@ export default function App() {
             }}
             onOpenHistory={() => setOpenSheet('history')}
             onOpenSettings={() => setOpenSheet('settings')}
+            onOpenTournament={openBrowse}
           />
-        ) : (
-          <GameScreen />
         )}
 
         <TutorialSheet

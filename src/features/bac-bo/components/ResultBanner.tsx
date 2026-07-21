@@ -1,7 +1,6 @@
 import { motion, useReducedMotion } from 'framer-motion';
 
 import { Button } from '@/shared/components/Button';
-import { formatDelta } from '@/shared/lib/format';
 
 import type { RoundOutcome, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
@@ -12,9 +11,9 @@ export interface ResultBannerProps {
 
 /* Tintas escuras e saturadas: o banner assenta sobre o couro claro. */
 const OUTCOME_COPY: Record<RoundOutcome, { title: string; className: string }> = {
-  win: { title: '🏆 VITÓRIA!', className: 'text-[#7a4503]' },
-  lose: { title: '💥 DERROTA', className: 'text-[#8f1616]' },
-  tie: { title: '🤝 EMPATE', className: 'text-[#3d372f]' },
+  win: { title: 'VITÓRIA!', className: 'text-[#7a4503]' },
+  lose: { title: 'DERROTA', className: 'text-[#8f1616]' },
+  tie: { title: 'EMPATE', className: 'text-[#3d372f]' },
 };
 
 /** Fase Completed: veredito da rodada, variação de saldo e próximas ações. */
@@ -27,7 +26,7 @@ export function ResultBanner({ result }: ResultBannerProps) {
 
   return (
     <motion.div
-      className="relative flex flex-col items-center gap-0.5 pb-2"
+      className="relative flex flex-col items-center gap-0.5 pb-4"
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: 'spring', damping: 20, stiffness: 260 }}
@@ -35,26 +34,29 @@ export function ResultBanner({ result }: ResultBannerProps) {
       {result.outcome === 'win' && !reducedMotion && <WinParticles />}
 
       <p
-        className={`text-engraved text-3xl font-black ${copy.className}`}
+        className={`font-display text-engraved text-4xl font-bold tracking-wide ${copy.className}`}
         data-testid="result-title"
       >
         {copy.title}
       </p>
-      <p
-        className="text-engraved text-lg font-extrabold tabular-nums text-[#33261a]"
-        data-testid="result-delta"
-      >
-        {result.outcome === 'tie'
-          ? 'Aposta devolvida'
-          : `${formatDelta(result.netChange)} créditos`}
-      </p>
+      {/* Vitória/derrota: a variação de saldo é mostrada subindo para
+          dentro da pílula de saldo (BalancePill) — nada aqui embaixo.
+          Empate não altera o saldo, então mantém o aviso textual. */}
+      {result.outcome === 'tie' && (
+        <p
+          className="text-engraved text-lg font-extrabold tabular-nums text-[#33261a]"
+          data-testid="result-delta"
+        >
+          Aposta devolvida
+        </p>
+      )}
 
       <div className="action-stack mt-2">
         <Button onClick={playAgain} size="md" fullWidth data-testid="play-again">
           🎲 JOGAR DE NOVO
         </Button>
         <Button variant="secondary" onClick={goHome} size="md" fullWidth data-testid="go-home">
-          Início
+          INÍCIO
         </Button>
       </div>
     </motion.div>

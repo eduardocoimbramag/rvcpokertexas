@@ -95,6 +95,9 @@ export interface GameStoreState {
   dismissError: () => void;
   /** Recarrega créditos quando o saldo não cobre o menor stake. */
   refillCredits: () => void;
+  /** Ajusta o saldo por um delta (débito/crédito) e persiste — usado pelo
+      buy-in e pelo prêmio do modo Torneio. */
+  applyBalanceDelta: (delta: number) => void;
   markTutorialSeen: () => void;
   updateAudioSettings: (patch: Partial<AudioSettings>) => void;
   setVibrationEnabled: (enabled: boolean) => void;
@@ -382,6 +385,11 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       refillCredits: () => {
         if (!isBroke(get().balance)) return;
         set({ balance: initialBalance });
+        persist();
+      },
+
+      applyBalanceDelta: (delta) => {
+        set({ balance: Math.max(0, get().balance + delta) });
         persist();
       },
 

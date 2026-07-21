@@ -38,7 +38,7 @@ function DuelPlate({ avatar, name, accent, fromX, delay, instant }: PlateProps) 
   const border = accent === 'player' ? 'border-player' : 'border-opponent';
   return (
     <motion.div
-      className={`flex w-[clamp(5.5rem,26vw,8rem)] flex-col items-center gap-1 rounded-2xl border-2 ${border} bg-gradient-to-b from-[#2a2133] to-[#15101c] px-3 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.1)]`}
+      className={`flex w-[clamp(5.5rem,26vw,8rem)] flex-col items-center gap-1 rounded-2xl border-2 ${border} bg-gradient-to-b from-[#5f1420] to-[#2a0810] px-3 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.1)]`}
       initial={instant ? false : { x: fromX, opacity: 0, rotate: fromX < 0 ? -5 : 5 }}
       animate={{ x: 0, opacity: 1, rotate: 0 }}
       transition={instant ? { duration: 0 } : { ...SPRING, delay }}

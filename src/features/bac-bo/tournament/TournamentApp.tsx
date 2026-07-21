@@ -1,0 +1,44 @@
+import { AnimatePresence, motion } from 'framer-motion';
+
+import { BracketScreen } from './screens/BracketScreen';
+import { ChampionScreen } from './screens/ChampionScreen';
+import { LobbyBrowseScreen } from './screens/LobbyBrowseScreen';
+import { LobbyScreen } from './screens/LobbyScreen';
+import { TournamentMatchScreen } from './screens/TournamentMatchScreen';
+import { useTournamentStore } from './tournamentStore';
+
+export interface TournamentAppProps {
+  /** Fecha o torneio e volta à Home. */
+  onExit: () => void;
+}
+
+/**
+ * Raiz do modo Torneio: alterna as telas pela fase do fluxo. Quando o
+ * fluxo fecha (`stage === 'closed'`), devolve o controle à Home.
+ */
+export function TournamentApp({ onExit }: TournamentAppProps) {
+  const stage = useTournamentStore((s) => s.stage);
+
+  // Quando o fluxo fecha, o App deixa de montar esta árvore (mostra a Home);
+  // aqui só evitamos renderizar conteúdo órfão.
+  if (stage === 'closed') return null;
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={stage}
+        className="flex flex-1 flex-col"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.22 }}
+      >
+        {stage === 'browse' && <LobbyBrowseScreen onBack={onExit} />}
+        {stage === 'lobby' && <LobbyScreen />}
+        {stage === 'bracket' && <BracketScreen />}
+        {stage === 'match' && <TournamentMatchScreen />}
+        {stage === 'champion' && <ChampionScreen />}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
