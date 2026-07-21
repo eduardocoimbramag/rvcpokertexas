@@ -25,33 +25,50 @@ export function ResultBanner({ result }: ResultBannerProps) {
   const copy = OUTCOME_COPY[result.outcome];
 
   return (
+    // O banner ocupa toda a faixa livre abaixo dos dados (flex-1) e a
+    // divide em: [espaço] · veredito · [espaço] · ações. Os dois
+    // espaçadores crescem igual (grow), então o veredito fica
+    // EXATAMENTE no centro vertical entre os dados e o botão "Jogar de
+    // novo" — em qualquer altura de tela (docs/centralizacao.md).
     <motion.div
-      className="relative flex flex-col items-center gap-0.5 pb-4"
+      className="relative flex flex-1 flex-col items-center pb-4"
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: 'spring', damping: 20, stiffness: 260 }}
     >
       {result.outcome === 'win' && !reducedMotion && <WinParticles />}
 
-      <p
-        className={`font-display text-engraved text-4xl font-bold tracking-wide ${copy.className}`}
-        data-testid="result-title"
-      >
-        {copy.title}
-      </p>
-      {/* Vitória/derrota: a variação de saldo é mostrada subindo para
-          dentro da pílula de saldo (BalancePill) — nada aqui embaixo.
-          Empate não altera o saldo, então mantém o aviso textual. */}
-      {result.outcome === 'tie' && (
-        <p
-          className="text-engraved text-lg font-extrabold tabular-nums text-[#33261a]"
-          data-testid="result-delta"
-        >
-          Aposta devolvida
-        </p>
-      )}
+      {/* Espaçador superior: da base dos dados até o veredito. */}
+      <div aria-hidden className="w-full grow" />
 
-      <div className="action-stack mt-2">
+      <div className="flex flex-col items-center gap-0.5">
+        <p
+          className={`font-display text-engraved text-4xl font-bold tracking-wide ${copy.className}`}
+          data-testid="result-title"
+        >
+          {copy.title}
+        </p>
+        {/* Vitória/derrota: a variação de saldo é mostrada subindo para
+            dentro da pílula de saldo (BalancePill) — nada aqui embaixo.
+            Empate não altera o saldo, então mantém o aviso textual. */}
+        {result.outcome === 'tie' && (
+          <p
+            className="text-engraved text-lg font-extrabold tabular-nums text-[#33261a]"
+            data-testid="result-delta"
+          >
+            Aposta devolvida
+          </p>
+        )}
+      </div>
+
+      {/* Espaçador inferior: do veredito até o botão. Mesmo grow do de
+          cima → veredito centralizado na faixa. */}
+      <div aria-hidden className="w-full grow" />
+
+      {/* --tight = metade do gap padrão da .action-stack (0.75rem →
+          0.375rem): ações mais juntas neste desfecho, sem alterar as
+          demais telas que usam .action-stack. */}
+      <div className="action-stack action-stack--tight">
         <Button onClick={playAgain} size="md" fullWidth data-testid="play-again">
           🎲 JOGAR DE NOVO
         </Button>

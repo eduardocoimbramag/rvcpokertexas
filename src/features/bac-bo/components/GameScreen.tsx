@@ -79,7 +79,10 @@ export function GameScreen() {
             {phase === 'confirm' && match && <ConfirmPanel match={match} />}
             {phase === 'countdown' && <CountdownOverlay value={countdown} />}
             {(phase === 'rolling' || phase === 'reveal' || phase === 'completed') && match && (
-              <div className="flex flex-1 flex-col justify-between gap-4">
+              // Sem justify-between/gap: em completed o ResultBanner é
+              // flex-1 e divide sozinho a faixa livre (veredito centrado
+              // + ações no rodapé). Em rolling/reveal só há o DiceArena.
+              <div className="flex flex-1 flex-col">
                 <DiceArena phase={phase} match={match} result={result} />
                 {phase === 'completed' && result && <ResultBanner result={result} />}
               </div>

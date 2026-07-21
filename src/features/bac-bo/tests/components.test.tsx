@@ -1,14 +1,15 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitForElementToBeRemoved, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import App from '@/App';
 
+import { ConfirmPanel } from '../components/ConfirmPanel';
 import { DiceArena } from '../components/DiceArena';
 import { Die3D } from '../components/Die3D';
 import { HistorySheet } from '../components/HistorySheet';
 import { StakeSelector } from '../components/StakeSelector';
-import type { HistoryEntry, RoundResult } from '../engine/types';
+import type { HistoryEntry, Match, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
 
 const sampleResult: RoundResult = {
@@ -58,6 +59,63 @@ describe('StakeSelector', () => {
     render(<StakeSelector />);
     expect(screen.getByTestId('refill-button')).toBeInTheDocument();
     expect(screen.queryByTestId('search-button')).not.toBeInTheDocument();
+  });
+});
+
+describe('ConfirmPanel — perfil do oponente', () => {
+  const match: Match = {
+    id: 'm1',
+    stake: 25,
+    opponent: { id: 'o1', name: 'Luna', avatar: '🦊', rating: 1420 },
+    createdAt: 1700000000000,
+  };
+
+  const openConfirm = () => {
+    useGameStore.setState({
+      phase: 'confirm',
+      match,
+      confirmations: { player: false, opponent: false },
+    });
+  };
+
+  it('o avatar do oponente é clicável e abre o perfil por cima', async () => {
+    const user = userEvent.setup();
+    openConfirm();
+    render(<ConfirmPanel match={match} />);
+
+    // Fechado por padrão.
+    expect(screen.queryByTestId('opponent-profile')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('opponent-avatar-button'));
+
+    // Abriu com nome, nível, ações e exatamente 4 selos estampados.
+    const profile = screen.getByTestId('opponent-profile');
+    expect(profile).toBeInTheDocument();
+    expect(within(profile).getByText('Luna')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-level')).toHaveTextContent(/Nível \d+/);
+    expect(screen.getByTestId('profile-add-friend')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-report')).toBeInTheDocument();
+    expect(profile.querySelectorAll('.profile-badge')).toHaveLength(4);
+
+    // Enxuto: sem "pts de rating" e sem o bloco/rótulo "Conquistas".
+    expect(profile.textContent?.toLowerCase()).not.toContain('rating');
+    expect(profile.textContent?.toLowerCase()).not.toContain('conquistas');
+  });
+
+  it('fecha no X e a tela de confirmação segue montada e utilizável', async () => {
+    const user = userEvent.setup();
+    openConfirm();
+    render(<ConfirmPanel match={match} />);
+
+    await user.click(screen.getByTestId('opponent-avatar-button'));
+    expect(screen.getByTestId('opponent-profile')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('profile-close'));
+
+    // O perfil sai; os botões de confirmar/recusar continuam disponíveis.
+    await waitForElementToBeRemoved(() => screen.queryByTestId('opponent-profile'));
+    expect(screen.getByTestId('confirm-match')).toBeInTheDocument();
+    expect(screen.getByTestId('decline-match')).toBeInTheDocument();
   });
 });
 

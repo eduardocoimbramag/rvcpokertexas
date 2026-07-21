@@ -1,10 +1,12 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
 import { formatCredits } from '@/shared/lib/format';
 
 import type { Match } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
+import { OpponentProfileSheet } from './OpponentProfileSheet';
 
 export interface ConfirmPanelProps {
   match: Match;
@@ -18,6 +20,8 @@ interface ReadySeatProps {
   accent: 'player' | 'opponent';
   confirmed: boolean;
   instant: boolean;
+  /** Se definido, o avatar vira um botão que abre o perfil (oponente). */
+  onOpenProfile?: () => void;
 }
 
 /**
@@ -25,9 +29,14 @@ interface ReadySeatProps {
  * tracejado gira devagar em volta do avatar; ao confirmar, um anel
  * esmeralda se desenha, o selo ✓ carimba no canto e um flash expande.
  */
-function ReadySeat({ avatar, name, accent, confirmed, instant }: ReadySeatProps) {
+function ReadySeat({ avatar, name, accent, confirmed, instant, onOpenProfile }: ReadySeatProps) {
   const border = accent === 'player' ? 'border-player' : 'border-opponent';
   const ink = accent === 'player' ? 'text-[#1e3a8a]' : 'text-[#7f1d1d]';
+
+  // O avatar do oponente é clicável (abre o perfil); o do jogador é
+  // estático. Mesmo visual nos dois — só o oponente ganha o affordance
+  // de toque (cursor, tap-scale e rótulo acessível).
+  const avatarClass = `grid h-20 w-20 place-items-center rounded-full border-2 ${border} bg-arena-800 text-4xl`;
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -69,11 +78,20 @@ function ReadySeat({ avatar, name, accent, confirmed, instant }: ReadySeatProps)
           </motion.svg>
         )}
 
-        <span
-          className={`grid h-20 w-20 place-items-center rounded-full border-2 ${border} bg-arena-800 text-4xl`}
-        >
-          {avatar}
-        </span>
+        {onOpenProfile ? (
+          <motion.button
+            type="button"
+            onClick={onOpenProfile}
+            whileTap={instant ? undefined : { scale: 0.92 }}
+            aria-label={`Ver perfil de ${name}`}
+            data-testid="opponent-avatar-button"
+            className={`${avatarClass} cursor-pointer transition-shadow hover:shadow-[0_0_0_3px_rgba(245,183,111,0.55)] focus-visible:shadow-[0_0_0_3px_rgba(245,183,111,0.7)] focus-visible:outline-none`}
+          >
+            {avatar}
+          </motion.button>
+        ) : (
+          <span className={avatarClass}>{avatar}</span>
+        )}
 
         <AnimatePresence>
           {confirmed && (
@@ -101,6 +119,16 @@ function ReadySeat({ avatar, name, accent, confirmed, instant }: ReadySeatProps)
       </div>
 
       <span className={`text-engraved font-black ${ink}`}>{name}</span>
+      {onOpenProfile && (
+        <button
+          type="button"
+          onClick={onOpenProfile}
+          className="text-[10px] font-bold uppercase tracking-wider text-[#7f1d1d]/70 underline decoration-dotted underline-offset-2 active:brightness-125"
+          data-testid="opponent-profile-hint"
+        >
+          ver perfil
+        </button>
+      )}
     </div>
   );
 }
@@ -117,6 +145,10 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
   const declineMatch = useGameStore((state) => state.declineMatch);
   const confirmations = useGameStore((state) => state.confirmations);
   const instant = useReducedMotion() ?? false;
+  // Perfil do oponente: estado LOCAL de UI. Abre por cima da tela de
+  // confirmação (que segue montada e ativa atrás). Não toca no store
+  // nem na máquina de estados — fechar o perfil devolve o foco à mesa.
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const bothReady = confirmations.player && confirmations.opponent;
 
@@ -170,6 +202,7 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
             accent="opponent"
             confirmed={confirmations.opponent}
             instant={instant}
+            onOpenProfile={() => setProfileOpen(true)}
           />
         </div>
 
@@ -179,9 +212,12 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
         </div>
       </div>
 
-      {/* pb-4 espelha a margem inferior do CTA da tela de aposta
-          (docs/margemdeseguranca.md) — mesmo respiro entre ações e borda. */}
-      <div className="mx-auto flex min-h-28 w-full max-w-96 flex-col justify-end gap-3 pb-4">
+      {/* Mesma faixa de segurança do CTA da tela de aposta
+          (docs/margemdeseguranca.md): w-[min(100%,80vw)] + max-w-96 +
+          mx-auto = ~10% lateral no mobile, teto de 24rem no desktop; pb-4
+          espelha o respiro inferior. Antes usava w-full e vazava até o
+          px-6 do <main>, ignorando a margem lateral. */}
+      <div className="mx-auto flex min-h-28 w-[min(100%,80vw)] max-w-96 flex-col justify-end gap-3 pb-4">
         <AnimatePresence mode="wait" initial={false}>
           {bothReady ? (
             <motion.div
@@ -220,7 +256,10 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
           ) : (
             <motion.div
               key="actions"
-              className="flex flex-col gap-3"
+              // gap-1.5 (0.375rem = 6px): mesmo respiro compacto entre as
+              // ações do desfecho (ResultBanner .action-stack--tight),
+              // metade do gap-3 padrão — Confirmar e Recusar mais juntos.
+              className="flex flex-col gap-1.5"
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2 }}
             >
@@ -240,6 +279,13 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Perfil do oponente por cima da mesa de confirmação. */}
+      <OpponentProfileSheet
+        open={profileOpen}
+        opponent={match.opponent}
+        onClose={() => setProfileOpen(false)}
+      />
     </div>
   );
 }

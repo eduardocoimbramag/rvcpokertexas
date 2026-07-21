@@ -142,7 +142,15 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
 
       <motion.div
         layout={!reducedMotion}
-        className="grid grid-cols-2 gap-x-8 gap-y-4"
+        // place-items-center: os poços têm largura fixa (--shaker-size),
+        // mas a linha de rótulos (Você/Bruno + total) é mais larga e
+        // infla as duas trilhas do grid. Sem centralizar o item na
+        // trilha, cada poço encostaria na borda esquerda da sua trilha
+        // inflada e o PAR de dados pareceria deslocado à esquerda (mais
+        // visível no mobile, onde os nomes ocupam proporção maior). Com
+        // place-items-center o dado e o rótulo centram na própria trilha,
+        // e o par fica perfeitamente no eixo da tela.
+        className="grid grid-cols-2 place-items-center gap-x-8 gap-y-4"
         initial={false}
         animate={{ scale: reducedMotion ? 1 : overhead ? 1.08 : 1 }}
         transition={
@@ -212,8 +220,6 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
           </>
         )}
       </motion.div>
-
-      {flankScoreboard && <div aria-hidden className="w-full grow-[2]" />}
     </div>
   );
 }
