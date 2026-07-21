@@ -79,10 +79,19 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
               ✕
             </button>
 
-            <div className="flex gap-4 p-5">
-              {/* Coluna esquerda (50%): identidade + ações, tudo
-                  centralizado horizontalmente sob o avatar. */}
-              <div className="flex min-w-0 flex-1 flex-col items-center gap-3 text-center">
+            {/* Margens de segurança padronizadas:
+                - vertical: pt-11 = pb-11 (44px) → topo e base com o mesmo
+                  respiro (o card cresceu para acomodar sem mudar o
+                  conteúdo);
+                - horizontal: justify-between + px-10 (40px) → o avatar
+                  encosta na margem esquerda e os selos na direita com a
+                  MESMA folga (maior que antes). Como o padding das bordas
+                  cresceu, o vão central entre as colunas encolheu junto,
+                  aproximando os conteúdos. */}
+            <div className="flex justify-between gap-4 px-10 pb-11 pt-11">
+              {/* Coluna esquerda: identidade + ações, centralizadas sob o
+                  avatar (o avatar é o item mais largo e ancora a coluna). */}
+              <div className="flex min-w-0 flex-col items-center gap-3 text-center">
                 <span className="profile-avatar" aria-hidden="true">
                   {opponent.avatar}
                 </span>
@@ -129,11 +138,12 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
                 </div>
               </div>
 
-              {/* Coluna direita (50%): 4 selos empilhados na vertical,
-                  centralizados. O pt-8 abre espaço para o X não sobrepor
-                  o primeiro selo. */}
+              {/* Coluna direita: 4 selos empilhados na vertical. Sem
+                  flex-1: a coluna tem a largura dos selos e encosta na
+                  margem direita (via justify-between), espelhando a
+                  esquerda. Começa na mesma altura do avatar. */}
               <div
-                className="flex flex-1 flex-col items-center gap-2.5 pt-8"
+                className="flex flex-col items-center gap-2.5"
                 data-testid="profile-badges"
               >
                 {profile.showcased.map((achievement) => (
