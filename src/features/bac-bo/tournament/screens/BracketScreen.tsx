@@ -86,6 +86,9 @@ function BracketCard({
 
 const AUTO_START_SECONDS = 10;
 
+/** Tempo em tela do overlay de avanço de fase (cobre a animação inteira). */
+const ADVANCE_OVERLAY_MS = 2300;
+
 /**
  * Chaveamento focado no ESTADO ATUAL: mostra só a fase em andamento (sem
  * rolagem lateral), com um stepper indicando o progresso. A partida do
@@ -115,20 +118,32 @@ export function BracketScreen() {
   const canPlay = yourPendingId !== null && !simulating && advance === null;
 
   // Anima o avanço de fase quando a rodada troca e o jogador segue vivo.
+  // O ref só avança quando a rodada REALMENTE sobe: assim as reescritas
+  // do chaveamento (que reexecutam este efeito) não são confundidas com
+  // um novo avanço.
   useEffect(() => {
-    const prev = prevRoundRef.current;
+    if (activeRound <= prevRoundRef.current) return;
     prevRoundRef.current = activeRound;
-    if (reducedMotion || activeRound <= prev || eliminated || !yourPending || !bracket) return;
+    if (reducedMotion || eliminated || !yourPending || !bracket) return;
     const round = bracket.rounds[activeRound];
     const opp = yourPending.a?.id === youId ? yourPending.b : yourPending.a;
     const data = { opponent: opp ?? null, phaseLabel: roundLabel(round?.length ?? 1) };
     const show = setTimeout(() => setAdvance(data), 0);
-    const hide = setTimeout(() => setAdvance(null), 2300);
-    return () => {
-      clearTimeout(show);
-      clearTimeout(hide);
-    };
+    return () => clearTimeout(show);
   }, [activeRound, eliminated, yourPending, bracket, youId, reducedMotion]);
+
+  // Fechamento do overlay em efeito PRÓPRIO, dependendo só de `advance`.
+  // Antes ele vivia no efeito acima, junto de `bracket`/`yourPending`:
+  // como a simulação dos bots reescreve o chaveamento a cada ~750ms, o
+  // cleanup cancelava o fechamento e o efeito reexecutado saía cedo
+  // (a rodada não tinha subido de novo) sem reagendá-lo. O overlay
+  // ficava na tela para sempre e, como `canPlay` exige `advance === null`,
+  // o torneio travava — nem o botão nem o início automático voltavam.
+  useEffect(() => {
+    if (!advance) return;
+    const hide = setTimeout(() => setAdvance(null), ADVANCE_OVERLAY_MS);
+    return () => clearTimeout(hide);
+  }, [advance]);
 
   // Início automático da partida do jogador (10s por rodada, anti-AFK).
   useEffect(() => {

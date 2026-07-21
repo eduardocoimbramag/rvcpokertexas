@@ -59,13 +59,17 @@ export interface Bracket {
   rounds: BracketMatch[][];
 }
 
-/** Rótulos das fases conforme o número de partidas restantes. */
+/**
+ * Rótulos das fases conforme o número de partidas restantes. Curtos de
+ * propósito: cabem no stepper do chaveamento sem quebrar linha e leem
+ * bem também no overlay de avanço ("Você avança para Semi").
+ */
 export function roundLabel(matchesInRound: number): string {
   switch (matchesInRound) {
     case 4:
-      return 'Quartas de final';
+      return 'Quarta';
     case 2:
-      return 'Semifinal';
+      return 'Semi';
     case 1:
       return 'Final';
     default:

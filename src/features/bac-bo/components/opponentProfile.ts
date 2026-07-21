@@ -83,7 +83,10 @@ export function buildOpponentProfile(opponent: Opponent): OpponentProfile {
   const start = seed % count;
   const showcased: Achievement[] = [];
   for (let step = 0; step < 4; step += 1) {
-    showcased.push(ACHIEVEMENTS[(start + step * 5) % count]);
+    // O índice é sempre válido (módulo count), mas o acesso indexado é
+    // tipado como possivelmente undefined — o guard mantém o build estrito.
+    const achievement = ACHIEVEMENTS[(start + step * 5) % count];
+    if (achievement) showcased.push(achievement);
   }
 
   // Total destravado ilustrativo: entre 4 e todas as conquistas, maior
