@@ -1348,14 +1348,14 @@ h2 {
 .profile-avatar {
   display: grid;
   place-items: center;
-  height: 4.75rem;
-  width: 4.75rem;
+  height: 9.5rem;
+  width: 9.5rem;
   border-radius: 9999px;
   background: var(--color-arena-800);
   box-shadow:
     0 0 0 3px var(--color-opponent),
     0 8px 18px rgba(0, 0, 0, 0.45);
-  font-size: 2.5rem;
+  font-size: 5rem;
   line-height: 1;
 }
 
@@ -1426,16 +1426,23 @@ h2 {
   filter: brightness(1.08);
 }
 
+/* Bandeira "completamente branca" sobre o vermelho: a 🏳️ já é branca,
+   mas o filtro força brilho máximo e mata qualquer resíduo de cor da
+   haste, garantindo o pano 100% branco em qualquer fonte de emoji. */
+.profile-action__flag {
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
 /* Selo de conquista: só o ícone num disco escuro com aro por raridade
    (o box-shadow do aro vem inline, pela cor da raridade). */
 .profile-badge {
   display: grid;
   place-items: center;
-  height: 2.85rem;
-  width: 2.85rem;
+  height: 5.7rem;
+  width: 5.7rem;
   border-radius: 9999px;
   background: var(--color-arena-900);
-  font-size: 1.4rem;
+  font-size: 2.8rem;
   line-height: 1;
 }
 

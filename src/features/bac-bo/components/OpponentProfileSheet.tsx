@@ -80,17 +80,20 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
             </button>
 
             <div className="flex gap-4 p-5">
-              {/* Coluna esquerda: identidade + ações. */}
-              <div className="flex min-w-0 flex-1 flex-col gap-3">
+              {/* Coluna esquerda (50%): identidade + ações, tudo
+                  centralizado horizontalmente sob o avatar. */}
+              <div className="flex min-w-0 flex-1 flex-col items-center gap-3 text-center">
                 <span className="profile-avatar" aria-hidden="true">
                   {opponent.avatar}
                 </span>
 
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <h2 id={titleId} className="truncate text-xl font-black tracking-wide text-ivory">
+                <div className="flex min-w-0 flex-col items-center gap-0.5">
+                  <h2 id={titleId} className="max-w-full truncate text-xl font-black tracking-wide text-ivory">
                     {opponent.name}
                   </h2>
-                  <p className="truncate text-sm font-semibold text-lavender">{profile.username}</p>
+                  <p className="max-w-full truncate text-sm font-semibold text-lavender">
+                    {profile.username}
+                  </p>
                   <p
                     className="mt-1 text-xs font-black uppercase tracking-widest text-gold"
                     data-testid="profile-level"
@@ -99,7 +102,7 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
                   </p>
                 </div>
 
-                <div className="mt-1 flex items-center gap-2">
+                <div className="mt-1 flex items-center justify-center gap-3">
                   <button
                     type="button"
                     className="profile-action profile-action--friend"
@@ -119,15 +122,20 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
                     aria-label={`Denunciar ${opponent.name}`}
                     data-testid="profile-report"
                   >
-                    🚩
+                    <span className="profile-action__flag" aria-hidden="true">
+                      🏳️
+                    </span>
                   </button>
                 </div>
               </div>
 
-              {/* Coluna direita: 4 selos empilhados na vertical. O pt-8
-                  abre espaço para o botão de fechar (X) não sobrepor o
-                  primeiro selo. */}
-              <div className="flex flex-col gap-2.5 pt-8" data-testid="profile-badges">
+              {/* Coluna direita (50%): 4 selos empilhados na vertical,
+                  centralizados. O pt-8 abre espaço para o X não sobrepor
+                  o primeiro selo. */}
+              <div
+                className="flex flex-1 flex-col items-center gap-2.5 pt-8"
+                data-testid="profile-badges"
+              >
                 {profile.showcased.map((achievement) => (
                   <BadgeChip key={achievement.id} achievement={achievement} />
                 ))}
