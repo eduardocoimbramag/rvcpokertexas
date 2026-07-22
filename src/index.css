@@ -56,6 +56,16 @@ h2 {
   letter-spacing: 0.01em;
 }
 
+/* Diâmetro dos poços de dados, limitado por largura E altura do viewport
+   (fallback só-largura em navegadores sem dvh): os 4 poços + rótulos
+   sempre cabem na área de jogo, de telas estreitas a paisagem baixa.
+   Vive na raiz porque a MESA também deriva geometria dele — o brasão da
+   câmera vertical centra na grade de poços a partir deste tamanho. */
+:root {
+  --shaker-size: clamp(4.25rem, 19.5vw, 6rem);
+  --shaker-size: clamp(4.25rem, min(19.5vw, 11.5dvh), 6rem);
+}
+
 /* Viewport fixo: o jogo ocupa exatamente a tela e NUNCA cresce/rola —
    qualquer fase mais alta comprime o espaço da dealer (dealer-spacer),
    não a página. Vale para mobile e web. */
@@ -378,13 +388,13 @@ h2 {
    trilho e a área de jogo. */
 .table-crest--front .table-crest__stamp {
   top: 48%;
-  width: 60%;
-  max-width: 330px;
+  width: 66%;
+  max-width: 365px;
   translate: -50% -50%;
-  /* A distância de perspectiva acompanha a escala (330/264 do tamanho
-     original): o trapézio mantém EXATAMENTE a mesma proporção — a marca
-     só cresce, a pose não muda. */
-  transform: perspective(650px) rotateX(52deg);
+  /* A distância de perspectiva acompanha a escala (365px de largura ↔
+     715px de perspectiva): o trapézio mantém EXATAMENTE a mesma
+     proporção — a marca só cresce, a pose não muda. */
+  transform: perspective(715px) rotateX(52deg);
 }
 
 .table-crest--front .table-crest__shadow {
@@ -410,15 +420,24 @@ h2 {
   display: block;
 }
 
-/* Na vista de cima a marca assenta na faixa de couro sob os poços e
-   quase não deita: a câmera está sobre a mesa, olhando de frente para o
+/* Na vista de cima a marca fica CENTRADA na grade de poços — o brasão
+   nasce por entre os quatro compartimentos, como a estampa central da
+   mesa em que os dados caem. O centro é derivado da mesma geometria que
+   posiciona a grade, não chutado em %:
+     5rem            → o quanto o recorte da cena sobe nesta câmera
+     --dealer-h×0,95 → o espaço da dealer (dealer-spacer)
+     0,25rem         → o pt-1 da DiceArena
+     --shaker-size   → meia altura das duas fileiras de poços (o resto do
+                       termo em rem acerta o gap e a escala 1.08 da grade)
+   Quase não deita: a câmera está sobre a mesa, olhando de frente para o
    couro — só uma pitada de perspectiva para não parecer sobreposta. */
 .table-crest--overhead .table-crest__stamp {
-  bottom: 9%;
-  width: 34%;
-  max-width: 180px;
-  translate: -50%;
-  transform: perspective(900px) rotateX(16deg);
+  top: calc(5.41rem + var(--dealer-h) * 0.95 + var(--shaker-size));
+  width: 60%;
+  max-width: 328px;
+  translate: -50% -50%;
+  /* Perspectiva proporcional à largura (5×), como na câmera frontal. */
+  transform: perspective(1640px) rotateX(16deg);
 }
 
 .table-crest--overhead .table-crest__shadow {
@@ -517,11 +536,6 @@ h2 {
 /* Faixa (bezel) plana e fosca, nivelada com o couro, com filete dourado
    na borda externa — nenhuma sombra projetada: o poço é parte da mesa. */
 .shaker {
-  /* Limitado por largura E altura do viewport (fallback só-largura em
-     navegadores sem dvh): os 4 poços + rótulos sempre cabem na área de
-     jogo, de telas estreitas a paisagem baixa. */
-  --shaker-size: clamp(4.25rem, 19.5vw, 6rem);
-  --shaker-size: clamp(4.25rem, min(19.5vw, 11.5dvh), 6rem);
   position: relative;
   width: var(--shaker-size);
   aspect-ratio: 1;
