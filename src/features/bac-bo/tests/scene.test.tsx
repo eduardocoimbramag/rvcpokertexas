@@ -24,6 +24,7 @@ describe('resolveDealerReaction', () => {
       search: 'idle',
       found: 'greet',
       confirm: 'present',
+      coinflip: 'anticipate',
       countdown: 'anticipate',
       rolling: 'shake',
       reveal: 'reveal',

@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, useIsPresent } from 'framer-motion';
 import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -55,12 +55,19 @@ export interface ConfettiProps {
 export function Confetti({ count = 56 }: ConfettiProps) {
   // Sorteado uma única vez por montagem: re-renders não reembaralham.
   const pieces = useMemo(() => buildPieces(count), [count]);
+  // O portal escapa do DOM da tela, mas não do contexto React: quando o
+  // AnimatePresence começa o fade de saída da tela, isPresent vira false
+  // e o overlay acompanha o fade — sem isso os confetes ficariam 100%
+  // opacos sobre a tela esmaecendo e sumiriam num único frame.
+  const isPresent = useIsPresent();
 
   return createPortal(
-    <div
+    <motion.div
       className="pointer-events-none fixed inset-0 z-50 overflow-hidden"
       aria-hidden="true"
       data-testid="confetti"
+      animate={{ opacity: isPresent ? 1 : 0 }}
+      transition={{ duration: 0.18 }}
     >
       {pieces.map((piece) => (
         <motion.span
@@ -83,7 +90,7 @@ export function Confetti({ count = 56 }: ConfettiProps) {
           transition={{ duration: piece.fallSec, delay: piece.delaySec, ease: 'linear' }}
         />
       ))}
-    </div>,
+    </motion.div>,
     document.body,
   );
 }

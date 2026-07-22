@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 
+import { audioManager } from '../services/AudioManager';
 import { useGameStore } from '../store/gameStore';
 import { BalancePill } from './BalancePill';
 import { BrandDie } from './BrandDie';
@@ -32,6 +33,15 @@ export function HomeScreen({
       return;
     }
     goToStake();
+  };
+
+  const handleTournament = () => {
+    // Único gesto garantido antes do torneio: o áudio nasce AQUI. O
+    // fluxo de torneio não passa pelo goToStake do 1v1, e o WebKit só
+    // cria AudioContext dentro de um gesto do usuário — sem isso a
+    // primeira partida seria muda no iOS/Safari.
+    audioManager.playSfx('tap');
+    onOpenTournament();
   };
 
   return (
@@ -79,7 +89,7 @@ export function HomeScreen({
         </Button>
         <Button
           variant="secondary"
-          onClick={onOpenTournament}
+          onClick={handleTournament}
           fullWidth
           data-testid="tournament-button"
         >

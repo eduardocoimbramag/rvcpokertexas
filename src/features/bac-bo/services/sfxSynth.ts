@@ -185,6 +185,8 @@ export type SfxName =
   | 'locked'
   | 'countdownTick'
   | 'countdownGo'
+  | 'coinToss'
+  | 'coinLand'
   | 'roll'
   | 'reveal'
   | 'win'
@@ -209,6 +211,30 @@ export function synthesizeSfx(): Record<SfxName, string> {
     tone(784, 784, 0.13, 0.5),
     tone(1047, 1047, 0.3, 0.55, { attack: 0.01, release: 0.18 }),
   );
+
+  /* Voo da moeda: whoosh de ar crescendo + o "frrr" do giro, uma
+     rajada de pulsos metálicos curtos acelerando enquanto ela sobe. */
+  const flutterParts: Float32Array[] = [];
+  for (let i = 0; i < 10; i += 1) {
+    flutterParts.push(
+      tone(1250 + i * 45, 1250 + i * 45, 0.022, 0.26, { attack: 0.004, release: 0.012 }),
+      silence(Math.max(0.02, 0.078 - i * 0.006)),
+    );
+  }
+  const coinToss = mix(
+    noise(0.85, 0.35, { attack: 0.3, release: 0.4 }),
+    sequence(...flutterParts),
+  );
+
+  /* Pouso da moeda: golpe metálico inarmônico (parciais dessintonizadas)
+     com um segundo quique mais fraco — o "tin-tin" assentando na mesa. */
+  const coinStrike = (volume: number) =>
+    mix(
+      tone(2093, 2093, 0.5, 0.4 * volume, { attack: 0.002, release: 0.42 }),
+      tone(2651, 2651, 0.38, 0.24 * volume, { attack: 0.002, release: 0.32 }),
+      tone(3520, 3520, 0.22, 0.16 * volume, { attack: 0.002, release: 0.18 }),
+    );
+  const coinLand = mix(coinStrike(1), at(0.18, coinStrike(0.45)));
 
   /* Vitória com plateia: a fanfarra abre e a torcida vibra junto —
      ovação de palmas com dois assobios em alturas diferentes. */
@@ -242,6 +268,8 @@ export function synthesizeSfx(): Record<SfxName, string> {
     ),
     countdownTick: encodeWavDataUri(tone(880, 880, 0.08, 0.5, { attack: 0.005, release: 0.05 })),
     countdownGo: encodeWavDataUri(tone(988, 1319, 0.22, 0.55, { attack: 0.01, release: 0.12 })),
+    coinToss: encodeWavDataUri(coinToss),
+    coinLand: encodeWavDataUri(coinLand),
     roll: encodeWavDataUri(rattle),
     reveal: encodeWavDataUri(tone(330, 990, 0.22, 0.45, { attack: 0.01, release: 0.1 })),
     win: encodeWavDataUri(winCelebration),

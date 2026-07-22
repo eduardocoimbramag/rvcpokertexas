@@ -15,6 +15,8 @@ import type {
   SceneQualitySetting,
 } from '../services/GameStorageService';
 import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageService';
+import type { DiceColorId, DiceColors } from './diceColors';
+import { DEFAULT_DICE_COLORS, assignColors, pickOpponentColor } from './diceColors';
 
 /**
  * Máquina de estados do fluxo de jogo (seção 12 da especificação).
@@ -27,6 +29,7 @@ export type GamePhase =
   | 'search'
   | 'found'
   | 'confirm'
+  | 'coinflip'
   | 'countdown'
   | 'rolling'
   | 'reveal'
@@ -38,7 +41,8 @@ export const PHASE_TRANSITIONS: Record<GamePhase, readonly GamePhase[]> = {
   stake: ['search', 'idle'],
   search: ['found', 'stake', 'error'],
   found: ['confirm'],
-  confirm: ['countdown', 'stake'],
+  confirm: ['coinflip', 'stake'],
+  coinflip: ['countdown', 'error'],
   countdown: ['rolling', 'error'],
   rolling: ['reveal', 'error'],
   reveal: ['completed'],
@@ -58,6 +62,29 @@ export interface MatchConfirmations {
 
 const NO_CONFIRMATIONS: MatchConfirmations = { player: false, opponent: false };
 
+/** Face da moeda do sorteio pré-partida. */
+export type CoinSide = 'cara' | 'coroa';
+
+/**
+ * Beats do cara-ou-coroa, na ordem: `intro` apresenta o lado sorteado
+ * para o jogador → `toss` (a moeda voa; o resultado já está decidido,
+ * mas a UI só o revela no pouso) → `result` anuncia o vencedor →
+ * `pick` (jogador escolhe a cor) OU `botPick` (oponente anuncia a sua)
+ * → `picked` (respiro com a escolha aplicada) → countdown.
+ */
+export type CoinFlipStage = 'intro' | 'toss' | 'result' | 'pick' | 'botPick' | 'picked';
+
+export interface CoinFlipState {
+  /** Lado que a sorte deu ao jogador antes do lançamento. */
+  playerSide: CoinSide;
+  /** Face em que a moeda cai; decidida no início do voo. */
+  result: CoinSide | null;
+  winner: 'player' | 'opponent' | null;
+  stage: CoinFlipStage;
+  /** Cor escolhida pelo vencedor (para as placas de anúncio). */
+  chosenColor: DiceColorId | null;
+}
+
 /** Contagem falada da mesa, no inglês clássico de cassino. */
 const COUNTDOWN_WORDS: Record<number, string> = {
   5: 'five',
@@ -75,6 +102,10 @@ export interface GameStoreState {
   result: RoundResult | null;
   /** Estado da confirmação dupla — o countdown só nasce com os dois `true`. */
   confirmations: MatchConfirmations;
+  /** Sorteio de cara-ou-coroa da rodada; `null` fora da fase coinflip. */
+  coinFlip: CoinFlipState | null;
+  /** Cor dos dados de cada lado (o vencedor do sorteio muda a sua). */
+  diceColors: DiceColors;
   history: HistoryEntry[];
   /** Valor corrente do countdown (COUNTDOWN_START → 1). */
   countdown: number;
@@ -83,6 +114,8 @@ export interface GameStoreState {
   settings: GameSettings;
   /** Resultado forçado para a próxima rodada (apenas DevTools). */
   devForcedOutcome: RoundOutcome | null;
+  /** Vencedor forçado do cara-ou-coroa (apenas DevTools; e2e). */
+  devForcedCoinWinner: 'player' | 'opponent' | null;
 
   goToStake: () => void;
   goHome: () => void;
@@ -91,6 +124,8 @@ export interface GameStoreState {
   cancelSearch: () => void;
   confirmMatch: () => void;
   declineMatch: () => void;
+  /** Escolha de cor do vencedor do cara-ou-coroa (fase coinflip/pick). */
+  chooseDiceColor: (color: DiceColorId) => void;
   playAgain: () => void;
   dismissError: () => void;
   /** Recarrega créditos quando o saldo não cobre o menor stake. */
@@ -103,6 +138,7 @@ export interface GameStoreState {
   setVibrationEnabled: (enabled: boolean) => void;
   setSceneryQuality: (scenery: SceneQualitySetting) => void;
   devSetForcedOutcome: (outcome: RoundOutcome | null) => void;
+  devSetForcedCoinWinner: (winner: 'player' | 'opponent' | null) => void;
   devAddCredits: (amount: number) => void;
   devResetAll: () => void;
 }
@@ -111,6 +147,8 @@ export interface GameStoreDeps {
   engine?: GameEngine;
   storage?: GameStorageService;
   initialBalance?: number;
+  /** Fonte de aleatoriedade do cara-ou-coroa (determinística nos testes). */
+  rng?: () => number;
 }
 
 /**
@@ -128,6 +166,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
   const persisted = storage.load();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   let searchAbort: AbortController | null = null;
+  const rng = deps.rng ?? Math.random;
 
   const store = create<GameStoreState>()((set, get) => {
     const schedule = (fn: () => void, ms: number): void => {
@@ -187,8 +226,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
 
     /**
      * Com os dois lados prontos, trava o duelo: um beat para a animação
-     * de "duelo confirmado" respirar, então debita o stake e inicia o
-     * countdown. Chamado após CADA confirmação; só age na segunda.
+     * de "duelo confirmado" respirar, então debita o stake e abre o
+     * cara-ou-coroa. Chamado após CADA confirmação; só age na segunda.
      */
     const startWhenBothConfirmed = (): void => {
       const { confirmations } = get();
@@ -208,11 +247,77 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           return;
         }
 
-        if (!transitionTo('countdown')) return;
+        if (!transitionTo('coinflip')) return;
         set({ balance: nextBalance });
         persist();
-        runCountdown(COUNTDOWN_START);
+        runCoinFlip();
       }, TIMINGS.confirmLockInMs);
+    };
+
+    /** Ajusta o coinFlip corrente sem perder os campos já decididos. */
+    const patchCoinFlip = (patch: Partial<CoinFlipState>): void => {
+      const { coinFlip } = get();
+      if (!coinFlip) return;
+      set({ coinFlip: { ...coinFlip, ...patch } });
+    };
+
+    /** Sorteio concluído (cor aplicada): abre o countdown da rodada. */
+    const startCountdownAfterCoin = (): void => {
+      if (get().phase !== 'coinflip') return;
+      if (!transitionTo('countdown')) return;
+      runCountdown(COUNTDOWN_START);
+    };
+
+    /**
+     * Cara-ou-coroa pré-partida: sorteia o lado do jogador, lança a
+     * moeda (o resultado é decidido no INÍCIO do voo — a animação
+     * precisa saber em que face pousar) e dá ao vencedor a escolha da
+     * cor dos dados. O jogador escolhe num painel (fase fica em `pick`
+     * até `chooseDiceColor`); o oponente simulado escolhe sozinho.
+     */
+    const runCoinFlip = (): void => {
+      const playerSide: CoinSide = rng() < 0.5 ? 'cara' : 'coroa';
+      set({
+        coinFlip: { playerSide, result: null, winner: null, stage: 'intro', chosenColor: null },
+      });
+
+      schedule(() => {
+        if (get().phase !== 'coinflip') return;
+        const forced = get().devForcedCoinWinner;
+        const result: CoinSide = forced
+          ? forced === 'player'
+            ? playerSide
+            : playerSide === 'cara'
+              ? 'coroa'
+              : 'cara'
+          : rng() < 0.5
+            ? 'cara'
+            : 'coroa';
+        patchCoinFlip({ stage: 'toss', result });
+        audioManager.playSfx('coinToss');
+
+        schedule(() => {
+          if (get().phase !== 'coinflip') return;
+          const winner = result === playerSide ? 'player' : 'opponent';
+          patchCoinFlip({ stage: 'result', winner });
+          audioManager.playSfx('coinLand');
+          vibrate(40);
+
+          schedule(() => {
+            if (get().phase !== 'coinflip') return;
+            if (winner === 'player') {
+              // A vez do jogador: a fase espera o chooseDiceColor.
+              patchCoinFlip({ stage: 'pick' });
+              return;
+            }
+            const color = pickOpponentColor(rng);
+            set({ diceColors: assignColors('opponent', color) });
+            patchCoinFlip({ stage: 'botPick', chosenColor: color });
+            audioManager.playSfx('stake');
+            schedule(startCountdownAfterCoin, TIMINGS.coinBotPickMs);
+          }, TIMINGS.coinResultMs);
+        }, TIMINGS.coinTossMs);
+      }, TIMINGS.coinIntroMs);
     };
 
     /** Countdown recursivo e falado: 5 → 4 → 3 → 2 → 1 → rolagem. */
@@ -285,15 +390,25 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       match: null,
       result: null,
       confirmations: NO_CONFIRMATIONS,
+      coinFlip: null,
+      diceColors: DEFAULT_DICE_COLORS,
       history: persisted?.history ?? [],
       countdown: COUNTDOWN_START,
       error: null,
       settings: persisted?.settings ?? DEFAULT_SETTINGS,
       devForcedOutcome: null,
+      devForcedCoinWinner: null,
 
       goToStake: () => {
         if (transitionTo('stake')) {
-          set({ match: null, result: null, error: null, confirmations: NO_CONFIRMATIONS });
+          set({
+            match: null,
+            result: null,
+            error: null,
+            confirmations: NO_CONFIRMATIONS,
+            coinFlip: null,
+            diceColors: DEFAULT_DICE_COLORS,
+          });
           audioManager.playSfx('tap');
           audioManager.startMusic();
         }
@@ -309,6 +424,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
             selectedStake: null,
             error: null,
             confirmations: NO_CONFIRMATIONS,
+            coinFlip: null,
+            diceColors: DEFAULT_DICE_COLORS,
           });
         }
       },
@@ -371,16 +488,42 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         transitionTo('stake');
       },
 
+      chooseDiceColor: (color) => {
+        const { phase, coinFlip } = get();
+        if (phase !== 'coinflip' || coinFlip?.stage !== 'pick') return;
+        // Só há duas cores: pegar uma entrega a outra ao adversário.
+        set({
+          diceColors: assignColors('player', color),
+          coinFlip: { ...coinFlip, stage: 'picked', chosenColor: color },
+        });
+        audioManager.playSfx('ready');
+        vibrate(30);
+        schedule(startCountdownAfterCoin, TIMINGS.coinPickedMs);
+      },
+
       playAgain: () => {
         if (transitionTo('stake')) {
-          set({ match: null, result: null, confirmations: NO_CONFIRMATIONS });
+          set({
+            match: null,
+            result: null,
+            confirmations: NO_CONFIRMATIONS,
+            coinFlip: null,
+            diceColors: DEFAULT_DICE_COLORS,
+          });
           audioManager.playSfx('tap');
         }
       },
 
       dismissError: () => {
         if (get().phase !== 'error') return;
-        set({ error: null, match: null, result: null, confirmations: NO_CONFIRMATIONS });
+        set({
+          error: null,
+          match: null,
+          result: null,
+          confirmations: NO_CONFIRMATIONS,
+          coinFlip: null,
+          diceColors: DEFAULT_DICE_COLORS,
+        });
         transitionTo('stake');
       },
 
@@ -423,6 +566,11 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         set({ devForcedOutcome: outcome });
       },
 
+      devSetForcedCoinWinner: (winner) => {
+        if (!appEnv.devToolsEnabled) return;
+        set({ devForcedCoinWinner: winner });
+      },
+
       devAddCredits: (amount) => {
         if (!appEnv.devToolsEnabled) return;
         set({ balance: Math.max(0, get().balance + amount) });
@@ -441,11 +589,14 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           match: null,
           result: null,
           confirmations: NO_CONFIRMATIONS,
+          coinFlip: null,
+          diceColors: DEFAULT_DICE_COLORS,
           history: [],
           countdown: COUNTDOWN_START,
           error: null,
           settings: DEFAULT_SETTINGS,
           devForcedOutcome: null,
+          devForcedCoinWinner: null,
         });
       },
     };

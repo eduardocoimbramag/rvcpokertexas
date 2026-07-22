@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 
 import { DIE_ROTATIONS, ROLL_EXTRA_SPINS } from '../animations/dice';
 import type { DieValue } from '../engine/types';
+import type { DiceColorId } from '../store/diceColors';
+import { DICE_COLORS } from '../store/diceColors';
 
 export interface Die3DProps {
   /** Valor final do dado; `null` enquanto o resultado não foi revelado. */
@@ -14,6 +16,8 @@ export interface Die3DProps {
   /** Lado do cubo como comprimento CSS (aceita calc/var para escalar
       junto com o contêiner). Default: 4rem. */
   size?: string;
+  /** Cor escolhida no cara-ou-coroa; sem ela vale a cor clássica do lado. */
+  color?: DiceColorId;
   label: string;
 }
 
@@ -41,7 +45,7 @@ const FACES: readonly { value: DieValue; className: string }[] = [
  * O valor exibido deriva exclusivamente da engine — este componente
  * apenas gira o cubo até a face correspondente.
  */
-export function Die3D({ value, side, rolling, size = '4rem', label }: Die3DProps) {
+export function Die3D({ value, side, rolling, size = '4rem', color, label }: Die3DProps) {
   const reducedMotion = useReducedMotion();
   // Cada revelação acumula voltas extras para o cubo sempre girar "para frente".
   const [settleCount, setSettleCount] = useState(0);
@@ -71,10 +75,16 @@ export function Die3D({ value, side, rolling, size = '4rem', label }: Die3DProps
       ? { duration: 0.2 }
       : { duration: 0.9, ease: [0.22, 0.9, 0.3, 1] as const };
 
+  const palette = color ? DICE_COLORS[color] : null;
+  const sceneStyle = {
+    '--die-size': size,
+    ...(palette ? { '--die-color-a': palette.gradientA, '--die-color-b': palette.gradientB } : {}),
+  } as CSSProperties;
+
   return (
     <div
       className="die-scene"
-      style={{ '--die-size': size } as CSSProperties}
+      style={sceneStyle}
       role="img"
       aria-label={`${label}: ${rolling || value === null ? 'rolando' : value}`}
     >
@@ -82,7 +92,7 @@ export function Die3D({ value, side, rolling, size = '4rem', label }: Die3DProps
         {FACES.map((face) => (
           <div
             key={face.value}
-            className={`die-face die-face--${side} ${face.className}`}
+            className={`die-face die-face--${side} ${palette ? 'die-face--custom' : ''} ${face.className}`}
             aria-hidden="true"
           >
             {Array.from({ length: 9 }, (_, index) => (

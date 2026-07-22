@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($s = git --no-pager diff HEAD --stat -- src/features/bac-bo/services/sfxSynth.ts; \"STAT LINES: $\\($s.Count\\)\"; $s)",
+      "PowerShell(npx vitest run src/features/bac-bo/tests/components.test.tsx --reporter=dot 2>$null)",
+      "Bash(git --no-pager show 973a5a4 -- src/features/bac-bo/tests/components.test.tsx src/features/bac-bo/tournament/tournamentStore.ts)",
+      "PowerShell($u = git --no-pager diff HEAD -U1 -- src/features/bac-bo/services/sfxSynth.ts; \"DIFF LINES: $\\($u.Count\\)\")",
+      "PowerShell(\"---\")",
+      "PowerShell($d = git --no-pager show 973a5a4 --no-color -- src/features/bac-bo/services/sfxSynth.ts; \"LINES: $\\($d.Count\\)\"; $d | Select-Object -Skip 6 -First 220)",
+      "PowerShell(node --version)",
+      "PowerShell(node --experimental-strip-types \"C:\\\\Users\\\\eduar\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-eduar-Desktop-Code-SWN-CODE-RVC-rvcbacbo\\\\dcd9107f-6271-4479-9e42-b20cd186e352\\\\scratchpad\\\\dspcheck.mts\")",
+      "Bash(git --no-pager show 973a5a4 -- src/features/bac-bo/components/DiceShaker.tsx src/features/bac-bo/components/FoundSplash.tsx)",
+      "PowerShell(node --experimental-strip-types \"C:\\\\Users\\\\eduar\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-eduar-Desktop-Code-SWN-CODE-RVC-rvcbacbo\\\\dcd9107f-6271-4479-9e42-b20cd186e352\\\\scratchpad\\\\dspcost.mts\")",
+      "PowerShell(npx vitest run src/features/bac-bo/tests/sfxSynth.test.ts 2>$null)",
+      "Bash(node --experimental-strip-types --no-warnings \"C:/Users/eduar/AppData/Local/Temp/claude/c--Users-eduar-Desktop-Code-SWN-CODE-RVC-rvcbacbo/dcd9107f-6271-4479-9e42-b20cd186e352/scratchpad/measureClip.mjs\")",
+      "PowerShell(npx playwright test e2e/game-flow.spec.ts)",
+      "Bash(node --experimental-strip-types --no-warnings \"C:/Users/eduar/AppData/Local/Temp/claude/c--Users-eduar-Desktop-Code-SWN-CODE-RVC-rvcbacbo/dcd9107f-6271-4479-9e42-b20cd186e352/scratchpad/clipContext.mjs\")"
+    ]
+  }
+}

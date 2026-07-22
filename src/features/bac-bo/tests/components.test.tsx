@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import App from '@/App';
 
+import { CoinFlipOverlay } from '../components/CoinFlipOverlay';
 import { ConfirmPanel } from '../components/ConfirmPanel';
 import { DiceArena } from '../components/DiceArena';
 import { Die3D } from '../components/Die3D';
@@ -120,6 +121,83 @@ describe('ConfirmPanel — perfil do oponente', () => {
   });
 });
 
+describe('CoinFlipOverlay — cara-ou-coroa', () => {
+  const match: Match = {
+    id: 'm1',
+    stake: 25,
+    opponent: { id: 'o1', name: 'Luna', avatar: 'L', rating: 1420 },
+    createdAt: 1700000000000,
+  };
+
+  const baseCoin = {
+    playerSide: 'cara',
+    result: 'cara',
+    winner: 'player',
+    chosenColor: null,
+  } as const;
+
+  it('anuncia o veredito quando a moeda pousa', () => {
+    useGameStore.setState({
+      phase: 'coinflip',
+      match,
+      coinFlip: { ...baseCoin, stage: 'result' },
+    });
+    render(<CoinFlipOverlay />);
+
+    expect(screen.getByTestId('coin-side')).toHaveTextContent('Seu lado · CARA');
+    expect(screen.getByTestId('coin-verdict')).toHaveTextContent('Deu CARA!');
+    expect(screen.getByTestId('coin-verdict')).toHaveTextContent('Você venceu o sorteio');
+  });
+
+  it('vencedor só confirma depois de escolher, e a escolha troca os lados', async () => {
+    const user = userEvent.setup();
+    useGameStore.setState({
+      phase: 'coinflip',
+      match,
+      coinFlip: { ...baseCoin, stage: 'pick' },
+    });
+    render(<CoinFlipOverlay />);
+
+    // A cena do lançamento saiu; ficaram os dois dados e o confirmar.
+    expect(screen.queryByTestId('coin-side')).not.toBeInTheDocument();
+    expect(screen.getByTestId('coin-headline')).toHaveTextContent('Escolha seus dados');
+    const confirm = screen.getByTestId('confirm-dice-color');
+    expect(confirm).toBeDisabled();
+
+    await user.click(screen.getByTestId('dice-color-vermelho'));
+    expect(screen.getByTestId('dice-color-vermelho')).toHaveAttribute('aria-checked', 'true');
+    // Selecionar ainda não aplica: só o confirmar fecha a escolha.
+    expect(useGameStore.getState().coinFlip?.stage).toBe('pick');
+
+    await user.click(confirm);
+    expect(useGameStore.getState().diceColors).toEqual({
+      player: 'vermelho',
+      opponent: 'azul',
+    });
+    expect(useGameStore.getState().coinFlip?.stage).toBe('picked');
+  });
+
+  it('derrota no sorteio: o oponente anuncia a cor e não há confirmar', () => {
+    useGameStore.setState({
+      phase: 'coinflip',
+      match,
+      coinFlip: {
+        ...baseCoin,
+        result: 'coroa',
+        winner: 'opponent',
+        stage: 'botPick',
+        chosenColor: 'azul',
+      },
+    });
+    render(<CoinFlipOverlay />);
+
+    expect(screen.getByTestId('coin-headline')).toHaveTextContent(
+      'Luna escolheu os dados Azuis',
+    );
+    expect(screen.queryByTestId('confirm-dice-color')).not.toBeInTheDocument();
+  });
+});
+
 describe('DiceArena — totais sob as colunas', () => {
   const match = {
     id: 'm1',
@@ -171,6 +249,15 @@ describe('Die3D', () => {
   it('anuncia "rolando" enquanto gira', () => {
     render(<Die3D value={null} side="opponent" rolling label="Dado 1 do oponente" />);
     expect(screen.getByRole('img', { name: 'Dado 1 do oponente: rolando' })).toBeInTheDocument();
+  });
+
+  it('aplica a cor do cara-ou-coroa via variáveis CSS', () => {
+    // O jogador levou os vermelhos no sorteio: as faces seguem a cor
+    // escolhida, não a tinta histórica do lado.
+    render(<Die3D value={3} side="player" rolling={false} color="vermelho" label="Seu dado 1" />);
+    const scene = screen.getByRole('img', { name: 'Seu dado 1: 3' });
+    expect(scene.style.getPropertyValue('--die-color-a')).toBe('#f87171');
+    expect(scene.querySelector('.die-face--custom')).not.toBeNull();
   });
 });
 

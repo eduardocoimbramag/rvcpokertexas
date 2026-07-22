@@ -37,15 +37,30 @@ async function forceOutcome(page: Page, outcome: string) {
   await page.getByTestId('devtools-toggle').click();
 }
 
+/**
+ * Força o vencedor do cara-ou-coroa. Com o oponente vencendo, o sorteio
+ * corre sozinho (ele escolhe a própria cor) e `playRound` atravessa a
+ * fase sem interação — determinístico para os fluxos de resultado.
+ */
+async function forceCoinWinner(page: Page, winner: 'player' | 'opponent') {
+  await page.getByTestId('devtools-toggle').click();
+  await page.getByTestId(`force-coin-${winner}`).click();
+  await page.getByTestId('devtools-toggle').click();
+}
+
 async function playRound(page: Page, stake: number) {
+  await forceCoinWinner(page, 'opponent');
   await page.getByTestId(`stake-${stake}`).click();
   await page.getByTestId('search-button').click();
   // Matchmaking simulado (1,2–2,6 s) → splash → confirmação dupla
-  // (o oponente confirma sozinho e o countdown nasce com os dois prontos).
+  // (o oponente confirma sozinho e o cara-ou-coroa abre a rodada).
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
-  // Câmera vertical: só a mesa em quadro enquanto os dados rolam.
+  // A moeda entra em cena com o lado sorteado do jogador.
+  await expect(page.getByTestId('coinflip-overlay')).toBeVisible({ timeout: 10_000 });
+  // Câmera vertical: só a mesa em quadro enquanto os dados rolam
+  // (o timeout cobre sorteio ~10 s + countdown 4,5 s).
   await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'overhead', {
-    timeout: 15_000,
+    timeout: 30_000,
   });
   // Countdown + rolagem + revelação até o resultado.
   await expect(page.getByTestId('result-title')).toBeVisible({ timeout: 20_000 });
@@ -116,6 +131,44 @@ test('persistência: saldo e histórico sobrevivem ao reload', async ({ page }) 
   await page.getByTestId('history-button').click();
   await expect(page.getByTestId('history-list').locator('li')).toHaveCount(1);
   await expect(page.getByTestId('history-list')).toContainText('+50');
+});
+
+test('cara-ou-coroa: vencendo o sorteio, o jogador escolhe a cor dos dados', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByTestId('play-button').click();
+  await forceOutcome(page, 'win');
+  await forceCoinWinner(page, 'player');
+
+  await page.getByTestId('stake-50').click();
+  await page.getByTestId('search-button').click();
+  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
+
+  // Moeda no ar → veredito → cena de escolha (intro + voo + resultado ≈ 6 s).
+  await expect(page.getByTestId('coin-side')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('coin-headline')).toHaveText(/Escolha seus dados/, {
+    timeout: 15_000,
+  });
+
+  // Confirmar só habilita depois de escolher um dos dois dados.
+  const confirm = page.getByTestId('confirm-dice-color');
+  await expect(confirm).toBeDisabled();
+  await page.getByTestId('dice-color-vermelho').click();
+  await confirm.click();
+
+  // A troca vale pela rodada inteira: o dado do jogador assume o
+  // vermelho (e o oponente fica com o azul). A asserção mira a cor
+  // aplicada — que dura toda a rodada — e não o rótulo do beat, que
+  // vive só 1,1 s antes de a fase virar countdown.
+  await expect(page.getByTestId('shaker-player-1').locator('.die-scene')).toHaveAttribute(
+    'style',
+    /#f87171/,
+    { timeout: 15_000 },
+  );
+
+  // A rodada segue normalmente até o resultado com os dados escolhidos.
+  await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/, { timeout: 30_000 });
 });
 
 test('cancelar a busca não debita créditos', async ({ page }) => {

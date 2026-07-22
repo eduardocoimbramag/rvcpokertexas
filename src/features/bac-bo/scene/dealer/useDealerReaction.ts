@@ -13,6 +13,7 @@ const PHASE_TO_REACTION: Record<GamePhase, DealerReaction> = {
   search: 'idle',
   found: 'greet',
   confirm: 'present',
+  coinflip: 'anticipate',
   countdown: 'anticipate',
   rolling: 'shake',
   reveal: 'reveal',

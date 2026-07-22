@@ -4,12 +4,15 @@ import { useEffect, useState } from 'react';
 
 import type { DieValue } from '../engine/types';
 import { audioManager } from '../services/AudioManager';
+import type { DiceColorId } from '../store/diceColors';
 import { Die3D } from './Die3D';
 
 export interface DiceShakerProps {
   /** Valor final do dado; `null` até a engine revelar o resultado. */
   value: DieValue | null;
   side: 'player' | 'opponent';
+  /** Cor escolhida no cara-ou-coroa (repassada ao Die3D). */
+  color?: DiceColorId;
   /** Fase Rolling: o copo vibra e o dado gira sem valor. */
   rolling: boolean;
   /** Fase Reveal/Completed: o copo pode parar após o seu atraso. */
@@ -61,6 +64,7 @@ const DIE_BOB_VARIANTS: Variants = {
 export function DiceShaker({
   value,
   side,
+  color,
   rolling,
   revealed,
   settleDelayMs,
@@ -116,6 +120,7 @@ export function DiceShaker({
           <Die3D
             value={settled ? value : null}
             side={side}
+            color={color}
             rolling={spinning}
             size="calc(var(--shaker-size) * 0.42)"
             label={label}

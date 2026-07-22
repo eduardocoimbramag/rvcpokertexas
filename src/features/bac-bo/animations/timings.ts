@@ -26,10 +26,19 @@ export const TIMINGS = {
   opponentConfirmMaxMs: 2400,
   /**
    * Beat de "duelo travado" após ambos confirmarem: tempo da faixa
-   * dourada subir e do flare no VS queimar antes do countdown tomar
-   * a tela.
+   * dourada subir e do flare no VS queimar antes do cara-ou-coroa.
    */
   confirmLockInMs: 1600,
+  /** Cara-ou-coroa: apresentação do lado sorteado para o jogador. */
+  coinIntroMs: 1600,
+  /** Voo completo da moeda: subida + giros + queda + quique. */
+  coinTossMs: 2600,
+  /** Veredito do sorteio na tela antes da escolha de cor. */
+  coinResultMs: 1700,
+  /** Oponente vencedor "pensando" e anunciando a cor escolhida. */
+  coinBotPickMs: 2200,
+  /** Respiro após a escolha (de qualquer lado) antes do countdown. */
+  coinPickedMs: 1100,
   /** Intervalo entre os ticks do countdown (5 → 1). */
   countdownTickMs: 900,
   /** Duração do giro dos dados antes da revelação. */

@@ -827,6 +827,283 @@ h2 {
   box-shadow: inset 0 calc(var(--die-size) * -0.015) 0 rgb(0 0 0 / 30%);
 }
 
+/* Cor escolhida no cara-ou-coroa: o degradê vem de variáveis definidas
+   pelo Die3D (paleta em store/diceColors.ts). Declarado DEPOIS de
+   --player/--opponent para vencer na mesma especificidade. */
+.die-face--custom {
+  background: linear-gradient(145deg, var(--die-color-a) 0%, var(--die-color-b) 100%);
+}
+
+/* ---------- Moeda do cara-ou-coroa (CSS 3D + Framer no giro) ----------
+
+   Ficha do Royal VIP Club, não uma moeda genérica: aro de ouro com a
+   MESMA rampa de metal do botão primário e do "VS" (#fff4e8 → #c67e38),
+   miolo de vinho borgonha como o das placas e da pastilha do título, e
+   filete âmbar separando os dois. O que a faz ler como metal maciço:
+
+   - `--coin-t`: meia-espessura. As duas faces ficam em ±--coin-t e a
+     PAREDE entre elas é uma pilha de discos (.coin__rim) desenhada pelo
+     componente. Sem essa pilha, no meio do giro (90°) a moeda some —
+     duas faces sem parede são infinitamente finas, o defeito mais
+     comum de moeda em CSS.
+   - O canelado do rebordo (repeating-linear-gradient) só aparece
+     justamente nesse quadro de perfil: é o que dá peso à peça.
+   - Denticulado no aro (repeating-conic-gradient recortado por máscara
+     em anel) + lâmina de luz varrendo a face. */
+
+/* Caixa de voo: reserva de antemão a altura do arco INTEIRO, com a
+   ficha pousada na base. Sem ela o arco seria um transform solto, que
+   não ocupa espaço no layout — a ficha subiria por cima da insígnia e
+   do título em qualquer tela sem folga sobrando. Aqui o arco vive
+   dentro da própria caixa e o flex distribui o resto ao redor. */
+.coin-stage {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-end;
+  justify-content: center;
+  height: calc(var(--coin-size) * 2.2);
+  padding-bottom: calc(var(--coin-size) * 0.2);
+}
+
+.coin-scene {
+  position: relative;
+  width: var(--coin-size);
+  height: var(--coin-size);
+  /* Perspectiva curta o bastante para o giro ter profundidade real
+     (a face de cima "abre" ao tombar) sem distorcer o círculo.
+     `perspective` só alcança FILHOS DIRETOS: o wrapper do voo precisa
+     de transform-style: preserve-3d para não achatar o contexto e
+     deixar a moeda girando em projeção ortográfica. */
+  perspective: calc(var(--coin-size) * 4.5);
+  --coin-t: calc(var(--coin-size) * 0.06);
+}
+
+.coin-flight {
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.coin {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+/* Parede do cilindro: discos empilhados em Z, canelados como o rebordo
+   de uma moeda cunhada. Cada disco recebe o próprio translateZ inline. */
+.coin__rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: repeating-linear-gradient(90deg, #7a4503 0 2px, #e2b25c 2px 4px);
+}
+
+.coin__face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  row-gap: calc(var(--coin-size) * 0.015);
+  border-radius: 9999px;
+  overflow: hidden;
+  backface-visibility: hidden;
+  isolation: isolate;
+  /* As faces são as TAMPAS do cilindro: ficam nos extremos da
+     espessura. Sem empurrá-las em Z elas cairiam no meio da pilha de
+     discos do rebordo, que as cobriria — a moeda viraria um disco
+     canelado sem estampa. */
+  transform: translateZ(var(--coin-t));
+
+  /* Ouro escovado: luz na quina superior esquerda + rampa do projeto. */
+  background:
+    radial-gradient(60% 55% at 32% 26%, rgba(255, 255, 255, 0.55), transparent 70%),
+    linear-gradient(168deg, #fff4e8 4%, #fcd9a0 26%, #f5b76f 52%, #e2a052 72%, #c67e38 96%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -3px 0 rgba(74, 42, 16, 0.45),
+    0 0 0 1px #8a5a28,
+    0 10px 26px rgba(0, 0, 0, 0.45);
+}
+
+/* A face de trás encara o outro lado (e o translateZ, aplicado DEPOIS
+   da rotação, a leva para a tampa oposta do cilindro). */
+.coin__face--back {
+  transform: rotateX(180deg) translateZ(var(--coin-t));
+}
+
+/* Denticulado: tracinhos radiais só na faixa do aro (máscara em anel). */
+.coin__face::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(122, 69, 3, 0.5) 0deg 2.2deg,
+    transparent 2.2deg 7.5deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 0 79%, #000 80.5%);
+  mask: radial-gradient(circle, transparent 0 79%, #000 80.5%);
+  pointer-events: none;
+}
+
+/* Lâmina de luz varrendo o metal — o mesmo gesto do .title-royal. */
+.coin__face::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  bottom: -40%;
+  left: 0;
+  width: 34%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 248, 238, 0) 0%,
+    rgba(255, 255, 255, 0.5) 50%,
+    rgba(255, 248, 238, 0) 100%
+  );
+  transform: translateX(-180%) skewX(-18deg);
+  animation: coin-sheen 3.6s cubic-bezier(0.3, 0, 0.15, 1) -1.4s infinite;
+}
+
+/* Medalhão de vinho no miolo: é ele que amarra a moeda ao resto da
+   cena (mesma tinta das placas de placar e da pastilha do título). */
+.coin__core {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  row-gap: calc(var(--coin-size) * 0.012);
+  width: 62%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #5f1420 0%, #2a0810 100%);
+  color: var(--color-gold);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 0 1.5px rgba(245, 183, 111, 0.65),
+    0 2px 6px rgba(20, 4, 4, 0.55);
+}
+
+.coin__label {
+  font-family: var(--font-display);
+  font-size: calc(var(--coin-size) * 0.115);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  /* Compensa a entreletra da última letra (mesma regra do title-royal). */
+  text-indent: 0.18em;
+  color: var(--color-gold);
+  text-shadow: 0 1px 0 rgba(20, 4, 4, 0.65);
+}
+
+@keyframes coin-sheen {
+  0%,
+  72% {
+    transform: translateX(-180%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(420%) skewX(-18deg);
+  }
+}
+
+/* Sombra projetada no couro: sem transform próprio no CSS — quem anima
+   scaleX/opacity é o Framer, e um translate aqui seria sobrescrito. */
+.coin-shadow {
+  position: absolute;
+  left: 12%;
+  bottom: calc(var(--coin-size) * -0.16);
+  width: 76%;
+  height: calc(var(--coin-size) * 0.1);
+  border-radius: 9999px;
+  background: radial-gradient(ellipse, rgba(40, 18, 6, 0.55) 0%, rgba(40, 18, 6, 0) 72%);
+}
+
+/* ---------- Escolha da cor dos dados (pós-sorteio) ---------- */
+
+/* Cartão do dado: a mesma placa de vinho do duelo, aqui como alvo de
+   toque. O aro assume a cor do dado; selecionado, ganha o aro dourado
+   e o halo do vencedor (mesma linguagem do .score-plate--winner). */
+.dice-choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 1rem 1.15rem 0.85rem;
+  border-radius: 1.25rem;
+  background: linear-gradient(180deg, #5f1420 0%, #2a0810 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 2px var(--dice-choice-accent, rgba(203, 115, 73, 0.45)),
+    0 10px 24px rgba(0, 0, 0, 0.4);
+  transition:
+    box-shadow 0.24s ease,
+    filter 0.24s ease;
+}
+
+.dice-choice__name {
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-ivory);
+}
+
+.dice-choice--on {
+  box-shadow:
+    inset 0 1px 0 rgba(252, 217, 160, 0.3),
+    0 0 0 2.5px #f5b76f,
+    0 0 22px rgba(245, 183, 111, 0.55),
+    0 10px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Escolhido um lado, o outro recua: sem isto os dois aros coloridos
+   competem e o cartão selecionado não se destaca. */
+.dice-choice--dim {
+  filter: brightness(0.78) saturate(0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1.5px rgba(203, 115, 73, 0.35),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.dice-choice--on .dice-choice__name {
+  color: var(--color-gold-bright);
+}
+
+@media (hover: hover) {
+  .dice-choice:not(.dice-choice--on):hover {
+    filter: brightness(1.12);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      0 0 0 2px var(--dice-choice-accent, rgba(245, 183, 111, 0.6)),
+      0 12px 26px rgba(0, 0, 0, 0.45);
+  }
+}
+
+.dice-choice:focus-visible {
+  outline: 2px solid #f5b76f;
+  outline-offset: 3px;
+}
+
+/* Selo de conferido no cartão escolhido (coroa do vencedor do sorteio). */
+.dice-choice__seal {
+  position: absolute;
+  top: -0.7rem;
+  display: grid;
+  place-items: center;
+  height: 1.6rem;
+  width: 1.6rem;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #fcd9a0 0%, #f5b76f 55%, #c67e38 100%);
+  color: #2a1206;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
 /* ---------- Tipografia sobre o couro ---------- */
 
 /* Tinta gravada: sombra clara rente embaixo = impressão prensada no

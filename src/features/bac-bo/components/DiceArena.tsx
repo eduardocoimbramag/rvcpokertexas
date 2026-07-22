@@ -91,6 +91,9 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
   const completed = phase === 'completed';
   const reducedMotion = useReducedMotion() ?? false;
   const scenery = useGameStore((state) => state.settings.scenery);
+  // Cores do cara-ou-coroa: no 1v1 o vencedor do sorteio muda a sua; no
+  // torneio (mesmo store, sorteio ausente) valem as clássicas.
+  const diceColors = useGameStore((state) => state.diceColors);
   // Câmera vertical (rolling/reveal): a zona de dados cresce de leve,
   // como se a câmera tivesse descido mais perto da mesa.
   const overhead = rolling || phase === 'reveal';
@@ -158,6 +161,7 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
           {...shared}
           value={playerDice[0] ?? null}
           side="player"
+          color={diceColors.player}
           settleDelayMs={SETTLE_STEP.topLeft * stagger}
           seed={SETTLE_STEP.topLeft}
           label="Seu dado 1"
@@ -166,6 +170,7 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
           {...shared}
           value={opponentDice[0] ?? null}
           side="opponent"
+          color={diceColors.opponent}
           settleDelayMs={SETTLE_STEP.topRight * stagger}
           seed={SETTLE_STEP.topRight}
           label="Dado 1 do oponente"
@@ -174,6 +179,7 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
           {...shared}
           value={playerDice[1] ?? null}
           side="player"
+          color={diceColors.player}
           settleDelayMs={SETTLE_STEP.bottomLeft * stagger}
           seed={SETTLE_STEP.bottomLeft}
           label="Seu dado 2"
@@ -182,6 +188,7 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
           {...shared}
           value={opponentDice[1] ?? null}
           side="opponent"
+          color={diceColors.opponent}
           settleDelayMs={SETTLE_STEP.bottomRight * stagger}
           seed={SETTLE_STEP.bottomRight}
           label="Dado 2 do oponente"

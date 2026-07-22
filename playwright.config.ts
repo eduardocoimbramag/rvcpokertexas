@@ -6,6 +6,10 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  /* O fluxo completo é dramático de propósito (splash ~3,4s + lock-in
+     1,6s + cara-ou-coroa ~8s + countdown 4,5s + rolagem 2s + revelação
+     ~5,9s): uma rodada inteira passa dos 30s padrão. */
+  timeout: 60_000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

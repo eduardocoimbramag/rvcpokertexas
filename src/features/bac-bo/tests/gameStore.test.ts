@@ -69,12 +69,39 @@ function createMemoryStorage(): Storage {
   };
 }
 
-function createTestStore(outcome: RoundOutcome, storage = createMemoryStorage()) {
+/**
+ * rng determinístico padrão: 0.25 nas duas tiragens → lado do jogador
+ * 'cara' e resultado 'cara' — o jogador vence o cara-ou-coroa.
+ */
+function createTestStore(
+  outcome: RoundOutcome,
+  storage = createMemoryStorage(),
+  rng: () => number = () => 0.25,
+) {
   return createGameStore({
     engine: new StubEngine(outcome),
     storage: new GameStorageService(storage),
     initialBalance: 500,
+    rng,
   });
+}
+
+/** rng por sequência: consome a lista e repete o último valor. */
+function seqRng(values: readonly number[]): () => number {
+  let index = 0;
+  return () => values[Math.min(index++, values.length - 1)] ?? 0;
+}
+
+/** Do lock-in até o countdown: atravessa o cara-ou-coroa vencendo-o. */
+async function passCoinFlip(store: ReturnType<typeof createTestStore>) {
+  expect(store.getState().phase).toBe('coinflip');
+  await vi.advanceTimersByTimeAsync(
+    TIMINGS.coinIntroMs + TIMINGS.coinTossMs + TIMINGS.coinResultMs,
+  );
+  expect(store.getState().coinFlip?.stage).toBe('pick');
+  store.getState().chooseDiceColor('vermelho');
+  await vi.advanceTimersByTimeAsync(TIMINGS.coinPickedMs);
+  expect(store.getState().phase).toBe('countdown');
 }
 
 /** Percorre o fluxo completo até a fase informada. */
@@ -91,9 +118,10 @@ async function playUntilCompleted(store: ReturnType<typeof createTestStore>, sta
   store.getState().confirmMatch();
   expect(store.getState().confirmations.player).toBe(true);
 
-  // Espera o oponente confirmar (delay aleatório ≤ máximo) + beat de lock-in.
+  // Espera o oponente confirmar (delay aleatório ≤ máximo) + beat de
+  // lock-in; o duelo travado abre o cara-ou-coroa.
   await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
-  expect(store.getState().phase).toBe('countdown');
+  await passCoinFlip(store);
 
   await vi.advanceTimersByTimeAsync(TIMINGS.countdownTickMs * COUNTDOWN_START);
   expect(store.getState().phase).toBe('rolling');
@@ -118,6 +146,9 @@ describe('máquina de estados', () => {
     expect(canTransition('idle', 'stake')).toBe(true);
     expect(canTransition('idle', 'rolling')).toBe(false);
     expect(canTransition('stake', 'countdown')).toBe(false);
+    expect(canTransition('confirm', 'coinflip')).toBe(true);
+    expect(canTransition('confirm', 'countdown')).toBe(false);
+    expect(canTransition('coinflip', 'countdown')).toBe(true);
     expect(canTransition('countdown', 'rolling')).toBe(true);
     expect(canTransition('reveal', 'completed')).toBe(true);
     expect(canTransition('completed', 'search')).toBe(false);
@@ -246,7 +277,7 @@ describe('confirmação dupla', () => {
     expect(store.getState().confirmations).toEqual({ player: false, opponent: false });
   }
 
-  it('só a confirmação do jogador não inicia o countdown', async () => {
+  it('só a confirmação do jogador não trava o duelo', async () => {
     const store = createTestStore('win');
     await reachConfirm(store);
 
@@ -257,8 +288,9 @@ describe('confirmação dupla', () => {
     expect(store.getState().phase).toBe('confirm');
     expect(store.getState().balance).toBe(500);
 
+    // Com os dois prontos, o lock-in debita o stake e abre o cara-ou-coroa.
     await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
-    expect(store.getState().phase).toBe('countdown');
+    expect(store.getState().phase).toBe('coinflip');
     expect(store.getState().balance).toBe(450);
   });
 
@@ -295,6 +327,95 @@ describe('confirmação dupla', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(store.getState().phase).toBe('stake');
     expect(store.getState().balance).toBe(500);
+  });
+});
+
+describe('cara-ou-coroa', () => {
+  /** Leva o store até a fase coinflip (stake 50, ambos confirmados). */
+  async function reachCoinFlip(store: ReturnType<typeof createTestStore>) {
+    store.getState().goToStake();
+    store.getState().selectStake(50);
+    void store.getState().startSearch();
+    await vi.advanceTimersByTimeAsync(TIMINGS.foundSplashMs);
+    store.getState().confirmMatch();
+    await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
+    expect(store.getState().phase).toBe('coinflip');
+  }
+
+  const COIN_BEATS = TIMINGS.coinIntroMs + TIMINGS.coinTossMs + TIMINGS.coinResultMs;
+
+  it('jogador vence o sorteio e a escolha troca as cores dos dois lados', async () => {
+    // 0.25/0.25: lado 'cara', resultado 'cara' → o jogador vence.
+    const store = createTestStore('win', createMemoryStorage(), seqRng([0.25, 0.25]));
+    await reachCoinFlip(store);
+
+    await vi.advanceTimersByTimeAsync(COIN_BEATS);
+    const coin = store.getState().coinFlip;
+    expect(coin?.playerSide).toBe('cara');
+    expect(coin?.result).toBe('cara');
+    expect(coin?.winner).toBe('player');
+    expect(coin?.stage).toBe('pick');
+
+    // Só há duas cores: pegar o vermelho entrega o azul ao oponente.
+    store.getState().chooseDiceColor('vermelho');
+    expect(store.getState().diceColors).toEqual({ player: 'vermelho', opponent: 'azul' });
+    expect(store.getState().coinFlip?.stage).toBe('picked');
+
+    await vi.advanceTimersByTimeAsync(TIMINGS.coinPickedMs);
+    expect(store.getState().phase).toBe('countdown');
+  });
+
+  it('manter a cor de origem é uma escolha válida', async () => {
+    const store = createTestStore('win', createMemoryStorage(), seqRng([0.25, 0.25]));
+    await reachCoinFlip(store);
+    await vi.advanceTimersByTimeAsync(COIN_BEATS);
+
+    store.getState().chooseDiceColor('azul');
+    expect(store.getState().diceColors).toEqual({ player: 'azul', opponent: 'vermelho' });
+    expect(store.getState().coinFlip?.stage).toBe('picked');
+  });
+
+  it('oponente vence o sorteio e fica com a cor que escolheu', async () => {
+    // 0.25 → 'cara' para o jogador; 0.75 → a moeda dá 'coroa'; 0 → o bot
+    // fica com o azul, sobrando o vermelho para o jogador.
+    const store = createTestStore('win', createMemoryStorage(), seqRng([0.25, 0.75, 0]));
+    await reachCoinFlip(store);
+
+    await vi.advanceTimersByTimeAsync(COIN_BEATS);
+    const state = store.getState();
+    expect(state.coinFlip?.winner).toBe('opponent');
+    expect(state.coinFlip?.stage).toBe('botPick');
+    expect(state.coinFlip?.chosenColor).toBe('azul');
+    expect(state.diceColors).toEqual({ player: 'vermelho', opponent: 'azul' });
+
+    await vi.advanceTimersByTimeAsync(TIMINGS.coinBotPickMs);
+    expect(store.getState().phase).toBe('countdown');
+  });
+
+  it('escolha fora do beat de pick é ignorada', async () => {
+    const store = createTestStore('win');
+    await reachCoinFlip(store);
+
+    // Ainda na intro, antes de a moeda voar: a escolha não vale.
+    store.getState().chooseDiceColor('vermelho');
+    expect(store.getState().diceColors).toEqual({ player: 'azul', opponent: 'vermelho' });
+    expect(store.getState().coinFlip?.stage).toBe('intro');
+
+    // Depois de escolher, uma segunda escolha não reabre o beat.
+    await vi.advanceTimersByTimeAsync(COIN_BEATS);
+    store.getState().chooseDiceColor('vermelho');
+    store.getState().chooseDiceColor('azul');
+    expect(store.getState().diceColors.player).toBe('vermelho');
+  });
+
+  it('jogar de novo restaura as cores clássicas da mesa', async () => {
+    const store = createTestStore('win');
+    await playUntilCompleted(store, 50); // escolhe 'vermelho' no caminho
+    expect(store.getState().diceColors).toEqual({ player: 'vermelho', opponent: 'azul' });
+
+    store.getState().playAgain();
+    expect(store.getState().diceColors).toEqual({ player: 'azul', opponent: 'vermelho' });
+    expect(store.getState().coinFlip).toBeNull();
   });
 });
 

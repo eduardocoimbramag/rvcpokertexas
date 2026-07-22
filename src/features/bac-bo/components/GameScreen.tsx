@@ -9,6 +9,7 @@ import { useDealerReaction } from '../scene/dealer/useDealerReaction';
 import type { GamePhase } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
 import { BalancePill } from './BalancePill';
+import { CoinFlipOverlay } from './CoinFlipOverlay';
 import { ConfirmPanel } from './ConfirmPanel';
 import { CountdownOverlay } from './CountdownOverlay';
 import { DiceArena } from './DiceArena';
@@ -39,7 +40,8 @@ export function GameScreen() {
   // lock-in), a pílula continua exibindo o saldo PRÉ-rodada — o débito
   // fica invisível e só aparece na animação do resultado. No completed
   // a pílula recebe o saldo final + o netChange para animar a variação.
-  const roundActive = phase === 'countdown' || phase === 'rolling' || phase === 'reveal';
+  const roundActive =
+    phase === 'coinflip' || phase === 'countdown' || phase === 'rolling' || phase === 'reveal';
   const displayBalance = roundActive && match ? balance + match.stake : balance;
   const balanceDelta = phase === 'completed' && result ? result.netChange : null;
 
@@ -80,6 +82,7 @@ export function GameScreen() {
             {phase === 'search' && <MatchmakingOverlay />}
             {phase === 'found' && match && <FoundSplash match={match} />}
             {phase === 'confirm' && match && <ConfirmPanel match={match} />}
+            {phase === 'coinflip' && <CoinFlipOverlay />}
             {phase === 'countdown' && <CountdownOverlay value={countdown} />}
             {(phase === 'rolling' || phase === 'reveal' || phase === 'completed') && match && (
               // Sem justify-between/gap: em completed o ResultBanner é
