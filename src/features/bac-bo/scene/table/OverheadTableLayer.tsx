@@ -1,6 +1,7 @@
 import { useId } from 'react';
 
 import type { SceneQuality } from '../sceneQuality';
+import { TableCrest } from './TableCrest';
 
 export interface OverheadTableLayerProps {
   quality: Exclude<SceneQuality, 'off'>;
@@ -141,10 +142,8 @@ export function OverheadTableLayer({ quality }: OverheadTableLayerProps) {
         )}
       </svg>
 
-      {/* Logo da casa gravada no couro, abaixo da zona de dados. */}
-      <div className="scene-monogram scene-monogram--overhead">
-        <img src={`${import.meta.env.BASE_URL}rvclogo.png`} alt="" />
-      </div>
+      {/* Brasão da casa gravado no couro, abaixo da zona de dados. */}
+      <TableCrest camera="overhead" />
 
       {/* Luz zenital: poça quente sobre os poços + vinheta nas bordas. */}
       <div className="overhead-light" />

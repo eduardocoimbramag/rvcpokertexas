@@ -319,24 +319,80 @@ h2 {
   display: block;
 }
 
-/* Logo da casa gravada no couro: multiply em tom-sobre-tom lê como
-   baixo-relevo estampado a quente, não como adesivo colado. Aparece
-   APENAS na câmera vertical do sorteio (OverheadTableLayer). */
-.scene-monogram {
+/* ---------- Brasão gravado no couro (TableCrest) ---------- */
+
+/* Marca d'água tom-sobre-tom: sombra e luz da MESMA silhueta, levemente
+   desencontradas, lidas pelo olho como um relevo prensado a quente. Fica
+   propositalmente no limiar do perceptível — dá vida ao couro sem virar
+   um adesivo colado nem competir com as fichas e os dados. */
+.table-crest {
   position: absolute;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: center;
+  inset: 0;
   pointer-events: none;
 }
 
-.scene-monogram img {
-  width: clamp(96px, 30vw, 132px);
-  height: auto;
+.table-crest__stamp {
+  position: absolute;
+  left: 50%;
+  aspect-ratio: 364 / 476; /* proporção nativa do brasaorvc.svg */
+  /* A marca dissolve nas bordas em vez de terminar num contorno duro:
+     é o couro que "aparece" o desenho, não o desenho que se impõe. */
+  -webkit-mask-image: radial-gradient(76% 74% at 50% 46%, #000 42%, transparent 88%);
+  mask-image: radial-gradient(76% 74% at 50% 46%, #000 42%, transparent 88%);
+}
+
+/* As duas camadas do relevo. O desenho vem do próprio SVG do brasão
+   usado como máscara — assim a cor de cada camada é definida aqui. */
+.table-crest__shadow,
+.table-crest__light {
+  position: absolute;
+  inset: 0;
+  -webkit-mask-image: var(--crest-src);
+  mask-image: var(--crest-src);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+/* Parede de cima do sulco: o couro afunda e não pega a luz do spot. */
+.table-crest__shadow {
+  background: #3d2110;
   mix-blend-mode: multiply;
-  opacity: 0.3;
-  filter: grayscale(1) contrast(1.15);
+  translate: 0 -0.5%;
+}
+
+/* Aresta de baixo: única superfície do relevo virada para a luz — é o
+   fio de champagne que faz a marca existir sem escurecer a mesa. */
+.table-crest__light {
+  background: var(--color-gold-bright);
+  mix-blend-mode: soft-light;
+  translate: 0 0.6%;
+}
+
+/* Câmera frontal: a mesa foge do olho, então a marca DEITA nela —
+   perspectiva real (afunila no topo, comprime na vertical) casando com
+   a curvatura do rebordo logo acima. Assenta na faixa de couro entre o
+   trilho e a área de jogo. */
+.table-crest--front .table-crest__stamp {
+  top: 48%;
+  width: 60%;
+  max-width: 330px;
+  translate: -50% -50%;
+  /* A distância de perspectiva acompanha a escala (330/264 do tamanho
+     original): o trapézio mantém EXATAMENTE a mesma proporção — a marca
+     só cresce, a pose não muda. */
+  transform: perspective(650px) rotateX(52deg);
+}
+
+.table-crest--front .table-crest__shadow {
+  opacity: 0.1;
+}
+
+.table-crest--front .table-crest__light {
+  opacity: 0.34;
 }
 
 /* ---------- Câmera vertical: mesa vista de cima (OverheadTableLayer) ---------- */
@@ -354,10 +410,23 @@ h2 {
   display: block;
 }
 
-/* Na vista de cima a logo assenta na faixa de couro sob os poços. */
-.scene-monogram--overhead {
-  top: auto;
-  bottom: 8%;
+/* Na vista de cima a marca assenta na faixa de couro sob os poços e
+   quase não deita: a câmera está sobre a mesa, olhando de frente para o
+   couro — só uma pitada de perspectiva para não parecer sobreposta. */
+.table-crest--overhead .table-crest__stamp {
+  bottom: 9%;
+  width: 34%;
+  max-width: 180px;
+  translate: -50%;
+  transform: perspective(900px) rotateX(16deg);
+}
+
+.table-crest--overhead .table-crest__shadow {
+  opacity: 0.13;
+}
+
+.table-crest--overhead .table-crest__light {
+  opacity: 0.42;
 }
 
 /* Luz zenital: poça quente sobre a zona de dados + vinheta que fecha o

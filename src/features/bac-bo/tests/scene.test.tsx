@@ -105,6 +105,25 @@ describe('TableScene', () => {
     expect(screen.getByTestId('dealer')).toBeInTheDocument();
   });
 
+  it('o brasão da casa fica gravado no couro nas duas câmeras', () => {
+    const { rerender } = render(
+      <TableScene reaction="present">
+        <p>jogo</p>
+      </TableScene>,
+    );
+    // Frontal e vertical coexistem no palco (o corte é um cross-fade),
+    // então cada câmera traz a sua marca.
+    expect(screen.getAllByTestId('table-crest')).toHaveLength(2);
+    rerender(
+      <TableScene reaction="shake" camera="overhead">
+        <p>dados</p>
+      </TableScene>,
+    );
+    for (const crest of screen.getAllByTestId('table-crest')) {
+      expect(crest).toHaveAttribute('aria-hidden', 'true');
+    }
+  });
+
   it('o backdrop decorativo é invisível para leitores de tela', () => {
     render(
       <TableScene reaction="idle">
