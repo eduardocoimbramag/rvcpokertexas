@@ -245,7 +245,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         set({ result, devForcedOutcome: null });
         schedule(() => {
           if (!transitionTo('reveal')) return;
-          audioManager.playSfx('reveal');
+          // O som da revelação NÃO sai daqui: quem toca é cada copo, no
+          // instante em que para (DiceShaker) — senão só o primeiro dado
+          // soaria e os outros três assentariam em silêncio.
           schedule(completeRound, TIMINGS.revealMs);
         }, TIMINGS.rollingMs);
       } catch {

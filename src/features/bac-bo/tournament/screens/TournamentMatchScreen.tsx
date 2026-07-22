@@ -2,11 +2,14 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 
 import { COUNTDOWN_START, TIMINGS } from '../../animations/timings';
+import { Confetti } from '../../components/Confetti';
 import { CountdownOverlay } from '../../components/CountdownOverlay';
 import { DiceArena } from '../../components/DiceArena';
 import { FoundSplash } from '../../components/FoundSplash';
+import { audioManager } from '../../services/AudioManager';
 import { TableScene } from '../../scene/TableScene';
 import type { SceneCamera } from '../../scene/TableScene';
 import type { DealerReaction } from '../../scene/dealer/DealerController';
@@ -76,13 +79,15 @@ export function TournamentMatchScreen() {
     return () => timers.forEach(clearTimeout);
   }, []);
 
-  // Grava o resultado no chaveamento assim que a mesa termina de revelar.
+  // Grava o resultado no chaveamento assim que a mesa termina de revelar
+  // (e toca o veredito — na vitória, com a plateia aplaudindo).
   useEffect(() => {
-    if (phase === 'completed' && !recorded.current) {
+    if (phase === 'completed' && !recorded.current && activeMatch) {
       recorded.current = true;
+      audioManager.playSfx(activeMatch.youWin ? 'win' : 'lose');
       finishMyMatch();
     }
-  }, [phase, finishMyMatch]);
+  }, [phase, finishMyMatch, activeMatch]);
 
   // Retorno único ao chaveamento. `backToBracket` NÃO é idempotente
   // (dispara runSimulation, que grava no chaveamento), e o cleanup do
@@ -180,6 +185,8 @@ export function TournamentMatchScreen() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ type: 'spring', damping: 20, stiffness: 260 }}
                 >
+                  {youWin && !reducedMotion && <Confetti />}
+
                   {/* Espaçador superior: da base dos dados ao veredito. */}
                   <div aria-hidden className="w-full grow" />
 
@@ -188,7 +195,7 @@ export function TournamentMatchScreen() {
                       contagem real ocupa do lado de baixo — sem isso o
                       centro do título cairia acima do meio real. */}
                   <p aria-hidden className={`invisible ${COUNTDOWN_LINE}`}>
-                    ⏱ Retornando em {returnSecs}s
+                    <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Retornando em {returnSecs}s
                   </p>
 
                   {/* Uma cópia invisível do subtítulo acima do título
@@ -221,12 +228,12 @@ export function TournamentMatchScreen() {
                     className={`text-engraved text-[#33261a] ${COUNTDOWN_LINE}`}
                     data-testid="auto-return"
                   >
-                    ⏱ Retornando em {returnSecs}s
+                    <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Retornando em {returnSecs}s
                   </p>
 
                   <div className="action-stack">
                     <Button onClick={returnOnce} size="md" fullWidth data-testid="back-to-bracket">
-                      🏆 VOLTAR AO CHAVEAMENTO
+                      <Icon name="trophy" /> VOLTAR AO CHAVEAMENTO
                     </Button>
                   </div>
                 </motion.div>

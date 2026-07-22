@@ -79,6 +79,56 @@ function silence(durationSec: number): Float32Array {
   return new Float32Array(Math.floor(SAMPLE_RATE * durationSec));
 }
 
+/** Desloca um trecho no tempo (prefixa silêncio) para posicioná-lo num mix. */
+function at(offsetSec: number, part: Float32Array): Float32Array {
+  return sequence(silence(offsetSec), part);
+}
+
+/**
+ * Plateia aplaudindo: cama de ruído filtrado (rumor da torcida) somada a
+ * dezenas de palmas individuais — bursts curtíssimos de ruído com ataque
+ * instantâneo e decaimento exponencial, espalhados ao acaso. A densidade
+ * segue o envelope: a ovação cresce rápido e se esvai no final.
+ */
+function applause(durationSec: number, volume: number): Float32Array {
+  const length = Math.floor(SAMPLE_RATE * durationSec);
+  const out = new Float32Array(length);
+
+  const swellAt = (timeSec: number) =>
+    Math.min(1, timeSec / 0.3) * Math.min(1, Math.max(0, (durationSec - timeSec) / 0.7));
+
+  // Rumor contínuo: passa-baixa dupla deixa o ruído grave como uma torcida.
+  let low1 = 0;
+  let low2 = 0;
+  for (let i = 0; i < length; i += 1) {
+    const white = Math.random() * 2 - 1;
+    low1 = 0.82 * low1 + 0.18 * white;
+    low2 = 0.9 * low2 + 0.1 * low1;
+    out[i] = low2 * volume * 0.55 * swellAt(i / SAMPLE_RATE);
+  }
+
+  const clapCount = Math.floor(durationSec * 36);
+  for (let c = 0; c < clapCount; c += 1) {
+    const startSec = Math.random() * (durationSec - 0.04);
+    const start = Math.floor(startSec * SAMPLE_RATE);
+    const clapLength = Math.floor(SAMPLE_RATE * (0.01 + Math.random() * 0.014));
+    const clapVolume = (0.2 + Math.random() * 0.35) * volume * swellAt(startSec);
+    for (let i = 0; i < clapLength && start + i < length; i += 1) {
+      const decay = Math.exp((-5 * i) / clapLength);
+      out[start + i] = clamp((out[start + i] ?? 0) + (Math.random() * 2 - 1) * clapVolume * decay, -1, 1);
+    }
+  }
+  return out;
+}
+
+/** Assobio de plateia ("wolf whistle"): sobe rápido e desce alongado. */
+function crowdWhistle(freqLow: number, freqHigh: number, volume: number): Float32Array {
+  return sequence(
+    tone(freqLow, freqHigh, 0.16, volume, { attack: 0.02, release: 0.02 }),
+    tone(freqHigh, freqLow * 1.25, 0.3, volume, { attack: 0.004, release: 0.14 }),
+  );
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -153,6 +203,22 @@ export function synthesizeSfx(): Record<SfxName, string> {
     noise(0.09, 0.35, { attack: 0.005, release: 0.05 }),
   );
 
+  const fanfare = sequence(
+    tone(523, 523, 0.13, 0.5),
+    tone(659, 659, 0.13, 0.5),
+    tone(784, 784, 0.13, 0.5),
+    tone(1047, 1047, 0.3, 0.55, { attack: 0.01, release: 0.18 }),
+  );
+
+  /* Vitória com plateia: a fanfarra abre e a torcida vibra junto —
+     ovação de palmas com dois assobios em alturas diferentes. */
+  const winCelebration = mix(
+    fanfare,
+    applause(2.8, 0.85),
+    at(0.4, crowdWhistle(880, 2100, 0.3)),
+    at(1.25, crowdWhistle(990, 2350, 0.26)),
+  );
+
   return {
     tap: encodeWavDataUri(tone(620, 620, 0.07, 0.5, { attack: 0.005, release: 0.04 })),
     stake: encodeWavDataUri(tone(520, 780, 0.12, 0.5, { attack: 0.005, release: 0.06 })),
@@ -178,14 +244,7 @@ export function synthesizeSfx(): Record<SfxName, string> {
     countdownGo: encodeWavDataUri(tone(988, 1319, 0.22, 0.55, { attack: 0.01, release: 0.12 })),
     roll: encodeWavDataUri(rattle),
     reveal: encodeWavDataUri(tone(330, 990, 0.22, 0.45, { attack: 0.01, release: 0.1 })),
-    win: encodeWavDataUri(
-      sequence(
-        tone(523, 523, 0.13, 0.5),
-        tone(659, 659, 0.13, 0.5),
-        tone(784, 784, 0.13, 0.5),
-        tone(1047, 1047, 0.3, 0.55, { attack: 0.01, release: 0.18 }),
-      ),
-    ),
+    win: encodeWavDataUri(winCelebration),
     lose: encodeWavDataUri(
       sequence(
         tone(392, 392, 0.16, 0.45),

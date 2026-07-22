@@ -8,6 +8,7 @@ import {
 } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
+import { Icon } from '@/shared/components/Icon';
 import { formatCredits, formatDelta } from '@/shared/lib/format';
 
 export interface BalancePillProps {
@@ -82,23 +83,22 @@ export function BalancePill({ balance, delta = null }: BalancePillProps) {
     };
   }, [delta, balance, count, reducedMotion]);
 
-  const numberClass =
-    pulse === 'gain' ? 'text-emerald-400' : pulse === 'loss' ? 'text-red-400' : 'text-gold';
+  // A cor vive no CONTÊINER, não no número: a ficha usa currentColor, então
+  // ícone e algarismos são sempre a mesma tinta — marfim em repouso, e a
+  // pílula inteira vira esmeralda/vermelha no instante da variação.
+  const inkClass =
+    pulse === 'gain' ? 'text-emerald-400' : pulse === 'loss' ? 'text-red-400' : 'text-ivory';
 
   return (
     <motion.div
-      className="relative inline-flex items-center gap-2 rounded-full border border-arena-line bg-arena-800 px-4 py-2"
+      className={`relative inline-flex items-center gap-2 rounded-full border border-arena-line bg-arena-800 px-4 py-2 transition-colors duration-300 ${inkClass}`}
       animate={pulse ? { scale: [1, 1.09, 1] } : { scale: 1 }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
       aria-label={`Saldo: ${formatCredits(balance)} créditos`}
       data-testid="balance"
     >
-      <span aria-hidden="true">🪙</span>
-      <motion.span
-        className={`font-bold tabular-nums transition-colors duration-300 ${numberClass}`}
-      >
-        {rendered}
-      </motion.span>
+      <Icon name="chip" size="1.05em" />
+      <motion.span className="font-bold tabular-nums">{rendered}</motion.span>
 
       <AnimatePresence>
         {chip !== null && (

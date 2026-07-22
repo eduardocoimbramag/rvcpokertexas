@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 
 import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
 import { useTournamentStore } from '../tournamentStore';
@@ -22,9 +23,9 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
           type="button"
           onClick={onBack}
           aria-label="Voltar"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg active:brightness-125"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
         >
-          ←
+          <Icon name="chevron-left" />
         </button>
         <h1 className="text-xl font-bold tracking-wide">Torneio</h1>
         <span className="h-11 w-11 shrink-0" aria-hidden="true" />
@@ -32,7 +33,7 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
 
       <div className="action-stack mb-6">
         <Button onClick={() => createLobby('public')} size="md" fullWidth data-testid="create-public">
-          🌐 CRIAR SALA PÚBLICA
+          <Icon name="globe" /> CRIAR SALA PÚBLICA
         </Button>
         <Button
           variant="secondary"
@@ -41,7 +42,7 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
           fullWidth
           data-testid="create-private"
         >
-          🔒 Criar sala privada
+          <Icon name="lock" /> Criar sala privada
         </Button>
       </div>
 
@@ -60,13 +61,13 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
               transition={{ delay: i * 0.06 }}
               className="lobby-card"
             >
-              <span className="lobby-card__crown" aria-hidden="true">
-                👑
+              <span className="lobby-card__crown text-gold" aria-hidden="true">
+                <Icon name="crown" />
               </span>
               <span className="min-w-0 flex-1 text-left">
                 <span className="block truncate font-bold text-ivory">{lobby.name}</span>
                 <span className="block text-xs text-lavender">
-                  por {lobby.hostName} · 🪙 {formatCredits(lobby.stake)}
+                  por {lobby.hostName} · <Icon name="chip" size="0.85em" className="inline align-[-0.1em]" /> {formatCredits(lobby.stake)}
                 </span>
               </span>
               <span className="lobby-card__count">

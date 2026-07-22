@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 
 import type { SceneCamera } from '../scene/TableScene';
 import { TableScene } from '../scene/TableScene';
@@ -53,9 +54,9 @@ export function GameScreen() {
             onClick={goHome}
             aria-label="Voltar para o início"
             data-testid="back-button"
-            className="grid h-11 w-11 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg active:brightness-125"
+            className="grid h-11 w-11 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
           >
-            ←
+            <Icon name="chevron-left" />
           </button>
         ) : (
           <span className="h-11 w-11" aria-hidden="true" />
@@ -91,9 +92,8 @@ export function GameScreen() {
             )}
             {phase === 'error' && (
               <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
-                <span className="text-5xl" aria-hidden="true">
-                  ⚠️
-                </span>
+                {/* Tinta de vinho gravada, como o texto de erro abaixo. */}
+                <Icon name="warning" size={52} className="text-[#7a1f28]" />
                 <p
                   className="text-engraved text-lg font-extrabold text-[#33261a]"
                   role="alert"

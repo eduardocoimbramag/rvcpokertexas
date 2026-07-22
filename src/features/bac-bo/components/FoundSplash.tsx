@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 
 import type { Match } from '../engine/types';
+import { AvatarBadge } from './AvatarBadge';
 
 export interface FoundSplashProps {
   match: Match;
@@ -25,7 +26,6 @@ const BEATS = { kicker: 0, player: 0.35, vs: 1.15, opponent: 1.9 } as const;
 const SPRING = { type: 'spring', stiffness: 220, damping: 22 } as const;
 
 interface PlateProps {
-  avatar: string;
   name: string;
   accent: 'player' | 'opponent';
   fromX: number;
@@ -33,19 +33,22 @@ interface PlateProps {
   instant: boolean;
 }
 
-/** Placa de apresentação: navy lapidado com aro na cor do lado. */
-function DuelPlate({ avatar, name, accent, fromX, delay, instant }: PlateProps) {
+/** Placa de apresentação: vinho lapidado com aro na cor do lado e o
+    medalhão de monograma do jogador no lugar do antigo emoji. */
+function DuelPlate({ name, accent, fromX, delay, instant }: PlateProps) {
   const border = accent === 'player' ? 'border-player' : 'border-opponent';
   return (
     <motion.div
-      className={`flex w-[clamp(5.5rem,26vw,8rem)] flex-col items-center gap-1 rounded-2xl border-2 ${border} bg-gradient-to-b from-[#5f1420] to-[#2a0810] px-3 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.1)]`}
+      className={`flex w-[clamp(5.5rem,26vw,8rem)] flex-col items-center gap-2 rounded-2xl border-2 ${border} bg-gradient-to-b from-[#5f1420] to-[#2a0810] px-3 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.1)]`}
       initial={instant ? false : { x: fromX, opacity: 0, rotate: fromX < 0 ? -5 : 5 }}
       animate={{ x: 0, opacity: 1, rotate: 0 }}
       transition={instant ? { duration: 0 } : { ...SPRING, delay }}
     >
-      <span className="text-[clamp(2.25rem,9vw,3rem)]" aria-hidden="true">
-        {avatar}
-      </span>
+      <AvatarBadge
+        name={name}
+        you={accent === 'player'}
+        className="text-[clamp(1.5rem,6vw,2rem)]"
+      />
       <span className="max-w-full truncate text-sm font-black uppercase tracking-widest text-ivory">
         {name}
       </span>
@@ -68,14 +71,7 @@ export function FoundSplash({ match }: FoundSplashProps) {
       </motion.p>
 
       <div className="flex w-full items-center justify-center gap-3">
-        <DuelPlate
-          avatar="🫵"
-          name="Você"
-          accent="player"
-          fromX={-90}
-          delay={BEATS.player}
-          instant={instant}
-        />
+        <DuelPlate name="Você" accent="player" fromX={-90} delay={BEATS.player} instant={instant} />
 
         {/* Carimbo VS com anel de impacto */}
         <div className="relative grid place-items-center">
@@ -101,7 +97,6 @@ export function FoundSplash({ match }: FoundSplashProps) {
         </div>
 
         <DuelPlate
-          avatar={match.opponent.avatar}
           name={match.opponent.name}
           accent="opponent"
           fromX={90}

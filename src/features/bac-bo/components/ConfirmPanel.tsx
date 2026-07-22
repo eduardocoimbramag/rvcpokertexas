@@ -2,11 +2,14 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
 import type { Match } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
+import { Monogram } from './AvatarBadge';
 import { OpponentProfileSheet } from './OpponentProfileSheet';
+import { PhaseTitle } from './PhaseTitle';
 
 export interface ConfirmPanelProps {
   match: Match;
@@ -15,7 +18,6 @@ export interface ConfirmPanelProps {
 const STAMP_SPRING = { type: 'spring', stiffness: 520, damping: 16 } as const;
 
 interface ReadySeatProps {
-  avatar: string;
   name: string;
   accent: 'player' | 'opponent';
   confirmed: boolean;
@@ -27,9 +29,10 @@ interface ReadySeatProps {
 /**
  * Assento do duelo com estado de prontidão: enquanto espera, um aro
  * tracejado gira devagar em volta do avatar; ao confirmar, um anel
- * esmeralda se desenha, o selo ✓ carimba no canto e um flash expande.
+ * esmeralda se desenha, o selo de visto carimba no canto e um flash
+ * expande. A identidade é o monograma do jogador (AvatarBadge).
  */
-function ReadySeat({ avatar, name, accent, confirmed, instant, onOpenProfile }: ReadySeatProps) {
+function ReadySeat({ name, accent, confirmed, instant, onOpenProfile }: ReadySeatProps) {
   const border = accent === 'player' ? 'border-player' : 'border-opponent';
   const ink = accent === 'player' ? 'text-[#1e3a8a]' : 'text-[#7f1d1d]';
 
@@ -37,6 +40,7 @@ function ReadySeat({ avatar, name, accent, confirmed, instant, onOpenProfile }: 
   // estático. Mesmo visual nos dois — só o oponente ganha o affordance
   // de toque (cursor, tap-scale e rótulo acessível).
   const avatarClass = `grid h-20 w-20 place-items-center rounded-full border-2 ${border} bg-arena-800 text-4xl`;
+  const face = <Monogram name={name} you={accent === 'player'} />;
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -87,10 +91,10 @@ function ReadySeat({ avatar, name, accent, confirmed, instant, onOpenProfile }: 
             data-testid="opponent-avatar-button"
             className={`${avatarClass} cursor-pointer transition-shadow hover:shadow-[0_0_0_3px_rgba(245,183,111,0.55)] focus-visible:shadow-[0_0_0_3px_rgba(245,183,111,0.7)] focus-visible:outline-none`}
           >
-            {avatar}
+            {face}
           </motion.button>
         ) : (
-          <span className={avatarClass}>{avatar}</span>
+          <span className={avatarClass}>{face}</span>
         )}
 
         <AnimatePresence>
@@ -102,7 +106,7 @@ function ReadySeat({ avatar, name, accent, confirmed, instant, onOpenProfile }: 
               animate={{ scale: 1, rotate: 0, opacity: 1 }}
               transition={instant ? { duration: 0 } : STAMP_SPRING}
             >
-              ✓
+              <Icon name="check" size={14} strokeWidth={3} />
             </motion.span>
           )}
         </AnimatePresence>
@@ -160,14 +164,10 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
           alta do fluxo e precisa caber no viewport fixo mesmo em
           aparelhos baixos (o dealer-spacer cede primeiro). */}
       <div className="flex flex-1 flex-col items-center justify-center gap-4">
-        {/* Tinta escura gravada no couro, igual ao "Escolha sua aposta". */}
-        <h2 className="text-engraved text-center text-2xl font-extrabold text-[#201608]">
-          {bothReady ? 'Que vença o melhor!' : 'Confirmar duelo?'}
-        </h2>
+        <PhaseTitle>{bothReady ? 'Que vença o melhor!' : 'Confirmar duelo?'}</PhaseTitle>
 
         <div className="flex w-full items-center justify-around">
           <ReadySeat
-            avatar="🫵"
             name="Você"
             accent="player"
             confirmed={confirmations.player}
@@ -197,7 +197,6 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
           </div>
 
           <ReadySeat
-            avatar={match.opponent.avatar}
             name={match.opponent.name}
             accent="opponent"
             confirmed={confirmations.opponent}
@@ -233,7 +232,9 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
                   : { type: 'spring', stiffness: 210, damping: 22, mass: 1.1, delay: 0.15 }
               }
             >
-              ⚔️ Duelo confirmado
+              <span className="inline-flex items-center gap-2">
+                <Icon name="swords" /> Duelo confirmado
+              </span>
             </motion.div>
           ) : confirmations.player ? (
             <motion.div
@@ -264,7 +265,7 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
               transition={{ duration: 0.2 }}
             >
               <Button onClick={confirmMatch} size="md" fullWidth data-testid="confirm-match">
-                ✅ CONFIRMAR
+                <Icon name="check" strokeWidth={2.4} /> CONFIRMAR
               </Button>
               <Button
                 variant="secondary"

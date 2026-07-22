@@ -1,3 +1,5 @@
+import { Icon } from '@/shared/components/Icon';
+
 import { useGameStore } from '../store/gameStore';
 
 /** Controles de áudio: mute geral e volumes de música e efeitos. */
@@ -8,7 +10,9 @@ export function AudioControls() {
   return (
     <div className="flex flex-col gap-4">
       <label className="flex items-center justify-between gap-4">
-        <span className="font-semibold">🔇 Silenciar tudo</span>
+        <span className="flex items-center gap-2 font-semibold">
+          <Icon name="speaker-off" /> Silenciar tudo
+        </span>
         <input
           type="checkbox"
           checked={audio.muted}
@@ -19,7 +23,9 @@ export function AudioControls() {
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-sm font-semibold text-lavender">🎵 Música</span>
+        <span className="flex items-center gap-2 text-sm font-semibold text-lavender">
+          <Icon name="music" /> Música
+        </span>
         <input
           type="range"
           min={0}
@@ -34,7 +40,9 @@ export function AudioControls() {
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-sm font-semibold text-lavender">🔊 Efeitos sonoros</span>
+        <span className="flex items-center gap-2 text-sm font-semibold text-lavender">
+          <Icon name="speaker" /> Efeitos sonoros
+        </span>
         <input
           type="range"
           min={0}

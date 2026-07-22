@@ -1,3 +1,5 @@
+import type { IconName } from '@/shared/components/Icon';
+
 import type { Opponent } from '../engine/types';
 
 /**
@@ -14,7 +16,8 @@ import type { Opponent } from '../engine/types';
 
 export interface Achievement {
   id: string;
-  icon: string;
+  /** Ícone do conjunto SVG da casa (Icon.tsx) — nunca emoji. */
+  icon: IconName;
   name: string;
   description: string;
   /** Raridade define a cor do aro da badge. */
@@ -23,18 +26,18 @@ export interface Achievement {
 
 /** Catálogo ilustrativo de conquistas possíveis. */
 export const ACHIEVEMENTS: readonly Achievement[] = [
-  { id: 'first-win', icon: '🎲', name: 'Primeira vitória', description: 'Venceu o primeiro duelo.', rarity: 'comum' },
-  { id: 'streak-5', icon: '🔥', name: 'Em chamas', description: '5 vitórias seguidas.', rarity: 'raro' },
-  { id: 'high-roller', icon: '💰', name: 'Alto apostador', description: 'Apostou 1000 créditos numa rodada.', rarity: 'raro' },
-  { id: 'lucky-seven', icon: '🍀', name: 'Sete da sorte', description: 'Tirou 7 dez vezes.', rarity: 'comum' },
-  { id: 'comeback', icon: '⚡', name: 'Virada', description: 'Venceu após 3 derrotas.', rarity: 'épico' },
-  { id: 'duelist', icon: '⚔️', name: 'Duelista', description: '100 duelos disputados.', rarity: 'raro' },
-  { id: 'champion', icon: '🏆', name: 'Campeão', description: 'Venceu um torneio.', rarity: 'épico' },
-  { id: 'crown', icon: '👑', name: 'Realeza', description: 'Chegou ao topo do ranking.', rarity: 'lendário' },
-  { id: 'sharp-eye', icon: '🎯', name: 'Mira certeira', description: 'Ganhou 20 vezes no detalhe.', rarity: 'raro' },
-  { id: 'night-owl', icon: '🦉', name: 'Coruja', description: 'Jogou de madrugada 50 vezes.', rarity: 'comum' },
-  { id: 'diamond', icon: '💎', name: 'Diamante', description: 'Rating acima de 1600.', rarity: 'lendário' },
-  { id: 'phoenix', icon: '🐦‍🔥', name: 'Fênix', description: 'Renasceu de 10 derrotas.', rarity: 'épico' },
+  { id: 'first-win', icon: 'dice', name: 'Primeira vitória', description: 'Venceu o primeiro duelo.', rarity: 'comum' },
+  { id: 'streak-5', icon: 'flame', name: 'Em chamas', description: '5 vitórias seguidas.', rarity: 'raro' },
+  { id: 'high-roller', icon: 'coins', name: 'Alto apostador', description: 'Apostou 1000 créditos numa rodada.', rarity: 'raro' },
+  { id: 'lucky-seven', icon: 'club', name: 'Sete da sorte', description: 'Tirou 7 dez vezes.', rarity: 'comum' },
+  { id: 'comeback', icon: 'bolt', name: 'Virada', description: 'Venceu após 3 derrotas.', rarity: 'épico' },
+  { id: 'duelist', icon: 'swords', name: 'Duelista', description: '100 duelos disputados.', rarity: 'raro' },
+  { id: 'champion', icon: 'trophy', name: 'Campeão', description: 'Venceu um torneio.', rarity: 'épico' },
+  { id: 'crown', icon: 'crown', name: 'Realeza', description: 'Chegou ao topo do ranking.', rarity: 'lendário' },
+  { id: 'sharp-eye', icon: 'target', name: 'Mira certeira', description: 'Ganhou 20 vezes no detalhe.', rarity: 'raro' },
+  { id: 'night-owl', icon: 'moon', name: 'Coruja', description: 'Jogou de madrugada 50 vezes.', rarity: 'comum' },
+  { id: 'diamond', icon: 'gem', name: 'Diamante', description: 'Rating acima de 1600.', rarity: 'lendário' },
+  { id: 'phoenix', icon: 'feather', name: 'Fênix', description: 'Renasceu de 10 derrotas.', rarity: 'épico' },
 ];
 
 export const RARITY_RING: Record<Achievement['rarity'], string> = {
@@ -65,6 +68,17 @@ function hashString(input: string): number {
     hash |= 0; // força int32
   }
   return Math.abs(hash);
+}
+
+/**
+ * Rating ilustrativo e ESTÁVEL para jogadores que não passam pelo
+ * matchmaking (os participantes do torneio, que só têm nome e id).
+ * Semeado pelo nome de propósito: o id é sorteado a cada sala, então
+ * semear por ele faria a mesma pessoa aparecer com outro nível a cada
+ * lobby. Faixa 900–1799, no mesmo terreno dos perfis do 1v1.
+ */
+export function illustrativeRating(name: string): number {
+  return 900 + (hashString(name) % 900);
 }
 
 /**

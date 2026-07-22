@@ -11,18 +11,18 @@ import type { ChatMessage, PublicLobby, TournamentPlayer, TournamentSize } from 
  */
 
 const BOT_POOL: readonly { name: string; avatar: string }[] = [
-  { name: 'Otto', avatar: '🐙' },
-  { name: 'Luna', avatar: '🦊' },
-  { name: 'Dante', avatar: '🐺' },
-  { name: 'Nina', avatar: '🦋' },
-  { name: 'Rex', avatar: '🦁' },
-  { name: 'Maya', avatar: '🐯' },
-  { name: 'Kai', avatar: '🦈' },
-  { name: 'Vera', avatar: '🦅' },
-  { name: 'Bruno', avatar: '🐻' },
-  { name: 'Ísis', avatar: '🐍' },
-  { name: 'Théo', avatar: '🦉' },
-  { name: 'Zara', avatar: '🐸' },
+  { name: 'Otto', avatar: 'O' },
+  { name: 'Luna', avatar: 'L' },
+  { name: 'Dante', avatar: 'D' },
+  { name: 'Nina', avatar: 'N' },
+  { name: 'Rex', avatar: 'R' },
+  { name: 'Maya', avatar: 'M' },
+  { name: 'Kai', avatar: 'K' },
+  { name: 'Vera', avatar: 'V' },
+  { name: 'Bruno', avatar: 'B' },
+  { name: 'Ísis', avatar: 'Í' },
+  { name: 'Théo', avatar: 'T' },
+  { name: 'Zara', avatar: 'Z' },
 ];
 
 const HOST_NAMES = ['Otto', 'Luna', 'Dante', 'Rex', 'Maya', 'Vera'];
@@ -37,9 +37,9 @@ const LOBBY_NAMES = [
 ];
 
 const CHAT_LINES = [
-  'boa sorte a todos 🎲',
+  'boa sorte a todos',
   'bora bora, tô pronto',
-  'quem cair na minha chave já era 😎',
+  'quem cair na minha chave já era',
   'partiu copa',
   'hoje o troféu é meu',
   'respeita o campeão',
@@ -68,12 +68,22 @@ export function shuffle<T>(list: readonly T[]): T[] {
 
 /** O jogador local. */
 export function you(): TournamentPlayer {
-  return { id: 'you', name: 'Você', avatar: '🫵', isYou: true };
+  return { id: 'you', name: 'Você', avatar: 'V', isYou: true };
 }
 
-/** N bots distintos como participantes. */
-export function makeBots(count: number): TournamentPlayer[] {
-  return shuffle(BOT_POOL)
+/**
+ * N bots distintos como participantes.
+ *
+ * `exclude` são NOMES que não podem entrar: quem já está sentado (senão
+ * a sala aceitava dois "Dante") e quem foi expulso pelo dono. O nome é a
+ * identidade que o jogador enxerga — o `id` é sorteado a cada entrada,
+ * então filtrar por id deixaria a mesma pessoa voltar com outra crachá.
+ * Devolve menos que `count` se o elenco disponível acabar; cabe a quem
+ * chama decidir o que fazer com a sobra.
+ */
+export function makeBots(count: number, exclude: readonly string[] = []): TournamentPlayer[] {
+  const blocked = new Set(exclude);
+  return shuffle(BOT_POOL.filter((b) => !blocked.has(b.name)))
     .slice(0, count)
     .map((b) => ({ id: createId(), name: b.name, avatar: b.avatar, isYou: false }));
 }

@@ -1,9 +1,11 @@
 import { motion, useReducedMotion } from 'framer-motion';
 
 import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 
 import type { RoundOutcome, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
+import { Confetti } from './Confetti';
 
 export interface ResultBannerProps {
   result: RoundResult;
@@ -36,7 +38,12 @@ export function ResultBanner({ result }: ResultBannerProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: 'spring', damping: 20, stiffness: 260 }}
     >
-      {result.outcome === 'win' && !reducedMotion && <WinParticles />}
+      {result.outcome === 'win' && !reducedMotion && (
+        <>
+          <Confetti />
+          <WinParticles />
+        </>
+      )}
 
       {/* Espaçador superior: da base dos dados até o veredito. */}
       <div aria-hidden className="w-full grow" />
@@ -70,7 +77,7 @@ export function ResultBanner({ result }: ResultBannerProps) {
           demais telas que usam .action-stack. */}
       <div className="action-stack action-stack--tight">
         <Button onClick={playAgain} size="md" fullWidth data-testid="play-again">
-          🎲 JOGAR DE NOVO
+          <Icon name="dice" /> JOGAR DE NOVO
         </Button>
         <Button variant="secondary" onClick={goHome} size="md" fullWidth data-testid="go-home">
           INÍCIO

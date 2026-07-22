@@ -1,5 +1,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 
+import { Icon } from '@/shared/components/Icon';
+
 import { TIMINGS } from '../animations/timings';
 import type { DieValue, Match, RoundResult } from '../engine/types';
 import type { GamePhase } from '../store/gameStore';
@@ -43,7 +45,6 @@ const SETTLE_STEP = {
 
 interface ScorePlateProps {
   side: 'player' | 'opponent';
-  avatar: string;
   name: string;
   total: number;
   winner: boolean;
@@ -51,7 +52,7 @@ interface ScorePlateProps {
 }
 
 /** Placa de placar ao lado da dealer: nome em cima, total embaixo. */
-function ScorePlate({ side, avatar, name, total, winner, instant }: ScorePlateProps) {
+function ScorePlate({ side, name, total, winner, instant }: ScorePlateProps) {
   const player = side === 'player';
   return (
     <motion.div
@@ -73,12 +74,10 @@ function ScorePlate({ side, avatar, name, total, winner, instant }: ScorePlatePr
             instant ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 15, delay: 0.7 }
           }
         >
-          👑
+          <Icon name="crown" className="text-gold" size={17} />
         </motion.span>
       )}
-      <span className="score-plate__name">
-        {avatar} {name}
-      </span>
+      <span className="score-plate__name">{name}</span>
       <span className="score-plate__total" data-testid={`${player ? 'player' : 'opponent'}-total`}>
         {total}
       </span>
@@ -123,7 +122,6 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
         <>
           <ScorePlate
             side="player"
-            avatar="🫵"
             name="Você"
             total={result.playerTotal}
             winner={result.playerTotal > result.opponentTotal}
@@ -131,7 +129,6 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
           />
           <ScorePlate
             side="opponent"
-            avatar={match.opponent.avatar}
             name={match.opponent.name}
             total={result.opponentTotal}
             winner={result.opponentTotal > result.playerTotal}
@@ -199,7 +196,7 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
           <>
             <div className="flex items-baseline justify-center gap-2">
               <span className="text-engraved text-sm font-black uppercase tracking-widest text-[#1e3a8a]">
-                🫵 Você
+                Você
               </span>
               {completed && result && (
                 <span
@@ -212,7 +209,7 @@ export function DiceArena({ phase, match, result }: DiceArenaProps) {
             </div>
             <div className="flex items-baseline justify-center gap-2">
               <span className="text-engraved text-sm font-black uppercase tracking-widest text-[#7f1d1d]">
-                {match.opponent.avatar} {match.opponent.name}
+                {match.opponent.name}
               </span>
               {completed && result && (
                 <span

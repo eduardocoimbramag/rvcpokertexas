@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { SettingsSheet } from '../components/SettingsSheet';
+import { AmbientLayer } from '../scene/ambient/AmbientLayer';
 import { TableScene } from '../scene/TableScene';
 import { DEALER_REACTIONS } from '../scene/dealer/DealerController';
 import { SvgRigDealer } from '../scene/dealer/SvgRigDealer';
@@ -146,6 +147,48 @@ describe('TableScene', () => {
     expect(screen.queryByTestId('table-scene')).not.toBeInTheDocument();
     expect(screen.queryByTestId('dealer')).not.toBeInTheDocument();
     expect(screen.getByText('jogo puro')).toBeInTheDocument();
+  });
+});
+
+describe('AmbientLayer — coluna de cena e extensão de ambiente', () => {
+  it('desenha o salão numa coluna, com a extensão desfocada atrás', () => {
+    render(<AmbientLayer />);
+    const ambient = screen.getByTestId('scene-ambient');
+
+    // A foto vive na coluna (.scene-ambient__stage); o que sobra ao redor
+    // dela na web é preenchido pelo borrão (.scene-ambient__wash). Sem os
+    // dois, a web volta ao enquadramento ampliado do `cover`.
+    expect(screen.getByTestId('scene-ambient-stage')).toBeInTheDocument();
+    expect(ambient.querySelector('.scene-ambient__wash')).not.toBeNull();
+  });
+
+  it('expõe a qualidade para o CSS baratear o desfoque', () => {
+    render(<AmbientLayer />);
+    expect(screen.getByTestId('scene-ambient')).toHaveAttribute('data-quality', 'high');
+  });
+
+  it('a poeira mora na faixa da coluna, não solta na viewport', () => {
+    render(<AmbientLayer />);
+    const dust = screen.getByTestId('scene-ambient').querySelector('.scene-ambient__dust');
+    expect(dust).not.toBeNull();
+    expect(dust?.querySelectorAll('.scene-particle').length).toBeGreaterThan(0);
+  });
+
+  it('troca o enquadramento quando a mesa entra em cena', () => {
+    const { rerender } = render(<AmbientLayer />);
+    expect(screen.getByTestId('scene-ambient').className).not.toContain('scene-ambient--game');
+
+    useGameStore.setState({ phase: 'stake' });
+    rerender(<AmbientLayer />);
+    expect(screen.getByTestId('scene-ambient').className).toContain('scene-ambient--game');
+  });
+
+  it('com cenário desligado, não renderiza nada', () => {
+    useGameStore.setState({
+      settings: { ...useGameStore.getState().settings, scenery: 'off' },
+    });
+    render(<AmbientLayer />);
+    expect(screen.queryByTestId('scene-ambient')).not.toBeInTheDocument();
   });
 });
 

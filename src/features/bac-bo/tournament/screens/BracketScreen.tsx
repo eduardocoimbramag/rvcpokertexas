@@ -2,7 +2,9 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 
+import { AvatarBadge } from '../../components/AvatarBadge';
 import { matchWinner } from '../bracket';
 import { tournamentSelectors, useTournamentStore } from '../tournamentStore';
 import type { BracketMatch, TournamentPlayer } from '../types';
@@ -28,14 +30,14 @@ function SeatRow({
   return (
     <div className={`bk-seat bk-seat--${state}`}>
       <span className="bk-seat__avatar" aria-hidden="true">
-        {player?.avatar ?? '·'}
+        {player ? <AvatarBadge name={player.name} you={player.id === youId} /> : '·'}
       </span>
       <span className={`bk-seat__name ${you ? 'bk-seat__name--you' : ''}`}>
         {player ? player.name : 'A definir'}
       </span>
       {isWinner && played && (
-        <span className="bk-seat__crown" aria-hidden="true">
-          👑
+        <span className="bk-seat__crown text-gold" aria-hidden="true">
+          <Icon name="crown" />
         </span>
       )}
       <span className="bk-seat__score">{score ?? ''}</span>
@@ -176,9 +178,9 @@ export function BracketScreen() {
           type="button"
           onClick={leave}
           aria-label="Sair do torneio"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg active:brightness-125"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
         >
-          ←
+          <Icon name="chevron-left" />
         </button>
         <h1 className="text-xl font-bold tracking-wide">Chaveamento</h1>
         <span className="h-11 w-11 shrink-0" aria-hidden="true" />
@@ -191,7 +193,7 @@ export function BracketScreen() {
           return (
             <div key={label} className="phase-step" role="listitem">
               <span className={`phase-step__dot phase-step__dot--${state}`}>
-                {i < activeRound ? '✓' : i + 1}
+                {i < activeRound ? <Icon name="check" size={11} strokeWidth={3} /> : i + 1}
               </span>
               <span className={`phase-step__label phase-step__label--${state}`}>{label}</span>
             </div>
@@ -219,11 +221,11 @@ export function BracketScreen() {
           <div className="flex flex-col items-center gap-1.5">
             {autoSecs !== null && (
               <p className="text-xs font-bold text-lavender" data-testid="auto-start">
-                ⏱ Início automático em {autoSecs}s
+                <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Início automático em {autoSecs}s
               </p>
             )}
             <Button onClick={playMyMatch} size="md" fullWidth data-testid="play-tournament-match">
-              🎲 JOGAR AGORA
+              <Icon name="dice" /> JOGAR AGORA
             </Button>
           </div>
         ) : (
@@ -247,7 +249,7 @@ export function BracketScreen() {
       <AnimatePresence>
         {advance && (
           <AdvanceOverlay
-            you={{ id: youId, name: 'Você', avatar: '🫵', isYou: true }}
+            you={{ id: youId, name: 'Você', avatar: 'V', isYou: true }}
             opponent={advance.opponent}
             phaseLabel={advance.phaseLabel}
           />

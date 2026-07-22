@@ -31,7 +31,7 @@ class StubEngine implements GameEngine {
     this.lastStake = params.stake;
     return Promise.resolve({
       id: 'match-1',
-      opponent: { id: 'opp-1', name: 'Stub', avatar: '🤖', rating: 1000 },
+      opponent: { id: 'opp-1', name: 'Stub', avatar: 'S', rating: 1000 },
       stake: params.stake,
       createdAt: 0,
     });

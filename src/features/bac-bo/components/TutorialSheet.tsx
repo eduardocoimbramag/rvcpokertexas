@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
+import type { IconName } from '@/shared/components/Icon';
+import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
 
 import { useGameStore } from '../store/gameStore';
@@ -12,19 +14,19 @@ export interface TutorialSheetProps {
   continueToGame?: boolean;
 }
 
-const STEPS: readonly { icon: string; title: string; text: string }[] = [
+const STEPS: readonly { icon: IconName; title: string; text: string }[] = [
   {
-    icon: '🪙',
+    icon: 'chip',
     title: 'Escolha sua aposta',
     text: 'Selecione quantos créditos quer apostar no duelo. Você começa com um saldo virtual.',
   },
   {
-    icon: '⚔️',
+    icon: 'swords',
     title: 'Enfrente um oponente',
     text: 'Encontramos um adversário para você. Confirme o duelo para começar a rodada.',
   },
   {
-    icon: '🎲',
+    icon: 'dice',
     title: 'Maior soma vence',
     text: 'São 4 dados: 2 azuis seus e 2 vermelhos do oponente. Vitória paga 1:1 e empate devolve a aposta.',
   },
@@ -56,9 +58,7 @@ export function TutorialSheet({ open, onClose, continueToGame = false }: Tutoria
   return (
     <Sheet open={open} title="Como jogar" onClose={close}>
       <div className="flex flex-col items-center gap-4 text-center">
-        <span className="text-5xl" aria-hidden="true">
-          {current.icon}
-        </span>
+        <Icon name={current.icon} size={52} className="text-gold" />
         <h3 className="text-xl font-extrabold">{current.title}</h3>
         <p className="min-h-16 text-sm text-lavender">{current.text}</p>
 

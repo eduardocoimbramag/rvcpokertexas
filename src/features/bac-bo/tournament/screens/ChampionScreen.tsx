@@ -1,8 +1,11 @@
 import { motion, useReducedMotion } from 'framer-motion';
 
 import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
+import { AvatarBadge } from '../../components/AvatarBadge';
+import { Confetti } from '../../components/Confetti';
 import { tournamentPot, tournamentSelectors, useTournamentStore } from '../tournamentStore';
 
 /** Coroação do torneio: campeão (você ou um bot) + retorno ao início. */
@@ -19,6 +22,8 @@ export function ChampionScreen() {
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center">
+      {/* A coroação é a maior vitória: rajada mais longa de confetes. */}
+      {youWon && !reducedMotion && <Confetti count={72} />}
       <motion.p
         className="text-xs font-black uppercase tracking-[0.4em] text-copper"
         initial={reducedMotion ? false : { opacity: 0, y: -10 }}
@@ -34,7 +39,7 @@ export function ChampionScreen() {
         transition={{ type: 'spring', stiffness: 240, damping: 14, delay: 0.15 }}
       >
         <span className="champion-trophy" aria-hidden="true">
-          🏆
+          <Icon name="trophy" size="1em" strokeWidth={1.5} />
         </span>
       </motion.div>
 
@@ -53,9 +58,7 @@ export function ChampionScreen() {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.45 }}
       >
-        <span className="text-3xl" aria-hidden="true">
-          {champion.avatar}
-        </span>
+        <AvatarBadge name={champion.name} you={youWon} className="text-xl" />
         <span className="text-lg font-black tracking-wide text-ivory">{champion.name}</span>
       </motion.div>
 

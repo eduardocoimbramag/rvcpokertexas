@@ -15,7 +15,7 @@ function players(n: number): TournamentPlayer[] {
   return Array.from({ length: n }, (_, i) => ({
     id: `p${i}`,
     name: `P${i}`,
-    avatar: '🤖',
+    avatar: 'B',
     isYou: i === 0,
   }));
 }

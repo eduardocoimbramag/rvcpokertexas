@@ -16,16 +16,19 @@ import {
 import type { Match, Opponent, RoundResult } from './types';
 import { matchSchema, roundResultSchema } from './types';
 
-/** Perfis de oponentes simulados pelo matchmaking local. */
+/** Perfis de oponentes simulados pelo matchmaking local. O campo
+ * `avatar` guarda a INICIAL do monograma (a UI desenha o medalhão a
+ * partir do nome — ver AvatarBadge); mantido no schema por
+ * compatibilidade de dados. */
 const OPPONENT_PROFILES: readonly Omit<Opponent, 'id'>[] = [
-  { name: 'Luna', avatar: '🦊', rating: 1420 },
-  { name: 'Rex', avatar: '🐺', rating: 1180 },
-  { name: 'Maya', avatar: '🐯', rating: 1650 },
-  { name: 'Dante', avatar: '🦁', rating: 1330 },
-  { name: 'Iris', avatar: '🦉', rating: 1510 },
-  { name: 'Bruno', avatar: '🐻', rating: 1240 },
-  { name: 'Kira', avatar: '🐉', rating: 1770 },
-  { name: 'Otto', avatar: '🐙', rating: 1090 },
+  { name: 'Luna', avatar: 'L', rating: 1420 },
+  { name: 'Rex', avatar: 'R', rating: 1180 },
+  { name: 'Maya', avatar: 'M', rating: 1650 },
+  { name: 'Dante', avatar: 'D', rating: 1330 },
+  { name: 'Iris', avatar: 'I', rating: 1510 },
+  { name: 'Bruno', avatar: 'B', rating: 1240 },
+  { name: 'Kira', avatar: 'K', rating: 1770 },
+  { name: 'Otto', avatar: 'O', rating: 1090 },
 ];
 
 export interface LocalEngineOptions {

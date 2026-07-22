@@ -23,7 +23,7 @@ export function HistorySheet({ open, onClose }: HistorySheetProps) {
     <Sheet open={open} title="Histórico" onClose={onClose}>
       {history.length === 0 ? (
         <p className="py-8 text-center text-sm text-lavender" data-testid="history-empty">
-          Nenhuma rodada jogada ainda. Bora pro primeiro duelo? 🎲
+          Nenhuma rodada jogada ainda. Bora pro primeiro duelo?
         </p>
       ) : (
         <ul className="flex flex-col gap-2" data-testid="history-list">

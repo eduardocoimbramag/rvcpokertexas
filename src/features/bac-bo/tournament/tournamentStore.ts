@@ -61,6 +61,12 @@ export interface TournamentState {
   stake: number;
   ownerId: string;
   members: TournamentPlayer[];
+  /**
+   * Nomes expulsos pelo dono NESTA sala: quem sai pela porta não volta
+   * pela janela. Zerado só ao abrir outra sala (criar ou entrar), que é
+   * quando a lista de convidados recomeça do zero.
+   */
+  bannedNames: string[];
   chat: ChatMessage[];
   publicLobbies: PublicLobby[];
   bracket: Bracket | null;
@@ -91,6 +97,9 @@ export function tournamentPot(stake: number, size: TournamentSize): number {
 
 const YOU_ID = 'you';
 
+/** Aviso único quando não há mais quem convidar para a sala. */
+const POOL_EMPTY = 'Não há mais jogadores disponíveis para entrar nesta sala.';
+
 /** Só o dono é você quando você cria a sala. */
 function isOwner(state: TournamentState): boolean {
   return state.ownerId === YOU_ID;
@@ -117,8 +126,19 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     schedule(() => {
       const cur = get();
       if (cur.stage !== 'lobby' || cur.members.length >= cur.size) return;
-      const [bot] = makeBots(1);
-      if (!bot) return;
+      // Ninguém entra duas vezes, e ninguém expulso reentra.
+      const taken = cur.members.map((m) => m.name);
+      const [bot] = makeBots(1, [...taken, ...cur.bannedNames]);
+      if (!bot) {
+        // Elenco esgotado (expulsões demais): a sala não enche sozinha.
+        // Avisa uma vez em vez de deixar o dono esperando um assento que
+        // nunca vem — o botão de iniciar continua travado por desenho.
+        const last = cur.chat[cur.chat.length - 1];
+        if (last?.text !== POOL_EMPTY) {
+          set({ chat: [...cur.chat, systemMessage(POOL_EMPTY)] });
+        }
+        return;
+      }
       set({
         members: [...cur.members, bot],
         chat: [...cur.chat, systemMessage(`${bot.name} entrou na sala`)],
@@ -178,6 +198,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     stake: MIN_STAKE,
     ownerId: YOU_ID,
     members: [],
+    bannedNames: [],
     chat: [],
     publicLobbies: [],
     bracket: null,
@@ -202,6 +223,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         stake: MIN_STAKE,
         ownerId: YOU_ID,
         members: [you()],
+        bannedNames: [], // sala nova, lista de convidados do zero
         chat: [systemMessage('Você criou a sala. Ajuste a aposta e os jogadores na engrenagem.')],
         bracket: null,
         activeMatch: null,
@@ -216,10 +238,12 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       const host: TournamentPlayer = {
         id: createId(),
         name: lobby.hostName,
-        avatar: '👑',
+        avatar: lobby.hostName.charAt(0).toUpperCase(),
         isYou: false,
       };
-      const others = makeBots(Math.max(0, lobby.filled - 1));
+      // O anfitrião já ocupa um nome do elenco; sem excluí-lo a sala
+      // podia abrir com duas pessoas homônimas.
+      const others = makeBots(Math.max(0, lobby.filled - 1), [host.name]);
       set({
         stage: 'lobby',
         visibility: 'public',
@@ -229,6 +253,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         stake: lobby.stake,
         ownerId: host.id, // você não é o dono ao entrar numa sala alheia
         members: [host, ...others, you()],
+        bannedNames: [],
         chat: [systemMessage(`Você entrou em ${lobby.name}.`)],
         bracket: null,
         activeMatch: null,
@@ -265,7 +290,11 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       if (!kicked) return;
       set({
         members: s.members.filter((m) => m.id !== id),
-        chat: [...s.chat, systemMessage(`${kicked.name} foi removido da sala`)],
+        // Expulsar é definitivo enquanto a sala existir: o nome entra na
+        // lista de barrados e o preenchimento automático deixa de
+        // considerá-lo.
+        bannedNames: [...s.bannedNames, kicked.name],
+        chat: [...s.chat, systemMessage(`${kicked.name} foi expulso da sala`)],
       });
       scheduleFill();
     },
@@ -365,6 +394,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       set({
         stage: 'closed',
         members: [],
+        bannedNames: [],
         chat: [],
         bracket: null,
         activeMatch: null,

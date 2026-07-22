@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { Icon } from '@/shared/components/Icon';
 import { appEnv } from '@/shared/config/env';
 
 import type { RoundOutcome } from '../engine/types';
@@ -74,7 +75,7 @@ export function DevToolsPanel() {
         data-testid="devtools-toggle"
         className="grid h-10 w-10 place-items-center rounded-full border border-arena-line bg-arena-900/90 text-base shadow-lg"
       >
-        🛠️
+        <Icon name="wrench" className="text-lavender" />
       </button>
     </div>
   );

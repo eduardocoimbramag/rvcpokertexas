@@ -1,3 +1,4 @@
+import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
 
 import type { SceneQualitySetting } from '../services/GameStorageService';
@@ -28,7 +29,9 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
         <AudioControls />
 
         <label className="flex items-center justify-between gap-4">
-          <span className="font-semibold">📳 Vibração</span>
+          <span className="flex items-center gap-2 font-semibold">
+            <Icon name="vibration" /> Vibração
+          </span>
           <input
             type="checkbox"
             checked={vibrationEnabled}
@@ -39,7 +42,9 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
         </label>
 
         <div className="flex flex-col gap-2">
-          <span className="font-semibold">🎭 Cenário e dealer</span>
+          <span className="flex items-center gap-2 font-semibold">
+            <Icon name="scene" /> Cenário e dealer
+          </span>
           <div
             className="grid grid-cols-3 gap-2"
             role="radiogroup"

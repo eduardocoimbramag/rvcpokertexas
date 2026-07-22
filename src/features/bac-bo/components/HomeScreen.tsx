@@ -1,9 +1,11 @@
 import { motion } from 'framer-motion';
 
 import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 
 import { useGameStore } from '../store/gameStore';
 import { BalancePill } from './BalancePill';
+import { BrandDie } from './BrandDie';
 
 export interface HomeScreenProps {
   onOpenTutorial: () => void;
@@ -40,9 +42,9 @@ export function HomeScreen({
           type="button"
           onClick={onOpenSettings}
           aria-label="Ajustes"
-          className="grid h-11 w-11 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg active:brightness-125"
+          className="grid h-11 w-11 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
         >
-          ⚙️
+          <Icon name="gear" />
         </button>
       </header>
 
@@ -53,12 +55,11 @@ export function HomeScreen({
         transition={{ duration: 0.4 }}
       >
         <motion.span
-          className="text-7xl"
           aria-hidden="true"
           animate={{ rotate: [0, -8, 8, 0] }}
           transition={{ repeat: Infinity, repeatDelay: 3, duration: 0.8 }}
         >
-          🎲
+          <BrandDie size={80} />
         </motion.span>
         <h1 className="flex flex-col items-center gap-1.5 text-6xl font-black leading-none tracking-tight">
           <span>BAC BO</span>
@@ -74,7 +75,7 @@ export function HomeScreen({
 
       <div className="flex w-full flex-col gap-3">
         <Button onClick={handlePlay} fullWidth data-testid="play-button">
-          🎲 1V1
+          <Icon name="dice" /> 1V1
         </Button>
         <Button
           variant="secondary"
@@ -82,7 +83,7 @@ export function HomeScreen({
           fullWidth
           data-testid="tournament-button"
         >
-          🏆 TORNEIO
+          <Icon name="trophy" /> TORNEIO
         </Button>
         <div className="grid grid-cols-2 gap-3">
           <Button
@@ -91,10 +92,10 @@ export function HomeScreen({
             onClick={onOpenHistory}
             data-testid="history-button"
           >
-            📜 Histórico
+            <Icon name="scroll" /> Histórico
           </Button>
           <Button variant="secondary" size="md" onClick={onOpenTutorial}>
-            ❓ Como jogar
+            <Icon name="help" /> Como jogar
           </Button>
         </div>
       </div>

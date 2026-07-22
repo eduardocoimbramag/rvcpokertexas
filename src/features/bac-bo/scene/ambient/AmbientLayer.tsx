@@ -20,6 +20,12 @@ const PARTICLES: readonly { x: string; dur: string; delay: string; size: string 
  * Camada 0 — ambiente global (docs/scenario.md §6.4).
  * Gradiente + vinheta em CSS puro cobrindo a viewport inteira, atrás da
  * casca do app. Partículas de poeira só em qualidade alta.
+ *
+ * O salão é desenhado numa COLUNA central (`__stage`) da largura da
+ * casca — assim a web recebe o mesmo enquadramento do celular em vez do
+ * zoom que o `cover` fazia numa viewport larga. O que sobra ao redor é
+ * preenchido pela mesma foto desfocada (`__wash`), que no celular nem
+ * chega a existir (a coluna já é a tela inteira).
  */
 export function AmbientLayer() {
   const scenery = useGameStore((state) => state.settings.scenery);
@@ -41,22 +47,31 @@ export function AmbientLayer() {
       className={`scene-ambient ${atTable ? 'scene-ambient--game' : ''}`}
       aria-hidden="true"
       data-testid="scene-ambient"
+      // Espelha a qualidade no DOM para o CSS poder baratear o que é
+      // caro (hoje, o desfoque de tela cheia da extensão de ambiente).
+      data-quality={quality}
     >
-      {quality === 'high' &&
-        PARTICLES.map((particle, index) => (
-          <span
-            key={index}
-            className="scene-particle"
-            style={
-              {
-                '--x': particle.x,
-                '--dur': particle.dur,
-                '--delay': particle.delay,
-                '--size': particle.size,
-              } as CSSProperties
-            }
-          />
-        ))}
+      <span className="scene-ambient__wash" />
+      <span className="scene-ambient__stage" data-testid="scene-ambient-stage" />
+
+      {quality === 'high' && (
+        <span className="scene-ambient__dust">
+          {PARTICLES.map((particle, index) => (
+            <span
+              key={index}
+              className="scene-particle"
+              style={
+                {
+                  '--x': particle.x,
+                  '--dur': particle.dur,
+                  '--delay': particle.delay,
+                  '--size': particle.size,
+                } as CSSProperties
+              }
+            />
+          ))}
+        </span>
+      )}
     </div>
   );
 }

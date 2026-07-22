@@ -1,3 +1,4 @@
+import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
 import { formatCredits } from '@/shared/lib/format';
 
@@ -79,7 +80,9 @@ export function TournamentSettingsSheet({ open, onClose }: TournamentSettingsShe
         </div>
 
         <div className="tournament-prize">
-          <span>🏆 Campeão leva tudo</span>
+          <span className="flex items-center gap-2">
+            <Icon name="trophy" /> Campeão leva tudo
+          </span>
           <span className="tournament-prize__value" data-testid="settings-pot">
             {formatCredits(pot)}
           </span>

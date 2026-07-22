@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 import type { DieValue } from '../engine/types';
+import { audioManager } from '../services/AudioManager';
 import { Die3D } from './Die3D';
 
 export interface DiceShakerProps {
@@ -76,9 +77,21 @@ export function DiceShaker({
   const [stopped, setStopped] = useState(false);
   useEffect(() => {
     if (!revealed) return;
-    const timer = setTimeout(() => setStopped(true), delayMs);
+    const timer = setTimeout(() => {
+      setStopped(true);
+      // Cada copo anuncia a PRÓPRIA parada. Antes o som saía uma única
+      // vez, disparado pela store ao entrar na fase de revelação — ou
+      // seja, só o primeiro dado soava e os outros três assentavam em
+      // silêncio. Aqui o áudio nasce junto do anel de brilho, no mesmo
+      // instante em que o dado tomba, e a coreografia inteira fica com
+      // o mesmo beat: quatro paradas, quatro sinais.
+      // Com movimento reduzido não há escalonamento — os quatro param
+      // juntos, então só o copo que abre a sequência fala, para não
+      // empilhar quatro sons no mesmo milissegundo.
+      if (!reducedMotion || settleDelayMs === 0) audioManager.playSfx('reveal');
+    }, delayMs);
     return () => clearTimeout(timer);
-  }, [revealed, delayMs]);
+  }, [revealed, delayMs, reducedMotion, settleDelayMs]);
 
   const settled = forceSettled || (revealed && stopped);
   const spinning = (rolling || revealed) && !settled;

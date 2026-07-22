@@ -2,6 +2,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { useEffect, useId, useRef } from 'react';
 
+import { Icon } from './Icon';
+
 export interface SheetProps {
   open: boolean;
   title: string;
@@ -61,7 +63,7 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
                 aria-label="Fechar"
                 className="grid h-11 w-11 place-items-center rounded-full bg-arena-700 text-lavender active:brightness-125"
               >
-                ✕
+                <Icon name="close" />
               </button>
             </div>
             {children}

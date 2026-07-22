@@ -1,7 +1,10 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useId, useRef } from 'react';
 
+import { Icon } from '@/shared/components/Icon';
+
 import type { Opponent } from '../engine/types';
+import { Monogram } from './AvatarBadge';
 import type { Achievement } from './opponentProfile';
 import { RARITY_RING, buildOpponentProfile } from './opponentProfile';
 
@@ -76,7 +79,7 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
               data-testid="profile-close"
               className="profile-close"
             >
-              ✕
+              <Icon name="close" size={16} />
             </button>
 
             {/* Margens de segurança padronizadas:
@@ -93,7 +96,7 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
                   avatar (o avatar é o item mais largo e ancora a coluna). */}
               <div className="flex min-w-0 flex-col items-center gap-3 text-center">
                 <span className="profile-avatar" aria-hidden="true">
-                  {opponent.avatar}
+                  <Monogram name={opponent.name} className="text-6xl" />
                 </span>
 
                 <div className="flex min-w-0 flex-col items-center gap-0.5">
@@ -119,7 +122,7 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
                     data-testid="profile-add-friend"
                   >
                     <span className="profile-action__glyph" aria-hidden="true">
-                      👤
+                      <Icon name="user" size={19} strokeWidth={2} />
                     </span>
                     <span className="profile-action__plus" aria-hidden="true">
                       +
@@ -132,7 +135,7 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
                     data-testid="profile-report"
                   >
                     <span className="profile-action__flag" aria-hidden="true">
-                      🏳️
+                      <Icon name="flag" size={19} strokeWidth={2} />
                     </span>
                   </button>
                 </div>
@@ -168,7 +171,7 @@ function BadgeChip({ achievement }: { achievement: Achievement }) {
       title={`${achievement.name} — ${achievement.description}`}
       aria-hidden="true"
     >
-      {achievement.icon}
+      <Icon name={achievement.icon} size={30} className="text-gold" />
     </span>
   );
 }

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 
 import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 
 import { useGameStore } from '../store/gameStore';
 
@@ -20,7 +21,8 @@ export function MatchmakingOverlay() {
             transition={{ repeat: Infinity, duration: 1.6, delay: ring * 0.5, ease: 'easeOut' }}
           />
         ))}
-        <span className="text-5xl">🔎</span>
+        {/* Lupa em terracota gravada, no tom dos anéis do radar. */}
+        <Icon name="search" size={52} className="text-[#8a5a28]" />
       </div>
 
       {/* Tinta escura gravada: o conteúdo assenta sobre o couro claro. */}

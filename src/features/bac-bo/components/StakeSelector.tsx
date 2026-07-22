@@ -1,10 +1,12 @@
 import { motion } from 'framer-motion';
 
 import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
 import { STAKE_PRESETS, isBroke, validateStake } from '../engine/credits';
 import { useGameStore } from '../store/gameStore';
+import { PhaseTitle } from './PhaseTitle';
 
 /**
  * Seleção de stake em fichas grandes, pensada para toque.
@@ -25,11 +27,7 @@ export function StakeSelector() {
       {/* Título + fichas centralizados verticalmente no couro livre acima
           do botão (não colados no trilho). */}
       <div className="flex flex-1 flex-col justify-center gap-7">
-        {/* Mesma tinta escura da fonte do botão primário (#201608),
-            gravada no couro. */}
-        <h2 className="text-engraved text-center text-2xl font-extrabold text-[#201608]">
-          Escolha sua aposta
-        </h2>
+        <PhaseTitle>Escolha sua aposta</PhaseTitle>
 
         {/* Mesmos limites horizontais do botão (min(100%, 80vw), 24rem):
             as fichas alinham com a margem de segurança do CTA. Gap menor
@@ -79,7 +77,7 @@ export function StakeSelector() {
             Seus créditos acabaram!
           </p>
           <Button onClick={refillCredits} size="md" fullWidth data-testid="refill-button">
-            🪙 RECARREGAR CRÉDITOS
+            <Icon name="chip" /> RECARREGAR CRÉDITOS
           </Button>
         </div>
       ) : (
@@ -91,7 +89,7 @@ export function StakeSelector() {
             fullWidth
             data-testid="search-button"
           >
-            ⚔️ BUSCAR OPONENTE
+            <Icon name="swords" /> BUSCAR OPONENTE
           </Button>
         </div>
       )}

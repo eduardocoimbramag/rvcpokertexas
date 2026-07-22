@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 
+import { AvatarBadge } from '../../components/AvatarBadge';
 import type { TournamentPlayer } from '../types';
 
 export interface AdvanceOverlayProps {
@@ -49,12 +50,16 @@ export function AdvanceOverlay({ you, opponent, phaseLabel }: AdvanceOverlayProp
           transition={{ delay: 1.05, type: 'spring', stiffness: 300, damping: 20 }}
         >
           <div className="advance-cell__seat advance-cell__seat--you">
-            <span aria-hidden="true">{you.avatar}</span>
+            <AvatarBadge name={you.name} you className="text-[0.8rem]" />
             <span className="advance-cell__name">{you.name}</span>
           </div>
           <div className="advance-cell__vs">VS</div>
           <div className="advance-cell__seat">
-            <span aria-hidden="true">{opponent?.avatar ?? '·'}</span>
+            {opponent ? (
+              <AvatarBadge name={opponent.name} className="text-[0.8rem]" />
+            ) : (
+              <span aria-hidden="true">·</span>
+            )}
             <span className="advance-cell__name">{opponent?.name ?? 'A definir'}</span>
           </div>
         </motion.div>
@@ -83,7 +88,7 @@ export function AdvanceOverlay({ you, opponent, phaseLabel }: AdvanceOverlayProp
         >
           <span className="advance-token__streak" aria-hidden="true" />
           <span className="advance-token__avatar" aria-hidden="true">
-            {you.avatar}
+            <AvatarBadge name={you.name} you className="text-[0.85rem]" />
           </span>
           <span className="advance-token__name">{you.name}</span>
         </motion.div>

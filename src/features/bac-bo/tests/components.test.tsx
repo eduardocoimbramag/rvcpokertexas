@@ -8,6 +8,7 @@ import { ConfirmPanel } from '../components/ConfirmPanel';
 import { DiceArena } from '../components/DiceArena';
 import { Die3D } from '../components/Die3D';
 import { HistorySheet } from '../components/HistorySheet';
+import { ResultBanner } from '../components/ResultBanner';
 import { StakeSelector } from '../components/StakeSelector';
 import type { HistoryEntry, Match, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
@@ -66,7 +67,7 @@ describe('ConfirmPanel — perfil do oponente', () => {
   const match: Match = {
     id: 'm1',
     stake: 25,
-    opponent: { id: 'o1', name: 'Luna', avatar: '🦊', rating: 1420 },
+    opponent: { id: 'o1', name: 'Luna', avatar: 'L', rating: 1420 },
     createdAt: 1700000000000,
   };
 
@@ -123,7 +124,7 @@ describe('DiceArena — totais sob as colunas', () => {
   const match = {
     id: 'm1',
     stake: 50,
-    opponent: { id: 'o1', name: 'Luna', avatar: '🦊', rating: 1200 },
+    opponent: { id: 'o1', name: 'Luna', avatar: 'L', rating: 1200 },
     createdAt: 1700000000000,
   };
 
@@ -170,6 +171,22 @@ describe('Die3D', () => {
   it('anuncia "rolando" enquanto gira', () => {
     render(<Die3D value={null} side="opponent" rolling label="Dado 1 do oponente" />);
     expect(screen.getByRole('img', { name: 'Dado 1 do oponente: rolando' })).toBeInTheDocument();
+  });
+});
+
+describe('ResultBanner', () => {
+  it('mostra o veredito e solta a chuva de confetes na vitória', () => {
+    render(<ResultBanner result={sampleResult} />);
+    expect(screen.getByTestId('result-title')).toHaveTextContent('VITÓRIA!');
+    expect(screen.getByTestId('confetti')).toBeInTheDocument();
+  });
+
+  it('não solta confetes na derrota', () => {
+    render(
+      <ResultBanner result={{ ...sampleResult, outcome: 'lose', payout: 0, netChange: -50 }} />,
+    );
+    expect(screen.getByTestId('result-title')).toHaveTextContent('DERROTA');
+    expect(screen.queryByTestId('confetti')).not.toBeInTheDocument();
   });
 });
 
