@@ -54,7 +54,32 @@ export function createBracket(players: readonly TournamentPlayer[], size: Tourna
     round += 1;
   }
 
-  return { size, rounds };
+  // Disputa do 3º lugar: nasce vazia e recebe os perdedores da semi.
+  const thirdPlace: BracketMatch = {
+    id: createId(),
+    round: rounds.length - 1,
+    slot: 1,
+    a: null,
+    b: null,
+    scoreA: null,
+    scoreB: null,
+    winnerId: null,
+    played: false,
+  };
+
+  return { size, rounds, thirdPlace };
+}
+
+/** Índice da rodada da semifinal (a que precede a final). */
+function semifinalIndex(bracket: Bracket): number {
+  return bracket.rounds.length - 2;
+}
+
+/** Todas as partidas do torneio, inclusive a do 3º lugar. */
+function allMatches(bracket: Bracket): BracketMatch[] {
+  return bracket.thirdPlace
+    ? [...bracket.rounds.flat(), bracket.thirdPlace]
+    : bracket.rounds.flat();
 }
 
 /** Vencedor de uma partida (ou null se não decidida). */
@@ -85,14 +110,14 @@ export function recordMatchResult(
   scoreA: number,
   scoreB: number,
 ): Bracket {
-  const rounds = bracket.rounds.map((round) =>
-    round.map((m) => {
-      if (m.id !== matchId || !m.a || !m.b) return m;
-      const winnerId = scoreB > scoreA ? m.b.id : m.a.id;
-      return { ...m, scoreA, scoreB, winnerId, played: true };
-    }),
-  );
-  return propagateWinners({ ...bracket, rounds });
+  const decide = (m: BracketMatch): BracketMatch => {
+    if (m.id !== matchId || !m.a || !m.b) return m;
+    const winnerId = scoreB > scoreA ? m.b.id : m.a.id;
+    return { ...m, scoreA, scoreB, winnerId, played: true };
+  };
+  const rounds = bracket.rounds.map((round) => round.map(decide));
+  const thirdPlace = bracket.thirdPlace ? decide(bracket.thirdPlace) : null;
+  return propagateWinners({ ...bracket, rounds, thirdPlace });
 }
 
 /**
@@ -115,7 +140,36 @@ export function propagateWinners(bracket: Bracket): Bracket {
     });
   }
 
-  return { ...bracket, rounds };
+  // A semi despacha os vencedores para a final e os PERDEDORES para a
+  // disputa do 3º lugar — a única partida do torneio que se preenche
+  // por derrota.
+  let thirdPlace = bracket.thirdPlace ? { ...bracket.thirdPlace } : null;
+  const semi = rounds[rounds.length - 2];
+  if (thirdPlace && semi && isRoundComplete(semi) && semi.length === 2) {
+    const losers = semi.map((m) => [m.a, m.b].find((p) => p && p.id !== m.winnerId) ?? null);
+    thirdPlace = { ...thirdPlace, a: losers[0] ?? null, b: losers[1] ?? null };
+  }
+
+  return { ...bracket, rounds, thirdPlace };
+}
+
+/**
+ * Partidas em jogo AGORA. Entre a semifinal e a final entra a disputa do
+ * 3º lugar: ela é resolvida antes, para o torneio terminar no título e
+ * não numa partida sobrando depois da coroação.
+ */
+export function currentMatches(bracket: Bracket): BracketMatch[] {
+  const index = activeRoundIndex(bracket);
+  const round = bracket.rounds[index] ?? [];
+  const third = bracket.thirdPlace;
+  const atFinal = index === bracket.rounds.length - 1;
+  if (atFinal && third && third.a && third.b && !third.played) return [third];
+  return round;
+}
+
+/** Verdadeiro quando a partida é a disputa do 3º lugar. */
+export function isThirdPlaceMatch(bracket: Bracket, matchId: string): boolean {
+  return bracket.thirdPlace?.id === matchId;
 }
 
 /** Campeão do torneio, se a final já foi decidida. */
@@ -124,25 +178,60 @@ export function tournamentChampion(bracket: Bracket): TournamentPlayer | null {
   return final ? matchWinner(final) : null;
 }
 
-/** A partida do jogador na rodada atual que ainda não foi jogada. */
+/** A partida do jogador em jogo agora que ainda não foi jogada. */
 export function yourPendingMatch(bracket: Bracket, youId: string): BracketMatch | null {
-  const round = bracket.rounds[activeRoundIndex(bracket)] ?? [];
-  return round.find((m) => !m.played && (m.a?.id === youId || m.b?.id === youId)) ?? null;
+  return (
+    currentMatches(bracket).find((m) => !m.played && (m.a?.id === youId || m.b?.id === youId)) ??
+    null
+  );
 }
 
-/** Partidas da rodada atual que não são suas e faltam jogar (para simular). */
+/** Partidas em jogo que não são suas e faltam jogar (para simular). */
 export function otherPendingMatches(bracket: Bracket, youId: string): BracketMatch[] {
-  const round = bracket.rounds[activeRoundIndex(bracket)] ?? [];
-  return round.filter((m) => !m.played && m.a?.id !== youId && m.b?.id !== youId && m.a && m.b);
+  return currentMatches(bracket).filter(
+    (m) => !m.played && m.a?.id !== youId && m.b?.id !== youId && m.a && m.b,
+  );
 }
 
-/** Verdadeiro se o jogador já foi eliminado (perdeu uma partida jogada). */
+/**
+ * Eliminado = perdeu e não tem mais partida marcada. Perder a SEMI não
+ * elimina ninguém: os dois derrotados caem na disputa do 3º lugar, que
+ * ainda vale bronze (e prêmio).
+ */
 export function isEliminated(bracket: Bracket, youId: string): boolean {
-  for (const round of bracket.rounds) {
-    for (const m of round) {
-      const inMatch = m.a?.id === youId || m.b?.id === youId;
-      if (m.played && inMatch && m.winnerId !== youId) return true;
-    }
+  const inMatch = (m: BracketMatch): boolean => m.a?.id === youId || m.b?.id === youId;
+  const matches = allMatches(bracket);
+
+  const lost = matches.some((m) => m.played && inMatch(m) && m.winnerId !== youId);
+  if (!lost) return false;
+
+  // Ainda com partida marcada (a do 3º lugar já preenchida): segue vivo.
+  if (matches.some((m) => !m.played && inMatch(m))) return false;
+
+  // Acabou de perder a semi e a disputa do 3º ainda não foi montada:
+  // sem esta guarda, o jogador piscaria "eliminado" entre o fim da sua
+  // semifinal e o fim da outra.
+  const semi = bracket.rounds[semifinalIndex(bracket)] ?? [];
+  const lostSemi = semi.some((m) => m.played && inMatch(m) && m.winnerId !== youId);
+  if (lostSemi && bracket.thirdPlace && !bracket.thirdPlace.played) return false;
+
+  return true;
+}
+
+/**
+ * Colocação final: 1º campeão, 2º vice, 3º e 4º pela disputa do bronze.
+ * Quem cai antes da semifinal não tem colocação premiada (`null`).
+ */
+export function placementOf(bracket: Bracket, playerId: string): number | null {
+  const final = bracket.rounds[bracket.rounds.length - 1]?.[0];
+  if (final?.played) {
+    if (final.winnerId === playerId) return 1;
+    if (final.a?.id === playerId || final.b?.id === playerId) return 2;
   }
-  return false;
+  const third = bracket.thirdPlace;
+  if (third?.played) {
+    if (third.winnerId === playerId) return 3;
+    if (third.a?.id === playerId || third.b?.id === playerId) return 4;
+  }
+  return null;
 }

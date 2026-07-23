@@ -2,10 +2,9 @@ import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
 import { formatCredits } from '@/shared/lib/format';
 
-import { STAKE_PRESETS } from '../../engine/credits';
-import { useGameStore } from '../../store/gameStore';
-import { tournamentPot, useTournamentStore } from '../tournamentStore';
+import { tournamentSelectors, useTournamentStore } from '../tournamentStore';
 import type { TournamentSize } from '../types';
+import { PrizeSplit } from './PrizeSplit';
 
 export interface TournamentSettingsSheetProps {
   open: boolean;
@@ -13,20 +12,20 @@ export interface TournamentSettingsSheetProps {
 }
 
 /**
- * Configurações do torneio (só o dono): número de jogadores e a aposta
- * por jogador. O campeão leva todo o montante (stake × jogadores).
+ * Ficha da sala. A taxa de entrada e a senha vêm da criação e não se
+ * mexem mais — são o contrato com quem entrou. O que ainda se ajusta é o
+ * tamanho da mesa, e só pelo dono; para os outros, a folha é leitura.
  */
 export function TournamentSettingsSheet({ open, onClose }: TournamentSettingsSheetProps) {
   const size = useTournamentStore((s) => s.size);
-  const stake = useTournamentStore((s) => s.stake);
+  const entryFee = useTournamentStore((s) => s.entryFee);
+  const visibility = useTournamentStore((s) => s.visibility);
+  const password = useTournamentStore((s) => s.password);
   const setSize = useTournamentStore((s) => s.setSize);
-  const setStake = useTournamentStore((s) => s.setStake);
-  const balance = useGameStore((s) => s.balance);
-
-  const pot = tournamentPot(stake, size);
+  const owner = useTournamentStore(tournamentSelectors.isOwner);
 
   return (
-    <Sheet open={open} title="Configurações do torneio" onClose={onClose}>
+    <Sheet open={open} title="Detalhes da sala" onClose={onClose}>
       <div className="flex flex-col gap-5">
         <div>
           <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">Jogadores</p>
@@ -36,6 +35,7 @@ export function TournamentSettingsSheet({ open, onClose }: TournamentSettingsShe
                 key={n}
                 type="button"
                 onClick={() => setSize(n)}
+                disabled={!owner}
                 aria-pressed={size === n}
                 className={`seg__btn ${size === n ? 'seg__btn--on' : ''}`}
                 data-testid={`settings-size-${n}`}
@@ -46,46 +46,40 @@ export function TournamentSettingsSheet({ open, onClose }: TournamentSettingsShe
           </div>
         </div>
 
+        {/* Taxa: definida na criação, exibida como fato consumado. */}
         <div>
           <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">
-            Aposta por jogador
+            Taxa de entrada
           </p>
-          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Aposta">
-            {STAKE_PRESETS.map((value) => {
-              const disabled = value > balance;
-              const selected = stake === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  disabled={disabled}
-                  onClick={() => setStake(value)}
-                  data-testid={`settings-stake-${value}`}
-                  className={`stake-chip flex min-h-16 flex-col items-center justify-center gap-0.5 font-black tabular-nums ${
-                    selected ? 'stake-chip--selected' : ''
-                  }`}
-                >
-                  <span className="text-2xl leading-none">{formatCredits(value)}</span>
-                  <span
-                    className={`text-[9px] font-semibold uppercase tracking-wide ${selected ? 'text-gold-bright/80' : 'text-lavender'}`}
-                  >
-                    créditos
-                  </span>
-                </button>
-              );
-            })}
+          <div className="room-fact" data-testid="settings-fee">
+            <span className="flex items-center gap-2">
+              <Icon name="chip" /> Por jogador
+            </span>
+            <span className="room-fact__value">{formatCredits(entryFee)}</span>
           </div>
+          <p className="field__hint">
+            Definida na criação da sala. Só sai do seu saldo se você perder.
+          </p>
         </div>
 
-        <div className="tournament-prize">
-          <span className="flex items-center gap-2">
-            <Icon name="trophy" /> Campeão leva tudo
-          </span>
-          <span className="tournament-prize__value" data-testid="settings-pot">
-            {formatCredits(pot)}
-          </span>
+        {visibility === 'private' && (
+          <div>
+            <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">
+              Senha da sala
+            </p>
+            <div className="room-fact" data-testid="settings-password">
+              <span className="flex items-center gap-2">
+                <Icon name="lock" /> Entrada
+              </span>
+              <span className="room-fact__value tracking-[0.35em]">{password}</span>
+            </div>
+            <p className="field__hint">A sala aparece na lista com cadeado para quem não tem.</p>
+          </div>
+        )}
+
+        <div>
+          <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">Premiação</p>
+          <PrizeSplit fee={entryFee} size={size} data-testid="settings-pot" />
         </div>
       </div>
     </Sheet>

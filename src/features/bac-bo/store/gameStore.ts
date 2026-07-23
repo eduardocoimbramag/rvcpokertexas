@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 import { appEnv } from '@/shared/config/env';
 
-import { COUNTDOWN_START, HISTORY_LIMIT, TIMINGS } from '../animations/timings';
+import { COIN_PICK_SECONDS, COUNTDOWN_START, HISTORY_LIMIT, TIMINGS } from '../animations/timings';
 import type { GameEngine } from '../engine/GameEngine';
 import { GameEngineError } from '../engine/GameEngine';
 import { createGameEngine } from '../engine/createGameEngine';
@@ -16,7 +16,7 @@ import type {
 } from '../services/GameStorageService';
 import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageService';
 import type { DiceColorId, DiceColors } from './diceColors';
-import { DEFAULT_DICE_COLORS, assignColors, pickOpponentColor } from './diceColors';
+import { DEFAULT_DICE_COLORS, assignColors, randomDiceColor } from './diceColors';
 
 /**
  * Máquina de estados do fluxo de jogo (seção 12 da especificação).
@@ -68,11 +68,12 @@ export type CoinSide = 'cara' | 'coroa';
 /**
  * Beats do cara-ou-coroa, na ordem: `intro` apresenta o lado sorteado
  * para o jogador → `toss` (a moeda voa; o resultado já está decidido,
- * mas a UI só o revela no pouso) → `result` anuncia o vencedor →
- * `pick` (jogador escolhe a cor) OU `botPick` (oponente anuncia a sua)
- * → `picked` (respiro com a escolha aplicada) → countdown.
+ * mas a UI só o revela no pouso) → `result` mostra a face sorteada →
+ * `verdict` dá a tela inteira ao vencedor do sorteio → `pick` (jogador
+ * escolhe a cor, sob relógio) OU `botPick` (oponente anuncia a sua) →
+ * `picked` (respiro com a escolha aplicada) → countdown.
  */
-export type CoinFlipStage = 'intro' | 'toss' | 'result' | 'pick' | 'botPick' | 'picked';
+export type CoinFlipStage = 'intro' | 'toss' | 'result' | 'verdict' | 'pick' | 'botPick' | 'picked';
 
 export interface CoinFlipState {
   /** Lado que a sorte deu ao jogador antes do lançamento. */
@@ -83,6 +84,8 @@ export interface CoinFlipState {
   stage: CoinFlipStage;
   /** Cor escolhida pelo vencedor (para as placas de anúncio). */
   chosenColor: DiceColorId | null;
+  /** Segundos restantes da escolha do jogador; `null` fora de `pick`. */
+  pickSeconds: number | null;
 }
 
 /** Contagem falada da mesa, no inglês clássico de cassino. */
@@ -269,16 +272,58 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     /**
+     * Aplica a cor do jogador e fecha o sorteio. Vale para os dois
+     * caminhos — o toque no CONFIRMAR e o sorteio automático do relógio
+     * —, então a rodada segue idêntica tenha o jogador escolhido ou não.
+     */
+    const applyPlayerPick = (color: DiceColorId): void => {
+      const { coinFlip } = get();
+      if (!coinFlip) return;
+      // Só há duas cores: pegar uma entrega a outra ao adversário.
+      set({
+        diceColors: assignColors('player', color),
+        coinFlip: { ...coinFlip, stage: 'picked', chosenColor: color, pickSeconds: null },
+      });
+      audioManager.playSfx('ready');
+      vibrate(30);
+      schedule(startCountdownAfterCoin, TIMINGS.coinPickedMs);
+    };
+
+    /**
+     * Relógio da escolha (10 → 1), no mesmo padrão anti-AFK do início
+     * automático do torneio. Zerado sem decisão, a mesa sorteia a cor
+     * pelo jogador — a rodada nunca fica parada esperando quem saiu.
+     */
+    const runPickCountdown = (value: number): void => {
+      const { phase, coinFlip } = get();
+      if (phase !== 'coinflip' || coinFlip?.stage !== 'pick') return;
+      if (value <= 0) {
+        applyPlayerPick(randomDiceColor(rng));
+        return;
+      }
+      patchCoinFlip({ pickSeconds: value });
+      schedule(() => runPickCountdown(value - 1), 1000);
+    };
+
+    /**
      * Cara-ou-coroa pré-partida: sorteia o lado do jogador, lança a
      * moeda (o resultado é decidido no INÍCIO do voo — a animação
      * precisa saber em que face pousar) e dá ao vencedor a escolha da
      * cor dos dados. O jogador escolhe num painel (fase fica em `pick`
-     * até `chooseDiceColor`); o oponente simulado escolhe sozinho.
+     * até `chooseDiceColor` ou o relógio zerar); o oponente simulado
+     * escolhe sozinho.
      */
     const runCoinFlip = (): void => {
       const playerSide: CoinSide = rng() < 0.5 ? 'cara' : 'coroa';
       set({
-        coinFlip: { playerSide, result: null, winner: null, stage: 'intro', chosenColor: null },
+        coinFlip: {
+          playerSide,
+          result: null,
+          winner: null,
+          stage: 'intro',
+          chosenColor: null,
+          pickSeconds: null,
+        },
       });
 
       schedule(() => {
@@ -303,18 +348,27 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           audioManager.playSfx('coinLand');
           vibrate(40);
 
+          // O veredito toma a tela sozinho por um beat antes de a
+          // escolha entrar — o anúncio não divide espaço com os dados.
           schedule(() => {
             if (get().phase !== 'coinflip') return;
-            if (winner === 'player') {
-              // A vez do jogador: a fase espera o chooseDiceColor.
-              patchCoinFlip({ stage: 'pick' });
-              return;
-            }
-            const color = pickOpponentColor(rng);
-            set({ diceColors: assignColors('opponent', color) });
-            patchCoinFlip({ stage: 'botPick', chosenColor: color });
-            audioManager.playSfx('stake');
-            schedule(startCountdownAfterCoin, TIMINGS.coinBotPickMs);
+            patchCoinFlip({ stage: 'verdict' });
+
+            schedule(() => {
+              if (get().phase !== 'coinflip') return;
+              if (winner === 'player') {
+                // A vez do jogador: a fase espera o chooseDiceColor —
+                // ou o relógio zerar e a mesa sortear por ele.
+                patchCoinFlip({ stage: 'pick' });
+                runPickCountdown(COIN_PICK_SECONDS);
+                return;
+              }
+              const color = randomDiceColor(rng);
+              set({ diceColors: assignColors('opponent', color) });
+              patchCoinFlip({ stage: 'botPick', chosenColor: color });
+              audioManager.playSfx('stake');
+              schedule(startCountdownAfterCoin, TIMINGS.coinBotPickMs);
+            }, TIMINGS.coinVerdictMs);
           }, TIMINGS.coinResultMs);
         }, TIMINGS.coinTossMs);
       }, TIMINGS.coinIntroMs);
@@ -491,14 +545,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       chooseDiceColor: (color) => {
         const { phase, coinFlip } = get();
         if (phase !== 'coinflip' || coinFlip?.stage !== 'pick') return;
-        // Só há duas cores: pegar uma entrega a outra ao adversário.
-        set({
-          diceColors: assignColors('player', color),
-          coinFlip: { ...coinFlip, stage: 'picked', chosenColor: color },
-        });
-        audioManager.playSfx('ready');
-        vibrate(30);
-        schedule(startCountdownAfterCoin, TIMINGS.coinPickedMs);
+        applyPlayerPick(color);
       },
 
       playAgain: () => {

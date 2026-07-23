@@ -134,9 +134,10 @@ describe('CoinFlipOverlay — cara-ou-coroa', () => {
     result: 'cara',
     winner: 'player',
     chosenColor: null,
+    pickSeconds: null,
   } as const;
 
-  it('anuncia o veredito quando a moeda pousa', () => {
+  it('anuncia a face sorteada quando a moeda pousa', () => {
     useGameStore.setState({
       phase: 'coinflip',
       match,
@@ -146,7 +147,33 @@ describe('CoinFlipOverlay — cara-ou-coroa', () => {
 
     expect(screen.getByTestId('coin-side')).toHaveTextContent('Seu lado · CARA');
     expect(screen.getByTestId('coin-verdict')).toHaveTextContent('Deu CARA!');
-    expect(screen.getByTestId('coin-verdict')).toHaveTextContent('Você venceu o sorteio');
+    // O veredito do sorteio tem cena própria: aqui ainda não aparece.
+    expect(screen.queryByTestId('coin-winner')).not.toBeInTheDocument();
+  });
+
+  it('o veredito do sorteio ocupa a tela sozinho antes da escolha', () => {
+    useGameStore.setState({
+      phase: 'coinflip',
+      match,
+      coinFlip: { ...baseCoin, stage: 'verdict' },
+    });
+    render(<CoinFlipOverlay />);
+
+    expect(screen.getByTestId('coin-winner')).toHaveTextContent('Você venceu o sorteio');
+    // Nada mais em cena: nem a moeda, nem os cartões de cor.
+    expect(screen.queryByTestId('coin-side')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('dice-color-picker')).not.toBeInTheDocument();
+  });
+
+  it('perdendo o sorteio, o veredito nomeia o oponente', () => {
+    useGameStore.setState({
+      phase: 'coinflip',
+      match,
+      coinFlip: { ...baseCoin, result: 'coroa', winner: 'opponent', stage: 'verdict' },
+    });
+    render(<CoinFlipOverlay />);
+
+    expect(screen.getByTestId('coin-winner')).toHaveTextContent('Luna venceu o sorteio');
   });
 
   it('vencedor só confirma depois de escolher, e a escolha troca os lados', async () => {
@@ -154,13 +181,16 @@ describe('CoinFlipOverlay — cara-ou-coroa', () => {
     useGameStore.setState({
       phase: 'coinflip',
       match,
-      coinFlip: { ...baseCoin, stage: 'pick' },
+      coinFlip: { ...baseCoin, stage: 'pick', pickSeconds: 10 },
     });
     render(<CoinFlipOverlay />);
 
     // A cena do lançamento saiu; ficaram os dois dados e o confirmar.
     expect(screen.queryByTestId('coin-side')).not.toBeInTheDocument();
     expect(screen.getByTestId('coin-headline')).toHaveTextContent('Escolha seus dados');
+    // O veredito já teve a sua cena: não se repete aqui.
+    expect(screen.queryByTestId('coin-winner')).not.toBeInTheDocument();
+    expect(screen.getByTestId('pick-countdown')).toHaveTextContent('Escolha automática em 10s');
     const confirm = screen.getByTestId('confirm-dice-color');
     expect(confirm).toBeDisabled();
 
@@ -191,9 +221,7 @@ describe('CoinFlipOverlay — cara-ou-coroa', () => {
     });
     render(<CoinFlipOverlay />);
 
-    expect(screen.getByTestId('coin-headline')).toHaveTextContent(
-      'Luna escolheu os dados Azuis',
-    );
+    expect(screen.getByTestId('coin-headline')).toHaveTextContent('Luna escolheu os dados Azuis');
     expect(screen.queryByTestId('confirm-dice-color')).not.toBeInTheDocument();
   });
 });

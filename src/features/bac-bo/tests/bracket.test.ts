@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   activeRoundIndex,
   createBracket,
+  currentMatches,
   isEliminated,
   otherPendingMatches,
+  placementOf,
   recordMatchResult,
   tournamentChampion,
   yourPendingMatch,
@@ -72,10 +74,50 @@ describe('perspectiva do jogador', () => {
     expect(otherPendingMatches(b, 'p0')).toHaveLength(3);
   });
 
-  it('marca eliminação quando o jogador perde', () => {
+  it('perder a semi não elimina: cai na disputa do 3º lugar', () => {
     let b = createBracket(players(4), 4);
     b = recordMatchResult(b, match(b.rounds, 0, 0).id, 5, 9); // p0 (você) perde
+    // A outra semi ainda não terminou: ninguém é eliminado no vácuo.
+    expect(isEliminated(b, 'p0')).toBe(false);
+
+    b = recordMatchResult(b, match(b.rounds, 0, 1).id, 10, 4); // p2 vence p3
+    // Os dois perdedores da semi se enfrentam pelo bronze.
+    expect(b.thirdPlace?.a?.id).toBe('p0');
+    expect(b.thirdPlace?.b?.id).toBe('p3');
+    expect(isEliminated(b, 'p0')).toBe(false);
+    expect(yourPendingMatch(b, 'p0')?.id).toBe(b.thirdPlace?.id);
+
+    // A disputa do 3º corre ANTES da final.
+    expect(currentMatches(b).map((m) => m.id)).toEqual([b.thirdPlace?.id]);
+  });
+
+  it('perder a disputa do 3º lugar elimina e define 3º e 4º', () => {
+    let b = createBracket(players(4), 4);
+    b = recordMatchResult(b, match(b.rounds, 0, 0).id, 5, 9); // p1 vence p0
+    b = recordMatchResult(b, match(b.rounds, 0, 1).id, 10, 4); // p2 vence p3
+    const third = b.thirdPlace;
+    if (!third) throw new Error('sem disputa de 3º lugar');
+
+    b = recordMatchResult(b, third.id, 4, 11); // p3 leva o bronze
     expect(isEliminated(b, 'p0')).toBe(true);
     expect(yourPendingMatch(b, 'p0')).toBeNull();
+    expect(placementOf(b, 'p3')).toBe(3);
+    expect(placementOf(b, 'p0')).toBe(4);
+
+    // Com o bronze decidido, a final volta a ser a partida em jogo.
+    expect(currentMatches(b).map((m) => m.id)).toEqual([match(b.rounds, 1, 0).id]);
+  });
+
+  it('a final define campeão e vice', () => {
+    let b = createBracket(players(4), 4);
+    b = recordMatchResult(b, match(b.rounds, 0, 0).id, 9, 5); // p0 vence
+    b = recordMatchResult(b, match(b.rounds, 0, 1).id, 10, 4); // p2 vence
+    b = recordMatchResult(b, must(b.thirdPlace).id, 9, 5);
+    b = recordMatchResult(b, match(b.rounds, 1, 0).id, 12, 8); // p0 campeão
+
+    expect(placementOf(b, 'p0')).toBe(1);
+    expect(placementOf(b, 'p2')).toBe(2);
+    // Quem caiu antes da semi não pontua — em 4 jogadores, ninguém.
+    expect(placementOf(b, 'inexistente')).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import type { Rng } from '@/shared/lib/random';
 import { randomInt } from '@/shared/lib/random';
 
+import { afterHouseEdge } from './credits';
 import type { DicePair, DieValue, RoundOutcome } from './types';
 
 /**
@@ -9,12 +10,19 @@ import type { DicePair, DieValue, RoundOutcome } from './types';
  * sobre resultados — a UI nunca recalcula nada disto.
  *
  * Regra da mesa: 4 dados (2 azuis do jogador, 2 vermelhos do oponente).
- * A maior soma vence. Vitória paga 1:1 (payout 2× o stake); empate
- * devolve o stake; derrota perde o stake.
+ * A maior soma vence. A vitória leva 90% do que o perdedor pôs na mesa
+ * (os 10% restantes são a comissão da casa); o empate devolve o stake;
+ * a derrota perde o stake inteiro.
  */
 
-/** Multiplicador de payout sobre o stake em caso de vitória (1:1). */
-export const WIN_PAYOUT_MULTIPLIER = 2;
+/**
+ * Ganho líquido de uma vitória: 90% do stake do adversário. O próprio
+ * stake volta inteiro — quem vence não paga comissão sobre o que já era
+ * seu, só sobre o que ganhou.
+ */
+export function winProfit(stake: number): number {
+  return afterHouseEdge(stake);
+}
 
 /** Rola um único dado honesto de 6 faces. */
 export function rollDie(rng: Rng): DieValue {
@@ -42,7 +50,7 @@ export function resolveOutcome(playerTotal: number, opponentTotal: number): Roun
 export function payoutFor(outcome: RoundOutcome, stake: number): number {
   switch (outcome) {
     case 'win':
-      return stake * WIN_PAYOUT_MULTIPLIER;
+      return stake + winProfit(stake);
     case 'tie':
       return stake;
     case 'lose':

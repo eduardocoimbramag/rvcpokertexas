@@ -33,8 +33,14 @@ export const TIMINGS = {
   coinIntroMs: 1600,
   /** Voo completo da moeda: subida + giros + queda + quique. */
   coinTossMs: 2600,
-  /** Veredito do sorteio na tela antes da escolha de cor. */
+  /** Face sorteada ("Deu CARA!") na tela antes do veredito. */
   coinResultMs: 1700,
+  /**
+   * Veredito do sorteio sozinho em tela ("Você venceu o sorteio"): um
+   * beat só dele, antes de os cartões de cor entrarem — por isso a cena
+   * da escolha não repete a frase.
+   */
+  coinVerdictMs: 1800,
   /** Oponente vencedor "pensando" e anunciando a cor escolhida. */
   coinBotPickMs: 2200,
   /** Respiro após a escolha (de qualquer lado) antes do countdown. */
@@ -59,6 +65,14 @@ export const TIMINGS = {
 
 /** Valor inicial do countdown falado (5 → 1) antes da rolagem. */
 export const COUNTDOWN_START = 5;
+
+/**
+ * Janela do vencedor do sorteio para escolher a cor dos dados, em
+ * segundos — a mesma dos outros relógios anti-AFK da casa (início
+ * automático da partida e retorno ao chaveamento). Zerada, a mesa
+ * sorteia a cor por ele.
+ */
+export const COIN_PICK_SECONDS = 10;
 
 /** Máximo de rodadas mantidas no histórico persistido. */
 export const HISTORY_LIMIT = 50;

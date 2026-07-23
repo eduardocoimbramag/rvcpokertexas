@@ -2,7 +2,9 @@ import { create } from 'zustand';
 
 import { createId } from '@/shared/lib/ids';
 
-import { MIN_STAKE } from '../engine/credits';
+import { TIMINGS } from '../animations/timings';
+import { MIN_STAKE, afterHouseEdge } from '../engine/credits';
+import { audioManager } from '../services/AudioManager';
 import { resolveOutcome, sumDicePair } from '../engine/rules';
 import type { Match, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
@@ -10,7 +12,9 @@ import {
   activeRoundIndex,
   createBracket,
   isEliminated,
+  isThirdPlaceMatch,
   otherPendingMatches,
+  placementOf,
   recordMatchResult,
   tournamentChampion,
   yourPendingMatch,
@@ -19,7 +23,7 @@ import {
   botChatLine,
   chatMessage,
   makeBots,
-  makePublicLobbies,
+  makeLobbyListings,
   rollPlayerMatch,
   shuffle,
   simulateBotMatch,
@@ -29,8 +33,8 @@ import {
 import type {
   Bracket,
   ChatMessage,
+  LobbyListing,
   LobbyVisibility,
-  PublicLobby,
   TournamentPlayer,
   TournamentSize,
 } from './types';
@@ -49,6 +53,19 @@ export interface ActiveMatch {
   match: Match;
   result: RoundResult;
   youWin: boolean;
+  /** É a disputa do 3º lugar (muda o que está em jogo na tela). */
+  thirdPlace: boolean;
+}
+
+/** Características escolhidas na criação da sala (todas de uma vez). */
+export interface CreateLobbyOptions {
+  name: string;
+  visibility: LobbyVisibility;
+  size: TournamentSize;
+  /** Taxa de entrada por jogador — fixa a partir daqui. */
+  fee: number;
+  /** Senha de 4 dígitos; ignorada nas salas públicas. */
+  password: string;
 }
 
 export interface TournamentState {
@@ -56,11 +73,25 @@ export interface TournamentState {
   visibility: LobbyVisibility;
   lobbyName: string;
   lobbyCode: string;
+  /** Senha da sala privada (vazia nas públicas). */
+  password: string;
   size: TournamentSize;
-  /** Buy-in por jogador; o campeão leva `stake × size`. */
-  stake: number;
+  /**
+   * Taxa de entrada por jogador, definida na criação da sala. NÃO é
+   * debitada ao entrar nem ao iniciar: só quem perde paga (ver
+   * `chargeEntryFee`) — torneio que não acontece não custa nada.
+   */
+  entryFee: number;
+  /** A taxa desta sala já foi cobrada do jogador (uma vez só). */
+  feePaid: boolean;
   ownerId: string;
   members: TournamentPlayer[];
+  /**
+   * Quem já confirmou presença nesta sala. O DONO entra aqui de saída:
+   * quem abre a mesa não precisa confirmar que está nela — ele é quem
+   * dá o start. Os demais confirmam (e podem cancelar) no botão.
+   */
+  readyIds: string[];
   /**
    * Nomes expulsos pelo dono NESTA sala: quem sai pela porta não volta
    * pela janela. Zerado só ao abrir outra sala (criar ou entrar), que é
@@ -68,7 +99,8 @@ export interface TournamentState {
    */
   bannedNames: string[];
   chat: ChatMessage[];
-  publicLobbies: PublicLobby[];
+  /** Salas anunciadas no navegador — públicas e privadas (com cadeado). */
+  lobbies: LobbyListing[];
   bracket: Bracket | null;
   activeMatch: ActiveMatch | null;
   /** Bots preenchendo/simulando — trava botões durante a animação. */
@@ -77,10 +109,17 @@ export interface TournamentState {
   prizePaid: boolean;
 
   openBrowse: () => void;
-  createLobby: (visibility: LobbyVisibility) => void;
-  joinLobby: (lobby: PublicLobby) => void;
+  createLobby: (options: CreateLobbyOptions) => void;
+  /**
+   * Entra numa sala anunciada. Privada exige a senha certa — devolve
+   * `false` (e não entra) quando o código não confere.
+   */
+  joinLobby: (lobby: LobbyListing, password?: string) => boolean;
   setSize: (size: TournamentSize) => void;
-  setStake: (stake: number) => void;
+  /** Confirma a sua presença no lobby (só para quem não é o dono). */
+  confirmPresence: () => void;
+  /** Desfaz a sua confirmação enquanto o torneio não começou. */
+  cancelPresence: () => void;
   kickMember: (id: string) => void;
   sendChat: (text: string) => void;
   startTournament: () => void;
@@ -90,9 +129,26 @@ export interface TournamentState {
   leaveTournament: () => void;
 }
 
-/** Prêmio total do torneio (o campeão leva tudo). */
-export function tournamentPot(stake: number, size: TournamentSize): number {
-  return stake * size;
+/**
+ * Bolo do torneio: as taxas de quem PERDEU. A taxa do campeão não entra
+ * na conta porque ela nunca chega a ser cobrada dele — como no 1v1, quem
+ * vence não arrisca o próprio dinheiro, leva o do adversário.
+ */
+export function tournamentPot(fee: number, size: TournamentSize): number {
+  return fee * (size - 1);
+}
+
+/** Fatia do bolo (já sem a comissão) de cada lugar do pódio. */
+export const PRIZE_SHARES = [0.5, 0.3, 0.2] as const;
+
+/**
+ * Prêmio de uma colocação: 50% / 30% / 20% do bolo, descontados os 10%
+ * da casa. Do 4º lugar em diante não há prêmio — só a taxa paga.
+ */
+export function prizeFor(place: number, fee: number, size: TournamentSize): number {
+  const share = PRIZE_SHARES[place - 1];
+  if (!share) return 0;
+  return Math.floor(afterHouseEdge(tournamentPot(fee, size)) * share);
 }
 
 const YOU_ID = 'you';
@@ -119,6 +175,44 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     timers.clear();
   };
 
+  /**
+   * Registra a confirmação de um participante. Quando o último assento
+   * confirma com a mesa cheia, a sala anuncia o pacto fechado — é a
+   * deixa do dono para iniciar (só ele pode).
+   */
+  const markReady = (id: string): void => {
+    const s = get();
+    if (s.stage !== 'lobby' || s.readyIds.includes(id)) return;
+    const readyIds = [...s.readyIds, id];
+    set({ readyIds });
+    const everyone = s.members.length === s.size && s.members.every((m) => readyIds.includes(m.id));
+    if (everyone) {
+      set({
+        chat: [
+          ...get().chat,
+          systemMessage('Todos confirmaram presença. O anfitrião pode iniciar o torneio.'),
+        ],
+      });
+      audioManager.playSfx('locked');
+    }
+  };
+
+  /**
+   * O participante simulado confirma sozinho depois de um tempo natural
+   * — a mesma janela do oponente do 1v1, para o lobby acender assento a
+   * assento em vez de tudo de uma vez.
+   */
+  const scheduleBotReady = (id: string): void => {
+    const { opponentConfirmMinMs, opponentConfirmMaxMs } = TIMINGS;
+    const delay =
+      opponentConfirmMinMs + Math.random() * (opponentConfirmMaxMs - opponentConfirmMinMs);
+    schedule(() => {
+      // Quem saiu (ou foi expulso) no meio da espera não confirma nada.
+      if (!get().members.some((m) => m.id === id)) return;
+      markReady(id);
+    }, delay);
+  };
+
   /** Preenche assentos vazios com bots, um a um, enquanto no lobby. */
   const scheduleFill = (): void => {
     const s = get();
@@ -143,8 +237,22 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         members: [...cur.members, bot],
         chat: [...cur.chat, systemMessage(`${bot.name} entrou na sala`)],
       });
+      scheduleBotReady(bot.id);
       scheduleFill();
     }, 700 + Math.random() * 1100);
+  };
+
+  /**
+   * Cobra a taxa de entrada do jogador — o ÚNICO ponto do torneio que
+   * mexe no saldo para baixo, e só na derrota que o elimina. Antes disso
+   * nada é debitado: sala montada e desfeita, ou torneio que nunca
+   * começou, não custam crédito nenhum.
+   */
+  const chargeEntryFee = (): void => {
+    const s = get();
+    if (s.feePaid || s.entryFee <= 0) return;
+    set({ feePaid: true });
+    useGameStore.getState().applyBalanceDelta(-s.entryFee);
   };
 
   /**
@@ -160,9 +268,13 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       if (!b) return;
       const champ = tournamentChampion(b);
       if (champ) {
-        // O campeão leva todo o montante — credita ao jogador uma só vez.
-        if (champ.id === YOU_ID && !s.prizePaid) {
-          useGameStore.getState().applyBalanceDelta(tournamentPot(s.stake, s.size));
+        // Pódio pago uma única vez, pela colocação: 50/30/20 do bolo dos
+        // derrotados. A disputa do 3º lugar corre ANTES da final, então
+        // quando sai o campeão as quatro posições já estão definidas.
+        if (!s.prizePaid) {
+          const place = placementOf(b, YOU_ID);
+          const prize = place ? prizeFor(place, s.entryFee, s.size) : 0;
+          if (prize > 0) useGameStore.getState().applyBalanceDelta(prize);
           set({ prizePaid: true });
         }
         schedule(() => set({ stage: 'champion', simulating: false }), 1000);
@@ -194,13 +306,16 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     visibility: 'public',
     lobbyName: '',
     lobbyCode: '',
+    password: '',
     size: 8,
-    stake: MIN_STAKE,
+    entryFee: MIN_STAKE,
+    feePaid: false,
     ownerId: YOU_ID,
     members: [],
+    readyIds: [],
     bannedNames: [],
     chat: [],
-    publicLobbies: [],
+    lobbies: [],
     bracket: null,
     activeMatch: null,
     simulating: false,
@@ -208,23 +323,34 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
 
     openBrowse: () => {
       clearTimers();
-      set({ stage: 'browse', publicLobbies: makePublicLobbies() });
+      set({ stage: 'browse', lobbies: makeLobbyListings() });
     },
 
-    createLobby: (visibility) => {
+    createLobby: ({ name, visibility, size, fee, password }) => {
       clearTimers();
+      const trimmed = name.trim();
       const code = Math.random().toString(36).slice(2, 6).toUpperCase();
+      const isPrivate = visibility === 'private';
       set({
         stage: 'lobby',
         visibility,
-        lobbyName: visibility === 'public' ? 'Sua sala pública' : 'Sua sala privada',
+        lobbyName: trimmed || (isPrivate ? 'Sua sala privada' : 'Sua sala pública'),
         lobbyCode: code,
-        size: 8,
-        stake: MIN_STAKE,
+        password: isPrivate ? password : '',
+        size,
+        entryFee: fee,
+        feePaid: false,
         ownerId: YOU_ID,
         members: [you()],
+        readyIds: [YOU_ID], // o dono não confirma: abrir a sala já é estar nela
         bannedNames: [], // sala nova, lista de convidados do zero
-        chat: [systemMessage('Você criou a sala. Ajuste a aposta e os jogadores na engrenagem.')],
+        chat: [
+          systemMessage(
+            isPrivate
+              ? `Sala criada. Ela aparece na lista com cadeado — só entra quem tiver a senha ${password}.`
+              : 'Sala criada. Ela já aparece na lista de salas para todo mundo.',
+          ),
+        ],
         bracket: null,
         activeMatch: null,
         simulating: false,
@@ -233,7 +359,11 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       scheduleFill();
     },
 
-    joinLobby: (lobby) => {
+    joinLobby: (lobby, password = '') => {
+      // A porta da sala privada: sem o código do anfitrião não se entra,
+      // e a checagem mora aqui (não na tela) para nenhum caminho de UI
+      // conseguir pular a senha.
+      if (lobby.visibility === 'private' && password.trim() !== lobby.password) return false;
       clearTimers();
       const host: TournamentPlayer = {
         id: createId(),
@@ -246,13 +376,16 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       const others = makeBots(Math.max(0, lobby.filled - 1), [host.name]);
       set({
         stage: 'lobby',
-        visibility: 'public',
+        visibility: lobby.visibility,
         lobbyName: lobby.name,
         lobbyCode: lobby.id.slice(0, 4).toUpperCase(),
+        password: lobby.password,
         size: lobby.size,
-        stake: lobby.stake,
+        entryFee: lobby.fee,
+        feePaid: false,
         ownerId: host.id, // você não é o dono ao entrar numa sala alheia
         members: [host, ...others, you()],
+        readyIds: [host.id], // o anfitrião da sala já conta como presente
         bannedNames: [],
         chat: [systemMessage(`Você entrou em ${lobby.name}.`)],
         bracket: null,
@@ -260,7 +393,11 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         simulating: false,
         prizePaid: false,
       });
+      // Os convidados confirmam ao longo dos próximos segundos; o
+      // anfitrião não tem o que confirmar (a sala é dele).
+      for (const member of others) scheduleBotReady(member.id);
       scheduleFill();
+      return true;
     },
 
     setSize: (size) => {
@@ -273,14 +410,25 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         const bots = members.filter((m) => !m.isYou).slice(0, size - 1);
         members = youMember ? [youMember, ...bots] : bots;
       }
-      set({ size, members });
+      // Confirmação é de quem está sentado: quem saiu leva a sua junto.
+      const seated = new Set(members.map((m) => m.id));
+      set({ size, members, readyIds: s.readyIds.filter((id) => seated.has(id)) });
       scheduleFill();
     },
 
-    setStake: (stake) => {
+    confirmPresence: () => {
       const s = get();
-      if (!isOwner(s) || s.stage !== 'lobby') return;
-      set({ stake });
+      if (s.stage !== 'lobby' || isOwner(s) || s.readyIds.includes(YOU_ID)) return;
+      audioManager.playSfx('ready');
+      markReady(YOU_ID);
+    },
+
+    cancelPresence: () => {
+      const s = get();
+      // O dono não cancela o que nunca confirmou — a sala é dele.
+      if (s.stage !== 'lobby' || isOwner(s) || !s.readyIds.includes(YOU_ID)) return;
+      set({ readyIds: s.readyIds.filter((id) => id !== YOU_ID) });
+      audioManager.playSfx('tap');
     },
 
     kickMember: (id) => {
@@ -290,6 +438,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       if (!kicked) return;
       set({
         members: s.members.filter((m) => m.id !== id),
+        readyIds: s.readyIds.filter((readyId) => readyId !== id),
         // Expulsar é definitivo enquanto a sala existir: o nome entra na
         // lista de barrados e o preenchimento automático deixa de
         // considerá-lo.
@@ -317,11 +466,13 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
 
     startTournament: () => {
       const s = get();
+      // Três travas, nesta ordem: só o dono aperta o botão, a mesa
+      // precisa estar cheia e TODO mundo precisa ter confirmado.
       if (!isOwner(s) || s.members.length !== s.size) return;
-      // Buy-in: o saldo precisa cobrir a aposta; debita ao iniciar.
-      const game = useGameStore.getState();
-      if (game.balance < s.stake) return;
-      game.applyBalanceDelta(-s.stake);
+      if (!s.members.every((m) => s.readyIds.includes(m.id))) return;
+      // O saldo precisa COBRIR a taxa (é o que se arrisca), mas nada é
+      // debitado aqui: a cobrança acontece na derrota, e só nela.
+      if (useGameStore.getState().balance < s.entryFee) return;
       clearTimers();
       const seeded = shuffle([you(), ...s.members.filter((m) => !m.isYou)]);
       set({
@@ -364,7 +515,13 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       };
       set({
         stage: 'match',
-        activeMatch: { bracketMatchId: bm.id, match, result, youWin: outcome === 'win' },
+        activeMatch: {
+          bracketMatchId: bm.id,
+          match,
+          result,
+          youWin: outcome === 'win',
+          thirdPlace: isThirdPlaceMatch(b, bm.id),
+        },
       });
     },
 
@@ -374,7 +531,10 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       const am = s.activeMatch;
       const b = s.bracket;
       if (!am || !b) return;
-      const bm = b.rounds.flat().find((m) => m.id === am.bracketMatchId);
+      // A partida pode ser a do 3º lugar, que vive fora de `rounds`.
+      const bm = [...b.rounds.flat(), ...(b.thirdPlace ? [b.thirdPlace] : [])].find(
+        (m) => m.id === am.bracketMatchId,
+      );
       if (!bm || bm.played || !bm.a || !bm.b) return;
       const youAreA = bm.a.id === YOU_ID;
       const youScore = am.result.playerTotal;
@@ -382,6 +542,9 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       const scoreA = youAreA ? youScore : oppScore;
       const scoreB = youAreA ? oppScore : youScore;
       set({ bracket: recordMatchResult(b, bm.id, scoreA, scoreB) });
+      // Perdeu = está eliminado: é ESTE o instante em que a taxa sai do
+      // saldo. Ganhando, ele segue no torneio sem pagar nada.
+      if (!am.youWin) chargeEntryFee();
     },
 
     backToBracket: () => {
@@ -394,11 +557,14 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       set({
         stage: 'closed',
         members: [],
+        readyIds: [],
         bannedNames: [],
         chat: [],
         bracket: null,
         activeMatch: null,
         simulating: false,
+        // Sai sem dívida: quem não perdeu partida não paga taxa.
+        feePaid: false,
       });
     },
   };
@@ -409,9 +575,22 @@ export const tournamentSelectors = {
   youId: YOU_ID,
   isOwner: (s: TournamentState) => s.ownerId === YOU_ID,
   seatsFull: (s: TournamentState) => s.members.length === s.size,
+  youReady: (s: TournamentState) => s.readyIds.includes(YOU_ID),
+  readyCount: (s: TournamentState) =>
+    s.members.filter((m) => s.readyIds.includes(m.id)).length,
+  /** Mesa cheia e todos confirmados: a partida pode ser iniciada. */
+  allReady: (s: TournamentState) =>
+    s.members.length === s.size && s.members.every((m) => s.readyIds.includes(m.id)),
   yourPending: (s: TournamentState) =>
     s.bracket ? yourPendingMatch(s.bracket, YOU_ID) : null,
   youEliminated: (s: TournamentState) => (s.bracket ? isEliminated(s.bracket, YOU_ID) : false),
   activeRound: (s: TournamentState) => (s.bracket ? activeRoundIndex(s.bracket) : 0),
   champion: (s: TournamentState) => (s.bracket ? tournamentChampion(s.bracket) : null),
+  /** Colocação final do jogador (1–4), ou `null` se caiu antes da semi. */
+  placement: (s: TournamentState) => (s.bracket ? placementOf(s.bracket, YOU_ID) : null),
+  /** A sua partida pendente é a disputa do 3º lugar. */
+  yourPendingIsThirdPlace: (s: TournamentState) => {
+    const pending = s.bracket ? yourPendingMatch(s.bracket, YOU_ID) : null;
+    return !!(s.bracket && pending && isThirdPlaceMatch(s.bracket, pending.id));
+  },
 };

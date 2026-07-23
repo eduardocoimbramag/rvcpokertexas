@@ -46,7 +46,11 @@ export function assignColors(winner: 'player' | 'opponent', color: DiceColorId):
     : { opponent: color, player: otherColor(color) };
 }
 
-/** Escolha do oponente simulado entre as duas cores. */
-export function pickOpponentColor(rng: () => number): DiceColorId {
+/**
+ * Sorteio entre as duas cores. Serve ao oponente simulado quando é ele
+ * quem ganha o cara-ou-coroa e à mesa quando o relógio da escolha zera
+ * sem o jogador decidir.
+ */
+export function randomDiceColor(rng: () => number): DiceColorId {
   return rng() < 0.5 ? 'azul' : 'vermelho';
 }

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { makeBots } from '../tournament/simulation';
 import { useTournamentStore } from '../tournament/tournamentStore';
-import type { TournamentPlayer } from '../tournament/types';
+import type { LobbyVisibility, TournamentPlayer } from '../tournament/types';
 
 /**
  * Regras da porta do lobby:
@@ -22,6 +22,17 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
 });
+
+/** Abre uma sala com as características que a criação sempre define. */
+function openRoom(visibility: LobbyVisibility = 'public'): void {
+  useTournamentStore.getState().createLobby({
+    name: 'Mesa de teste',
+    visibility,
+    size: 8,
+    fee: 10,
+    password: visibility === 'private' ? '1234' : '',
+  });
+}
 
 /** Senta um bot na sala sem depender do preenchimento por timer. */
 function seat(name: string): TournamentPlayer {
@@ -52,8 +63,7 @@ describe('makeBots — elenco sem repetição', () => {
 
 describe('expulsar do lobby', () => {
   it('remove o jogador e o barra pelo nome', () => {
-    const store = useTournamentStore.getState();
-    store.createLobby('public');
+    openRoom();
     const bot = seat('Nina');
 
     useTournamentStore.getState().kickMember(bot.id);
@@ -65,8 +75,7 @@ describe('expulsar do lobby', () => {
   });
 
   it('o preenchimento automático nunca reconvida quem foi expulso', () => {
-    const store = useTournamentStore.getState();
-    store.createLobby('public');
+    openRoom();
     const bot = seat('Nina');
     useTournamentStore.getState().kickMember(bot.id);
 
@@ -80,8 +89,7 @@ describe('expulsar do lobby', () => {
   });
 
   it('só o dono expulsa, e nunca a si mesmo', () => {
-    const store = useTournamentStore.getState();
-    store.createLobby('public');
+    openRoom();
     const bot = seat('Otto');
 
     // Você deixa de ser o dono: o botão some da UI, e a ação também.
@@ -95,13 +103,12 @@ describe('expulsar do lobby', () => {
   });
 
   it('abrir outra sala limpa a lista de barrados', () => {
-    const store = useTournamentStore.getState();
-    store.createLobby('public');
+    openRoom();
     const bot = seat('Nina');
     useTournamentStore.getState().kickMember(bot.id);
     expect(useTournamentStore.getState().bannedNames).toHaveLength(1);
 
-    useTournamentStore.getState().createLobby('private');
+    openRoom('private');
     expect(useTournamentStore.getState().bannedNames).toHaveLength(0);
   });
 });

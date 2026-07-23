@@ -14,15 +14,17 @@ import { Die3D } from './Die3D';
 import { PhaseTitle } from './PhaseTitle';
 
 /**
- * Fase Coinflip em duas cenas, encadeadas por AnimatePresence:
+ * Fase Coinflip em três cenas, encadeadas por AnimatePresence:
  *
  * 1. O LANÇAMENTO — a ficha do clube gira no ar e pousa na face
  *    sorteada, com o título "Cara ou coroa" ancorado embaixo dela.
- * 2. A ESCOLHA — a cena do lançamento sai inteira de quadro e entram os
- *    dois dados da mesa; o vencedor toca um e confirma.
+ * 2. O VEREDITO — a tela se esvazia e fica só o anúncio de quem venceu
+ *    o sorteio, um beat inteiro só dele.
+ * 3. A ESCOLHA — entram os dois dados da mesa; o vencedor toca um e
+ *    confirma, sob o relógio de 10 s.
  *
- * Nada aqui decide o resultado: a face sorteada e o vencedor vêm
- * prontos do store (`coinFlip`), e este componente só coreografa.
+ * Nada aqui decide o resultado: a face sorteada, o vencedor e o relógio
+ * vêm prontos do store (`coinFlip`), e este componente só coreografa.
  */
 
 /** Voltas completas da ficha no ar antes de assentar. */
@@ -80,7 +82,7 @@ export function CoinFlipOverlay() {
   const [selected, setSelected] = useState<DiceColorId | null>(null);
 
   if (!coinFlip || !match) return null;
-  const { playerSide, result, winner, stage, chosenColor } = coinFlip;
+  const { playerSide, result, winner, stage, chosenColor, pickSeconds } = coinFlip;
 
   const choosing = stage === 'pick' || stage === 'botPick' || stage === 'picked';
 
@@ -90,28 +92,43 @@ export function CoinFlipOverlay() {
         {choosing ? (
           <motion.div
             key="choice"
-            className="flex flex-1 flex-col items-center"
+            className="flex w-full flex-1 flex-col items-center"
             initial={reducedMotion ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
           >
             <DiceChoiceScene
-              winner={winner}
               opponentName={match.opponent.name}
               stage={stage}
               chosenColor={chosenColor}
               playerColor={diceColors.player}
               selected={selected}
+              pickSeconds={pickSeconds}
               onSelect={setSelected}
               onConfirm={() => selected && chooseDiceColor(selected)}
+              instant={reducedMotion}
+            />
+          </motion.div>
+        ) : stage === 'verdict' ? (
+          <motion.div
+            key="verdict"
+            className="flex w-full flex-1 flex-col items-center"
+            initial={reducedMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.28, ease: 'easeOut' }}
+          >
+            <VerdictScene
+              winner={winner}
+              opponentName={match.opponent.name}
               instant={reducedMotion}
             />
           </motion.div>
         ) : (
           <motion.div
             key="toss"
-            className="flex flex-1 flex-col items-center"
+            className="flex w-full flex-1 flex-col items-center"
             initial={false}
             exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.94, y: -12 }}
             transition={{ duration: 0.26, ease: 'easeIn' }}
@@ -119,10 +136,8 @@ export function CoinFlipOverlay() {
             <TossScene
               playerSide={playerSide}
               result={result}
-              winner={winner}
               tossing={stage === 'toss'}
               landed={stage === 'result'}
-              opponentName={match.opponent.name}
               instant={reducedMotion}
             />
           </motion.div>
@@ -135,23 +150,17 @@ export function CoinFlipOverlay() {
 interface TossSceneProps {
   playerSide: CoinSide;
   result: CoinSide | null;
-  winner: 'player' | 'opponent' | null;
   tossing: boolean;
   landed: boolean;
-  opponentName: string;
   instant: boolean;
 }
 
-/** Cena 1: a ficha no ar, o título embaixo e o veredito do sorteio. */
-function TossScene({
-  playerSide,
-  result,
-  winner,
-  tossing,
-  landed,
-  opponentName,
-  instant,
-}: TossSceneProps) {
+/**
+ * Cena 1: a ficha no ar, o título embaixo e a face sorteada no pouso.
+ * Quem venceu o sorteio é assunto da cena seguinte — aqui só se anuncia
+ * em que face a moeda caiu.
+ */
+function TossScene({ playerSide, result, tossing, landed, instant }: TossSceneProps) {
   const tossSec = TIMINGS.coinTossMs / 1000;
   const flying = tossing && !instant;
 
@@ -199,11 +208,7 @@ function TossScene({
         >
           <motion.div
             className="coin-flight"
-            animate={
-              flying
-                ? { y: FLIGHT_LIFT, scale: FLIGHT_SCALE }
-                : { y: '0%', scale: 1 }
-            }
+            animate={flying ? { y: FLIGHT_LIFT, scale: FLIGHT_SCALE } : { y: '0%', scale: 1 }}
             transition={
               flying
                 ? { duration: tossSec, times: FLIGHT_TIMES, ease: FLIGHT_EASE }
@@ -261,14 +266,53 @@ function TossScene({
               <p className="font-display text-engraved text-3xl font-bold tracking-wide text-[#7a4503]">
                 Deu {SIDE_LABEL[result]}!
               </p>
-              <p className="text-engraved text-sm font-extrabold text-[#33261a]">
-                {winner === 'player' ? 'Você venceu o sorteio' : `${opponentName} venceu o sorteio`}
-              </p>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
     </>
+  );
+}
+
+interface VerdictSceneProps {
+  winner: 'player' | 'opponent' | null;
+  opponentName: string;
+  instant: boolean;
+}
+
+/**
+ * Cena 2: o veredito do sorteio sozinho na tela — nada de moeda, nada
+ * de dados. É um beat de anúncio: quem ganhou o direito de escolher a
+ * cor. Como ele já ocupou a tela inteira, a cena da escolha não repete
+ * a frase em pastilha nenhuma.
+ */
+function VerdictScene({ winner, opponentName, instant }: VerdictSceneProps) {
+  const youWon = winner === 'player';
+  // Ouro queimado para a vitória, vinho para a derrota: o mesmo par de
+  // tintas do desfecho da rodada (VITÓRIA/DERROTA).
+  const ink = youWon ? 'text-[#7a4503]' : 'text-[#8f1616]';
+
+  return (
+    <div
+      className="flex flex-1 flex-col items-center justify-center px-6 text-center"
+      role="status"
+      aria-live="polite"
+      data-testid="coin-winner"
+    >
+      <motion.div
+        className="flex flex-col items-center gap-3"
+        initial={instant ? false : { opacity: 0, y: 18, scale: 0.92 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={instant ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 19 }}
+      >
+        <Icon name={youWon ? 'crown' : 'user'} size={46} className={ink} strokeWidth={1.6} />
+        <p
+          className={`font-display text-engraved text-[clamp(1.5rem,7vw,2.15rem)] font-bold uppercase leading-tight tracking-wide ${ink}`}
+        >
+          {youWon ? 'Você venceu o sorteio' : `${opponentName} venceu o sorteio`}
+        </p>
+      </motion.div>
+    </div>
   );
 }
 
@@ -285,29 +329,31 @@ function CoinFace({ side }: { side: CoinSide }) {
 }
 
 interface DiceChoiceSceneProps {
-  winner: 'player' | 'opponent' | null;
   opponentName: string;
   stage: 'pick' | 'botPick' | 'picked';
   chosenColor: DiceColorId | null;
   playerColor: DiceColorId;
   selected: DiceColorId | null;
+  /** Segundos restantes do relógio da escolha (`null` fora de `pick`). */
+  pickSeconds: number | null;
   onSelect: (color: DiceColorId) => void;
   onConfirm: () => void;
   instant: boolean;
 }
 
 /**
- * Cena 2: os dois dados da mesa. Vencendo o sorteio, o jogador toca um
- * deles e confirma; perdendo, os cartões só mostram o que o adversário
- * levou. A cor não escolhida fica automaticamente com o outro lado.
+ * Cena 3: os dois dados da mesa. Vencendo o sorteio, o jogador toca um
+ * deles e confirma antes do relógio zerar; perdendo, os cartões só
+ * mostram o que o adversário levou. A cor não escolhida fica
+ * automaticamente com o outro lado.
  */
 function DiceChoiceScene({
-  winner,
   opponentName,
   stage,
   chosenColor,
   playerColor,
   selected,
+  pickSeconds,
   onSelect,
   onConfirm,
   instant,
@@ -321,24 +367,17 @@ function DiceChoiceScene({
 
   return (
     <>
-      <motion.p
-        className="flex items-center gap-2 rounded-full bg-arena-900/80 px-4 py-1.5 text-xs font-black uppercase tracking-[0.3em] text-gold shadow-[0_4px_12px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.1)]"
-        initial={instant ? false : { opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-      >
-        <Icon name={winner === 'player' ? 'crown' : 'user'} size="1.15em" />
-        {winner === 'player' ? 'Você venceu o sorteio' : `${opponentName} venceu`}
-      </motion.p>
-
       <div aria-hidden className="w-full grow" />
 
       <div data-testid="coin-headline" aria-live="polite">
         <PhaseTitle>{headline}</PhaseTitle>
       </div>
 
+      {/* Duas colunas IGUAIS, não dois cartões que se medem pelo próprio
+          conteúdo: "VERMELHOS" é uma palavra mais longa que "AZUIS" e,
+          no fluxo, fazia o cartão vermelho nascer maior que o azul. */}
       <div
-        className="mt-8 flex items-start justify-center gap-5"
+        className="mt-8 grid w-[min(100%,19rem)] grid-cols-2 gap-4"
         data-testid="dice-color-picker"
         role={picking ? 'radiogroup' : undefined}
         aria-label={picking ? 'Cor dos seus dados' : undefined}
@@ -410,6 +449,17 @@ function DiceChoiceScene({
           animate={{ opacity: 1, y: 0 }}
           transition={instant ? { duration: 0 } : { delay: 0.4, duration: 0.35 }}
         >
+          {/* Relógio da escolha, no mesmo padrão do início automático do
+              torneio: zerado, a mesa sorteia a cor pelo jogador. */}
+          {pickSeconds !== null && (
+            <p
+              className="text-engraved text-center text-xs font-extrabold text-[#33261a]"
+              data-testid="pick-countdown"
+            >
+              <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Escolha
+              automática em {pickSeconds}s
+            </p>
+          )}
           <Button
             onClick={onConfirm}
             size="md"

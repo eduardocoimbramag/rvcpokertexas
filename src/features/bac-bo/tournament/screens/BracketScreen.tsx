@@ -5,7 +5,7 @@ import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 
 import { AvatarBadge } from '../../components/AvatarBadge';
-import { matchWinner } from '../bracket';
+import { currentMatches, matchWinner } from '../bracket';
 import { tournamentSelectors, useTournamentStore } from '../tournamentStore';
 import type { BracketMatch, TournamentPlayer } from '../types';
 import { roundLabel } from '../types';
@@ -105,6 +105,7 @@ export function BracketScreen() {
   const yourPending = useTournamentStore(tournamentSelectors.yourPending);
   const eliminated = useTournamentStore(tournamentSelectors.youEliminated);
   const activeRound = useTournamentStore(tournamentSelectors.activeRound);
+  const playingThird = useTournamentStore(tournamentSelectors.yourPendingIsThirdPlace);
   const reducedMotion = useReducedMotion() ?? false;
 
   const youId = tournamentSelectors.youId;
@@ -113,6 +114,7 @@ export function BracketScreen() {
   const [advance, setAdvance] = useState<{
     opponent: TournamentPlayer | null;
     phaseLabel: string;
+    kicker: string;
   } | null>(null);
   const [autoSecs, setAutoSecs] = useState<number | null>(null);
   const prevRoundRef = useRef(activeRound);
@@ -129,10 +131,18 @@ export function BracketScreen() {
     if (reducedMotion || eliminated || !yourPending || !bracket) return;
     const round = bracket.rounds[activeRound];
     const opp = yourPending.a?.id === youId ? yourPending.b : yourPending.a;
-    const data = { opponent: opp ?? null, phaseLabel: roundLabel(round?.length ?? 1) };
+    // Quem perdeu a semi não avança: cai na disputa do bronze, e o
+    // anúncio precisa dizer isso em vez de comemorar uma promoção.
+    const data = playingThird
+      ? { opponent: opp ?? null, phaseLabel: '3º lugar', kicker: 'Você joga pelo' }
+      : {
+          opponent: opp ?? null,
+          phaseLabel: roundLabel(round?.length ?? 1),
+          kicker: 'Você avança para',
+        };
     const show = setTimeout(() => setAdvance(data), 0);
     return () => clearTimeout(show);
-  }, [activeRound, eliminated, yourPending, bracket, youId, reducedMotion]);
+  }, [activeRound, eliminated, yourPending, bracket, youId, reducedMotion, playingThird]);
 
   // Fechamento do overlay em efeito PRÓPRIO, dependendo só de `advance`.
   // Antes ele vivia no efeito acima, junto de `bracket`/`yourPending`:
@@ -168,7 +178,9 @@ export function BracketScreen() {
 
   if (!bracket) return null;
 
-  const round = bracket.rounds[activeRound] ?? [];
+  // O que está em jogo agora — entre a semi e a final, a disputa do 3º.
+  const round = currentMatches(bracket);
+  const onThirdPlace = bracket.thirdPlace ? round[0]?.id === bracket.thirdPlace.id : false;
   const steps = bracket.rounds.map((r) => roundLabel(r.length));
 
   return (
@@ -200,6 +212,14 @@ export function BracketScreen() {
           );
         })}
       </div>
+
+      {/* A disputa do bronze não é um degrau da escada: em vez de virar
+          um passo no stepper, ela se anuncia aqui em cima das cartas. */}
+      {onThirdPlace && (
+        <p className="third-place-tag" data-testid="third-place-tag">
+          <Icon name="crown" size="0.95em" className="inline align-[-0.1em]" /> Disputa do 3º lugar
+        </p>
+      )}
 
       {/* Só a fase atual — sem overflow lateral. */}
       <div className="active-round">
@@ -252,6 +272,7 @@ export function BracketScreen() {
             you={{ id: youId, name: 'Você', avatar: 'V', isYou: true }}
             opponent={advance.opponent}
             phaseLabel={advance.phaseLabel}
+            kicker={advance.kicker}
           />
         )}
       </AnimatePresence>

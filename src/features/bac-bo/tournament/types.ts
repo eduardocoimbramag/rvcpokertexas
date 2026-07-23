@@ -25,15 +25,22 @@ export interface ChatMessage {
   at: number;
 }
 
-/** Resumo de uma sala pública listada no navegador de salas. */
-export interface PublicLobby {
+/**
+ * Resumo de uma sala anunciada no navegador. Privada NÃO é sinônimo de
+ * escondida: a sala aparece na lista como qualquer outra, só que com
+ * cadeado — quem não tiver a senha não passa da porta.
+ */
+export interface LobbyListing {
   id: string;
   name: string;
   hostName: string;
   size: TournamentSize;
   filled: number;
-  /** Buy-in por jogador; o campeão leva `stake × size`. */
-  stake: number;
+  /** Taxa de entrada por jogador; cobrada só de quem perde. */
+  fee: number;
+  visibility: LobbyVisibility;
+  /** Senha de 4 dígitos da sala privada; vazia nas públicas. */
+  password: string;
 }
 
 /**
@@ -57,6 +64,13 @@ export interface Bracket {
   size: TournamentSize;
   /** rounds[0] = primeira fase (Quartas em 8, Semifinal em 4) … Final. */
   rounds: BracketMatch[][];
+  /**
+   * Disputa do 3º lugar entre os dois perdedores da semifinal. Fica fora
+   * de `rounds` de propósito: não é um degrau da escada (ninguém sobe
+   * dela para a final), é uma partida à parte que decide quem fica com o
+   * bronze. Jogada ANTES da final, para o torneio fechar com o título.
+   */
+  thirdPlace: BracketMatch | null;
 }
 
 /**

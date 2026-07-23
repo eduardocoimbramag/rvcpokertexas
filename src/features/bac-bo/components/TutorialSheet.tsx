@@ -28,7 +28,7 @@ const STEPS: readonly { icon: IconName; title: string; text: string }[] = [
   {
     icon: 'dice',
     title: 'Maior soma vence',
-    text: 'São 4 dados: 2 azuis seus e 2 vermelhos do oponente. Vitória paga 1:1 e empate devolve a aposta.',
+    text: 'São 4 dados: 2 azuis seus e 2 vermelhos do oponente. A vitória leva 90% da aposta do adversário e o empate devolve a sua.',
   },
 ];
 

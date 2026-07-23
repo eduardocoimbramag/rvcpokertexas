@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
+import { formatCredits } from '@/shared/lib/format';
 
 import { COUNTDOWN_START, TIMINGS } from '../../animations/timings';
 import { Confetti } from '../../components/Confetti';
@@ -46,6 +47,7 @@ const COUNTDOWN_LINE = 'mb-1.5 text-center text-xs font-extrabold';
  */
 export function TournamentMatchScreen() {
   const activeMatch = useTournamentStore((s) => s.activeMatch);
+  const entryFee = useTournamentStore((s) => s.entryFee);
   const finishMyMatch = useTournamentStore((s) => s.finishMyMatch);
   const backToBracket = useTournamentStore((s) => s.backToBracket);
   const reducedMotion = useReducedMotion() ?? false;
@@ -118,8 +120,19 @@ export function TournamentMatchScreen() {
 
   if (!activeMatch) return null;
 
-  const { match, result, youWin } = activeMatch;
-  const subtitle = youWin ? 'Você avança de fase' : 'Fim da sua caminhada';
+  const { match, result, youWin, thirdPlace } = activeMatch;
+  const subtitle = thirdPlace
+    ? youWin
+      ? 'O 3º lugar é seu'
+      : 'Fim da sua caminhada'
+    : youWin
+      ? 'Você avança de fase'
+      : 'Fim da sua caminhada';
+  // A taxa sai na PRIMEIRA derrota. Quem perde a disputa do 3º lugar já
+  // pagou ao perder a semi — repetir o aviso seria cobrar duas vezes na
+  // leitura do jogador.
+  const feeCharged = !youWin && !thirdPlace;
+  const feeLine = `Taxa de entrada de ${formatCredits(entryFee)} debitada`;
   const reaction: DealerReaction =
     phase === 'intro'
       ? 'greet'
@@ -139,7 +152,7 @@ export function TournamentMatchScreen() {
           o selo da partida flutua acima do recorte expandido. */}
       <header className="relative z-20 mb-4 flex items-center justify-center">
         <span className="rounded-full bg-arena-900/75 px-4 py-1 text-xs font-black uppercase tracking-[0.3em] text-gold">
-          Partida do torneio
+          {thirdPlace ? 'Disputa do 3º lugar' : 'Partida do torneio'}
         </span>
       </header>
 
@@ -206,6 +219,15 @@ export function TournamentMatchScreen() {
                       então em telas baixas o layout comprime junto em vez
                       de sobrepor. */}
                   <div className="flex flex-col items-center gap-0.5">
+                    {/* A derrota é o instante em que a taxa sai do saldo:
+                        a linha do débito nasce junto do veredito. Ela
+                        também ganha cópia invisível — o grupo tem de
+                        continuar simétrico para o título ficar no centro. */}
+                    {feeCharged && (
+                      <p aria-hidden className="invisible text-xs font-extrabold">
+                        {feeLine}
+                      </p>
+                    )}
                     <p aria-hidden className="invisible text-sm font-extrabold">
                       {subtitle}
                     </p>
@@ -218,6 +240,14 @@ export function TournamentMatchScreen() {
                     <p className="text-engraved text-sm font-extrabold text-[#33261a]">
                       {subtitle}
                     </p>
+                    {feeCharged && (
+                      <p
+                        className="text-engraved text-xs font-extrabold text-[#7a1f28]"
+                        data-testid="entry-fee-charged"
+                      >
+                        {feeLine}
+                      </p>
+                    )}
                   </div>
 
                   {/* Espaçador inferior: do veredito ao botão. Mesmo grow

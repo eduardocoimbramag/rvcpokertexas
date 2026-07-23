@@ -68,7 +68,7 @@ async function playRound(page: Page, stake: number) {
   await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'front');
 }
 
-test('primeira jogada: tutorial completo e vitória paga 1:1', async ({ page }) => {
+test('primeira jogada: tutorial completo e vitória leva 90% da aposta', async ({ page }) => {
   await page.goto('/');
 
   // Home → Tutorial (primeira visita) → Stake.
@@ -85,7 +85,7 @@ test('primeira jogada: tutorial completo e vitória paga 1:1', async ({ page }) 
 
   await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/);
   // A variação sobe para a pílula de saldo e o contador chega ao total.
-  await expect(page.getByTestId('balance')).toContainText('1.050');
+  await expect(page.getByTestId('balance')).toContainText('1.045');
   // ...e comemora a vitória do jogador.
   await expect(page.getByTestId('dealer')).toHaveAttribute('data-reaction', 'celebrate');
 });
@@ -122,15 +122,15 @@ test('persistência: saldo e histórico sobrevivem ao reload', async ({ page }) 
   await page.getByTestId('play-button').click();
   await forceOutcome(page, 'win');
   await playRound(page, 50);
-  await expect(page.getByTestId('balance')).toContainText('1.050');
+  await expect(page.getByTestId('balance')).toContainText('1.045');
 
   await page.reload();
 
   // De volta à Home com o saldo persistido.
-  await expect(page.getByTestId('balance')).toContainText('1.050');
+  await expect(page.getByTestId('balance')).toContainText('1.045');
   await page.getByTestId('history-button').click();
   await expect(page.getByTestId('history-list').locator('li')).toHaveCount(1);
-  await expect(page.getByTestId('history-list')).toContainText('+50');
+  await expect(page.getByTestId('history-list')).toContainText('+45');
 });
 
 test('cara-ou-coroa: vencendo o sorteio, o jogador escolhe a cor dos dados', async ({ page }) => {
@@ -145,11 +145,18 @@ test('cara-ou-coroa: vencendo o sorteio, o jogador escolhe a cor dos dados', asy
   await page.getByTestId('search-button').click();
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
 
-  // Moeda no ar → veredito → cena de escolha (intro + voo + resultado ≈ 6 s).
+  // Moeda no ar → veredito sozinho em cena → escolha dos dados
+  // (intro + voo + resultado + veredito ≈ 7,7 s).
   await expect(page.getByTestId('coin-side')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('coin-winner')).toHaveText(/Você venceu o sorteio/, {
+    timeout: 15_000,
+  });
   await expect(page.getByTestId('coin-headline')).toHaveText(/Escolha seus dados/, {
     timeout: 15_000,
   });
+
+  // A escolha corre sob relógio — zerado, a mesa sorteia a cor sozinha.
+  await expect(page.getByTestId('pick-countdown')).toContainText(/Escolha automática em \d+s/);
 
   // Confirmar só habilita depois de escolher um dos dois dados.
   const confirm = page.getByTestId('confirm-dice-color');

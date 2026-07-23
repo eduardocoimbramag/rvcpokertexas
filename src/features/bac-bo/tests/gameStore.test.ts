@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 
 import { SeededRng } from '@/shared/lib/random';
 
-import { COUNTDOWN_START, TIMINGS } from '../animations/timings';
+import { COIN_PICK_SECONDS, COUNTDOWN_START, TIMINGS } from '../animations/timings';
 import type { FindMatchParams, GameEngine, PlayRoundParams } from '../engine/GameEngine';
 import { LocalBacBoGameEngine } from '../engine/LocalBacBoGameEngine';
 import { netChangeFor, payoutFor } from '../engine/rules';
@@ -96,7 +96,7 @@ function seqRng(values: readonly number[]): () => number {
 async function passCoinFlip(store: ReturnType<typeof createTestStore>) {
   expect(store.getState().phase).toBe('coinflip');
   await vi.advanceTimersByTimeAsync(
-    TIMINGS.coinIntroMs + TIMINGS.coinTossMs + TIMINGS.coinResultMs,
+    TIMINGS.coinIntroMs + TIMINGS.coinTossMs + TIMINGS.coinResultMs + TIMINGS.coinVerdictMs,
   );
   expect(store.getState().coinFlip?.stage).toBe('pick');
   store.getState().chooseDiceColor('vermelho');
@@ -173,14 +173,14 @@ describe('máquina de estados', () => {
 });
 
 describe('fluxo completo da rodada', () => {
-  it('vitória: debita o stake e credita o dobro (saldo +stake)', async () => {
+  it('vitória: devolve o stake e credita 90% do ganho (a casa fica com 10%)', async () => {
     const store = createTestStore('win');
     await playUntilCompleted(store, 50);
 
-    expect(store.getState().balance).toBe(550);
+    expect(store.getState().balance).toBe(545);
     expect(store.getState().result?.outcome).toBe('win');
     expect(store.getState().history).toHaveLength(1);
-    expect(store.getState().history[0]?.netChange).toBe(50);
+    expect(store.getState().history[0]?.netChange).toBe(45);
     expect(store.getState().history[0]?.opponentName).toBe('Stub');
   });
 
@@ -221,7 +221,7 @@ describe('fluxo completo da rodada', () => {
     store.getState().playAgain();
 
     expect(store.getState().phase).toBe('stake');
-    expect(store.getState().balance).toBe(550);
+    expect(store.getState().balance).toBe(545);
     expect(store.getState().result).toBeNull();
   });
 });
@@ -342,7 +342,65 @@ describe('cara-ou-coroa', () => {
     expect(store.getState().phase).toBe('coinflip');
   }
 
-  const COIN_BEATS = TIMINGS.coinIntroMs + TIMINGS.coinTossMs + TIMINGS.coinResultMs;
+  const COIN_BEATS =
+    TIMINGS.coinIntroMs + TIMINGS.coinTossMs + TIMINGS.coinResultMs + TIMINGS.coinVerdictMs;
+
+  it('o veredito ocupa um beat próprio entre o pouso e a escolha', async () => {
+    const store = createTestStore('win', createMemoryStorage(), seqRng([0.25, 0.25]));
+    await reachCoinFlip(store);
+
+    await vi.advanceTimersByTimeAsync(TIMINGS.coinIntroMs + TIMINGS.coinTossMs);
+    expect(store.getState().coinFlip?.stage).toBe('result');
+
+    await vi.advanceTimersByTimeAsync(TIMINGS.coinResultMs);
+    expect(store.getState().coinFlip?.stage).toBe('verdict');
+    expect(store.getState().coinFlip?.winner).toBe('player');
+
+    await vi.advanceTimersByTimeAsync(TIMINGS.coinVerdictMs);
+    expect(store.getState().coinFlip?.stage).toBe('pick');
+  });
+
+  it('sem escolha em 10 s, a mesa sorteia a cor pelo jogador', async () => {
+    // 0.25/0.25 → o jogador vence; 0.9 → o sorteio do relógio dá vermelho.
+    const store = createTestStore('win', createMemoryStorage(), seqRng([0.25, 0.25, 0.9]));
+    await reachCoinFlip(store);
+    await vi.advanceTimersByTimeAsync(COIN_BEATS);
+
+    // O relógio já corre. Quanto dele sobrou depende do delay ALEATÓRIO
+    // com que o oponente confirmou o duelo, então o teste anda a partir
+    // do que o relógio marca — nunca de um instante absoluto.
+    const left = store.getState().coinFlip?.pickSeconds ?? 0;
+    expect(left).toBeGreaterThan(0);
+    expect(left).toBeLessThanOrEqual(COIN_PICK_SECONDS);
+
+    // A um segundo do fim o relógio ainda corre e nada foi aplicado.
+    await vi.advanceTimersByTimeAsync((left - 1) * 1000);
+    expect(store.getState().coinFlip?.stage).toBe('pick');
+    expect(store.getState().coinFlip?.pickSeconds).toBe(1);
+    expect(store.getState().diceColors).toEqual({ player: 'azul', opponent: 'vermelho' });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(store.getState().coinFlip?.stage).toBe('picked');
+    expect(store.getState().coinFlip?.pickSeconds).toBeNull();
+    expect(store.getState().diceColors).toEqual({ player: 'vermelho', opponent: 'azul' });
+
+    // Dali em diante a rodada segue igual à da escolha manual.
+    await vi.advanceTimersByTimeAsync(TIMINGS.coinPickedMs);
+    expect(store.getState().phase).toBe('countdown');
+  });
+
+  it('escolher desliga o relógio: o sorteio automático não sobrescreve', async () => {
+    const store = createTestStore('win', createMemoryStorage(), seqRng([0.25, 0.25, 0.9]));
+    await reachCoinFlip(store);
+    await vi.advanceTimersByTimeAsync(COIN_BEATS);
+
+    store.getState().chooseDiceColor('azul');
+    expect(store.getState().coinFlip?.pickSeconds).toBeNull();
+
+    // Passado o prazo inteiro, a cor escolhida à mão continua de pé.
+    await vi.advanceTimersByTimeAsync(COIN_PICK_SECONDS * 1000);
+    expect(store.getState().diceColors).toEqual({ player: 'azul', opponent: 'vermelho' });
+  });
 
   it('jogador vence o sorteio e a escolha troca as cores dos dois lados', async () => {
     // 0.25/0.25: lado 'cara', resultado 'cara' → o jogador vence.
@@ -426,7 +484,7 @@ describe('persistência', () => {
     await playUntilCompleted(store, 50);
 
     const rehydrated = createTestStore('win', storage);
-    expect(rehydrated.getState().balance).toBe(550);
+    expect(rehydrated.getState().balance).toBe(545);
     expect(rehydrated.getState().history).toHaveLength(1);
   });
 

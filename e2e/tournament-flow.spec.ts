@@ -40,20 +40,54 @@ async function seedStorage(page: Page) {
 /** Cria uma sala de 4, inicia o torneio e joga a partida do jogador. */
 async function playTournamentMatch(page: Page) {
   await page.getByTestId('tournament-button').click();
-  await page.getByTestId('create-public').click();
+  await page.getByTestId('create-room').click();
 
-  // Sala de 4 enche bem mais rápido que a de 8 (bots entram um a um).
-  await page.getByTestId('lobby-settings').click();
-  await page.getByTestId('settings-size-4').click();
-  await page.keyboard.press('Escape');
+  // Tudo se escolhe na criação: sala de 4 (enche bem mais rápido que a
+  // de 8, com os bots entrando um a um) e a menor taxa de entrada.
+  await page.getByTestId('create-size-4').click();
+  await page.getByTestId('create-fee-10').click();
+  await page.getByTestId('create-confirm').click();
 
+  // O dono não confirma presença — mas só inicia quando todos os outros
+  // assentos confirmarem (o botão conta as confirmações até liberar).
   const start = page.getByTestId('start-tournament');
+  await expect(start).toContainText(/\d\/4 JOGADORES CONFIRMADOS/);
   await expect(start).toBeEnabled({ timeout: 40_000 });
   await start.click();
 
   await page.getByTestId('play-tournament-match').click({ timeout: 20_000 });
   await expect(page.getByTestId('tournament-result-title')).toBeVisible({ timeout: 30_000 });
 }
+
+test('sala privada: características escolhidas na criação, senha na porta', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByTestId('tournament-button').click();
+  await page.getByTestId('create-room').click();
+
+  // Privada é uma escolha DENTRO da folha — e é ela que revela o campo
+  // de senha, logo abaixo do nome.
+  await page.getByTestId('create-visibility-private').click();
+
+  // A folha traz nome e senha já sugeridos; aqui reescrevemos os dois
+  // para poder conferir exatamente o que a sala guardou.
+  await page.getByTestId('create-name').fill('Mesa do Teste');
+  await page.getByTestId('create-password').fill('4821');
+  await page.getByTestId('create-size-4').click();
+  await page.getByTestId('create-fee-10').click();
+  await page.getByTestId('create-confirm').click();
+
+  // A sala nasce com tudo o que foi escolhido, e a senha fica à mão do
+  // anfitrião para ele convidar quem quiser.
+  await expect(page.getByRole('heading', { name: 'Mesa do Teste' })).toBeVisible();
+  await expect(page.getByTestId('lobby-visibility')).toContainText('Privada · Senha 4821');
+
+  // A taxa é fato consumado na ficha da sala — não há onde reeditá-la.
+  await page.getByTestId('lobby-settings').click();
+  await expect(page.getByTestId('settings-fee')).toContainText('10');
+  await expect(page.getByTestId('settings-password')).toContainText('4821');
+});
 
 test('a partida do torneio volta sozinha ao chaveamento após a contagem', async ({ page }) => {
   await seedStorage(page);

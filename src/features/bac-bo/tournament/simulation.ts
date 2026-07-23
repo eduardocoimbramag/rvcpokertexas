@@ -2,7 +2,13 @@ import { createId } from '@/shared/lib/ids';
 
 import { STAKE_PRESETS } from '../engine/credits';
 import type { DicePair, DieValue } from '../engine/types';
-import type { ChatMessage, PublicLobby, TournamentPlayer, TournamentSize } from './types';
+import type {
+  ChatMessage,
+  LobbyListing,
+  LobbyVisibility,
+  TournamentPlayer,
+  TournamentSize,
+} from './types';
 
 /**
  * Simulação do "multiplayer": o app é local, então os outros jogadores,
@@ -34,6 +40,19 @@ const LOBBY_NAMES = [
   'Copa Borgonha',
   'Arena VIP',
   'Clube dos Ases',
+];
+
+/**
+ * Sugestões para a sala do PRÓPRIO jogador — o campo de nome já nasce
+ * preenchido com uma delas, e ele reescreve se quiser. Nomes distintos
+ * dos da lista para a sala dele não nascer homônima de uma alheia.
+ */
+const YOUR_LOBBY_NAMES = [
+  'Mesa Borgonha',
+  'Salão do Coringa',
+  'Privê dos Dados',
+  'Copa da Casa',
+  'Mesa Coroa',
 ];
 
 const CHAT_LINES = [
@@ -88,19 +107,40 @@ export function makeBots(count: number, exclude: readonly string[] = []): Tourna
     .map((b) => ({ id: createId(), name: b.name, avatar: b.avatar, isYou: false }));
 }
 
-/** Lista de salas públicas fictícias para o navegador de salas. */
-export function makePublicLobbies(): PublicLobby[] {
+/** Senha de sala privada: 4 dígitos, o formato que o teclado do celular
+    abre em modo numérico. */
+export function randomLobbyPassword(): string {
+  return String(randInt(0, 9999)).padStart(4, '0');
+}
+
+/** Nome sugerido para a sala do jogador (o campo já nasce preenchido). */
+export function suggestLobbyName(): string {
+  return pick(YOUR_LOBBY_NAMES);
+}
+
+/**
+ * Salas anunciadas no navegador — públicas e privadas misturadas, como
+ * numa lista real. As privadas vêm com senha: aparecem para todo mundo,
+ * mas só entra quem tiver o código do anfitrião.
+ */
+export function makeLobbyListings(): LobbyListing[] {
   return shuffle(LOBBY_NAMES)
-    .slice(0, randInt(2, 4))
-    .map((name) => {
+    .slice(0, randInt(3, 5))
+    .map((name, index) => {
       const size: TournamentSize = Math.random() < 0.5 ? 4 : 8;
+      // Uma em cada três, e nunca a primeira: a lista abre com uma sala
+      // de entrada livre em vez de uma porta trancada.
+      const visibility: LobbyVisibility =
+        index > 0 && Math.random() < 0.34 ? 'private' : 'public';
       return {
         id: createId(),
         name,
         hostName: pick(HOST_NAMES),
         size,
         filled: randInt(1, size - 1),
-        stake: pick(STAKE_PRESETS),
+        fee: pick(STAKE_PRESETS),
+        visibility,
+        password: visibility === 'private' ? randomLobbyPassword() : '',
       };
     });
 }

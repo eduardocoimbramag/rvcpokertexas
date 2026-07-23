@@ -40,7 +40,12 @@ body {
   height: 100%;
   background: var(--color-arena-950);
   color: var(--color-ivory);
-  font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family:
+    'Instrument Sans',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
   user-select: none;
@@ -167,22 +172,22 @@ h2 {
     radial-gradient(120% 60% at 50% 12%, rgba(245, 183, 111, 0.12), transparent 55%),
     /* colunas laterais do salão apanhando luz quente */
     linear-gradient(
-      90deg,
-      rgba(245, 183, 111, 0.06) 0%,
-      transparent 10%,
-      transparent 90%,
-      rgba(245, 183, 111, 0.06) 100%
-    ),
+        90deg,
+        rgba(245, 183, 111, 0.06) 0%,
+        transparent 10%,
+        transparent 90%,
+        rgba(245, 183, 111, 0.06) 100%
+      ),
     /* scrim: escurece de leve no topo (contraste do saldo/HUD) e mais
        firme na base (onde a mesa assenta), fundindo a foto à paleta
        vinho sem apagar o lustre nem as arandelas */
     linear-gradient(
-      180deg,
-      rgba(20, 4, 4, 0.22) 0%,
-      rgba(20, 4, 4, 0.08) 24%,
-      rgba(26, 6, 9, 0.34) 68%,
-      rgba(20, 4, 4, 0.66) 100%
-    );
+        180deg,
+        rgba(20, 4, 4, 0.22) 0%,
+        rgba(20, 4, 4, 0.08) 24%,
+        rgba(26, 6, 9, 0.34) 68%,
+        rgba(20, 4, 4, 0.66) 100%
+      );
 }
 
 /* Enquadramento de JOGO (mesa em cena): a câmera desce ao nível da
@@ -1024,33 +1029,43 @@ h2 {
 
 /* ---------- Escolha da cor dos dados (pós-sorteio) ---------- */
 
-/* Cartão do dado: a mesma placa de vinho do duelo, aqui como alvo de
-   toque. O aro assume a cor do dado; selecionado, ganha o aro dourado
-   e o halo do vencedor (mesma linguagem do .score-plate--winner). */
+/* Cartão do dado: o mesmo vinho do duelo, aqui como alvo de toque e em
+   VIDRO — um véu sobre o couro da mesa, não uma placa opaca colada nela.
+   O aro assume a cor do dado; selecionado, ganha o aro dourado e o halo
+   do vencedor (mesma linguagem do .score-plate--winner).
+
+   A largura vem das colunas do contêiner (duas frações iguais), nunca
+   do conteúdo: o cartão só precisa preencher a célula. */
 .dice-choice {
   position: relative;
   display: flex;
+  width: 100%;
   flex-direction: column;
   align-items: center;
   gap: 0.65rem;
-  padding: 1rem 1.15rem 0.85rem;
+  padding: 1rem 0.75rem 0.85rem;
   border-radius: 1.25rem;
-  background: linear-gradient(180deg, #5f1420 0%, #2a0810 100%);
+  /* Translúcido o bastante para o couro atravessar, escuro o bastante
+     para o rótulo claro manter ~5:1 de contraste sobre ele. */
+  background: linear-gradient(180deg, rgba(95, 20, 32, 0.46) 0%, rgba(42, 8, 16, 0.62) 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
     0 0 0 2px var(--dice-choice-accent, rgba(203, 115, 73, 0.45)),
-    0 10px 24px rgba(0, 0, 0, 0.4);
+    0 10px 24px rgba(0, 0, 0, 0.28);
   transition:
     box-shadow 0.24s ease,
     filter 0.24s ease;
 }
 
+/* O vinho ficou translúcido: o rótulo passa a se apoiar na própria
+   sombra para não depender do que estiver por trás dele. */
 .dice-choice__name {
   font-size: 0.7rem;
   font-weight: 900;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--color-ivory);
+  text-shadow: 0 1px 3px rgba(20, 6, 2, 0.75);
 }
 
 .dice-choice--on {
@@ -1058,17 +1073,17 @@ h2 {
     inset 0 1px 0 rgba(252, 217, 160, 0.3),
     0 0 0 2.5px #f5b76f,
     0 0 22px rgba(245, 183, 111, 0.55),
-    0 10px 24px rgba(0, 0, 0, 0.4);
+    0 10px 24px rgba(0, 0, 0, 0.32);
 }
 
 /* Escolhido um lado, o outro recua: sem isto os dois aros coloridos
    competem e o cartão selecionado não se destaca. */
 .dice-choice--dim {
-  filter: brightness(0.78) saturate(0.8);
+  filter: brightness(0.82) saturate(0.8);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 0 0 1.5px rgba(203, 115, 73, 0.35),
-    0 6px 16px rgba(0, 0, 0, 0.35);
+    0 6px 16px rgba(0, 0, 0, 0.25);
 }
 
 .dice-choice--on .dice-choice__name {
@@ -1802,9 +1817,80 @@ h2 {
   border-radius: 0.7rem;
 }
 
+/* O medalhão é a âncora do estado de prontidão: aro, selo e flash se
+   posicionam por ele, não pelo cartão do assento. */
 .lobby-seat__avatar {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
   font-size: 1.5rem;
   line-height: 1;
+}
+
+/* Confirmação em escala de assento — mesmos elementos do duelo 1v1,
+   apertados para caber ao redor de um medalhão de ~25px. */
+.confirm-ring--seat {
+  inset: -5px;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
+}
+
+.confirm-badge--seat {
+  right: -6px;
+  bottom: -4px;
+  width: 16px;
+  height: 16px;
+  box-shadow:
+    0 0 0 1.5px #d1fae5,
+    0 0 0 2.5px rgba(5, 150, 105, 0.55),
+    0 2px 5px rgba(0, 0, 0, 0.45);
+}
+
+.confirm-flash--seat {
+  inset: -4px;
+  border-width: 1.5px;
+}
+
+/* Coroa do anfitrião, no lugar do selo de confirmação: quem abre a sala
+   não confirma presença nela. */
+.lobby-seat__crown {
+  position: absolute;
+  right: -7px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 9999px;
+  color: #2a1206;
+  background: linear-gradient(180deg, #fcd9a0 0%, #f5b76f 55%, #c67e38 100%);
+  box-shadow:
+    0 0 0 1.5px rgba(42, 8, 16, 0.65),
+    0 2px 5px rgba(0, 0, 0, 0.45);
+}
+
+/* Assento do anfitrião: fio dourado, o mesmo metal da coroa. */
+.lobby-seat--leader {
+  box-shadow:
+    inset 0 1px 0 rgba(252, 217, 160, 0.25),
+    0 0 0 1px rgba(245, 183, 111, 0.6);
+}
+
+/* Assento confirmado: o vinho ganha um fio esmeralda, para a leitura
+   de "pronto" sobreviver mesmo de relance, sem contar o selo. */
+.lobby-seat--ready {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(52, 211, 153, 0.55);
+}
+
+/* O seu assento pronto mantém o ouro de "você" e ganha o fio verde. */
+.lobby-seat--you.lobby-seat--ready {
+  box-shadow:
+    inset 0 1px 0 rgba(252, 217, 160, 0.3),
+    0 0 0 1.5px var(--color-gold),
+    0 0 14px rgba(245, 183, 111, 0.35),
+    0 0 0 3px rgba(52, 211, 153, 0.45);
 }
 
 .lobby-seat__name {
@@ -1945,12 +2031,297 @@ h2 {
   }
 }
 
+/* Sala privada na lista: ela aparece como as outras — o que muda é a
+   porta. O aro âmbar e o cadeado anunciam que ali se pede senha. */
+.lobby-card--locked {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(245, 183, 111, 0.5);
+}
+
+/* Mesma casca, sem afordância de clique (cabeçalho da folha de senha). */
+.lobby-card--static {
+  pointer-events: none;
+}
+
 .lobby-card__crown {
   font-size: 1.3rem;
 }
 
+/* Selo "Senha" ao lado do nome da sala privada. */
+.lobby-card__tag {
+  flex-shrink: 0;
+  border-radius: 9999px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #2a1206;
+  background: linear-gradient(180deg, #fcd9a0 0%, #f5b76f 60%, #e2a052 100%);
+}
+
 .lobby-card__count {
   flex-shrink: 0;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-gold);
+}
+
+/* ---------- Formulário de sala (criar / senha) ---------- */
+
+/* Campo de texto do clube: mesma caixa de vinho do chat, em bloco. */
+.field__wrap {
+  position: relative;
+}
+
+.field__input {
+  width: 100%;
+  border-radius: 0.9rem;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-ivory);
+  background: rgba(48, 8, 16, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(203, 115, 73, 0.4);
+  outline: none;
+  transition: box-shadow 0.2s ease;
+}
+
+.field__wrap .field__input {
+  /* Espaço para o contador não encostar no texto digitado. */
+  padding-right: 3.5rem;
+}
+
+.field__input::placeholder {
+  color: var(--color-lavender);
+  font-weight: 600;
+}
+
+.field__input:focus-visible {
+  box-shadow:
+    inset 0 0 0 1.5px var(--color-gold),
+    0 0 14px rgba(245, 183, 111, 0.25);
+}
+
+/* Senha: dígitos largos e espaçados, como um cofre. */
+.field__input--code {
+  font-family: var(--font-display, inherit);
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: 0.4em;
+  text-indent: 0.4em; /* compensa a entreletra do último dígito */
+  font-variant-numeric: tabular-nums;
+}
+
+.field__input--wrong {
+  box-shadow: inset 0 0 0 1.5px #e05252;
+}
+
+.field__counter {
+  position: absolute;
+  right: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.7rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-lavender);
+}
+
+.field__hint {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--color-lavender);
+}
+
+.field__error {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #f0a3a3;
+}
+
+/* Convite recebido: o código que o anfitrião mandou, em fita tracejada. */
+.field__invite {
+  margin-top: 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px dashed rgba(245, 183, 111, 0.45);
+  padding: 0.5rem 0.7rem;
+  font-size: 0.72rem;
+  color: var(--color-lavender);
+}
+
+.field__invite-code {
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: var(--color-gold);
+}
+
+/* ---------- Premiação (pódio 50/30/20) ---------- */
+
+/* Tabela de prêmios da sala: uma linha por lugar do pódio. */
+.prize-split {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: rgba(203, 115, 73, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(245, 183, 111, 0.4);
+}
+
+.prize-split__row {
+  display: grid;
+  grid-template-columns: 3.4rem 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  background: linear-gradient(180deg, rgba(95, 20, 32, 0.9) 0%, rgba(42, 8, 16, 0.9) 100%);
+  font-weight: 800;
+  color: var(--color-ivory);
+}
+
+/* Cada degrau tem o seu metal: ouro, prata e bronze. A cor pinta o
+   símbolo, a colocação e o valor — os três elementos que identificam a
+   linha —, mantendo o percentual em taupe para não competir. */
+.prize-split__row--gold .prize-split__place,
+.prize-split__row--gold .prize-split__value {
+  color: var(--color-gold);
+}
+
+.prize-split__row--silver .prize-split__place,
+.prize-split__row--silver .prize-split__value {
+  color: #dbe2ec;
+}
+
+.prize-split__row--bronze .prize-split__place,
+.prize-split__row--bronze .prize-split__value {
+  color: #e09a5f;
+}
+
+.prize-split__place {
+  display: flex;
+  align-items: center;
+  font-weight: 900;
+}
+
+.prize-split__share {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-lavender);
+}
+
+.prize-split__value {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pódio da coroação: as três colocações premiadas, em ordem. */
+.podium {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: min(100%, 20rem);
+  margin-top: 1.25rem;
+}
+
+.podium__row {
+  display: grid;
+  grid-template-columns: 3.2rem auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.9rem;
+  background: rgba(48, 8, 16, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(203, 115, 73, 0.35);
+  font-weight: 800;
+  color: var(--color-ivory);
+}
+
+/* O mesmo código de metais da tabela de premiação. */
+.podium__row--gold {
+  box-shadow: inset 0 0 0 1px rgba(245, 183, 111, 0.6);
+}
+
+.podium__row--gold .podium__place,
+.podium__row--gold .podium__prize {
+  color: var(--color-gold);
+}
+
+.podium__row--silver {
+  box-shadow: inset 0 0 0 1px rgba(219, 226, 236, 0.4);
+}
+
+.podium__row--silver .podium__place,
+.podium__row--silver .podium__prize {
+  color: #dbe2ec;
+}
+
+.podium__row--bronze {
+  box-shadow: inset 0 0 0 1px rgba(224, 154, 95, 0.45);
+}
+
+.podium__row--bronze .podium__place,
+.podium__row--bronze .podium__prize {
+  color: #e09a5f;
+}
+
+/* A sua linha no pódio se destaca das demais. */
+.podium__row--you {
+  box-shadow:
+    inset 0 0 0 1.5px var(--color-gold),
+    0 0 14px rgba(245, 183, 111, 0.3);
+}
+
+.podium__place {
+  display: flex;
+  align-items: center;
+  font-weight: 900;
+  color: var(--color-gold);
+}
+
+.podium__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.podium__prize {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-gold);
+}
+
+/* Chamada da disputa do bronze, acima das cartas do chaveamento. */
+.third-place-tag {
+  margin-bottom: 0.5rem;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-gold);
+}
+
+/* Dado da sala que não se edita (taxa, senha): fato, não controle. */
+.room-fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  background: rgba(48, 8, 16, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(203, 115, 73, 0.35);
+  font-weight: 800;
+  color: var(--color-ivory);
+}
+
+.room-fact__value {
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   color: var(--color-gold);

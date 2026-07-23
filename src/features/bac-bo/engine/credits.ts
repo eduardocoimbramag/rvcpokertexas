@@ -6,6 +6,20 @@
 /** Stakes pré-definidos exibidos como fichas na UI. */
 export const STAKE_PRESETS: readonly number[] = [10, 25, 50];
 
+/**
+ * Comissão da casa sobre o dinheiro GANHO — nunca sobre o que o jogador
+ * já tinha. É a única saída de créditos do sistema e vale igual nas duas
+ * modalidades: no 1v1 a vitória leva 90% do que o perdedor pôs na mesa;
+ * no torneio, o bolo é distribuído já descontados estes 10%.
+ */
+export const HOUSE_EDGE = 0.1;
+
+/** Parte do ganho que fica com quem venceu (90%). */
+export function afterHouseEdge(amount: number): number {
+  // Arredonda para baixo: a casa nunca cria crédito que não existe.
+  return Math.floor(amount * (1 - HOUSE_EDGE));
+}
+
 /** Menor stake permitido na mesa. */
 export const MIN_STAKE = STAKE_PRESETS[0] ?? 10;
 

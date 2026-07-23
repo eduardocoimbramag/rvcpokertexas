@@ -7,6 +7,8 @@ export interface AdvanceOverlayProps {
   you: TournamentPlayer;
   opponent: TournamentPlayer | null;
   phaseLabel: string;
+  /** Chamada acima da fase. Quem cai na semi não "avança": joga pelo 3º. */
+  kicker?: string;
 }
 
 /**
@@ -14,7 +16,12 @@ export interface AdvanceOverlayProps {
  * dourado e é absorvido pela célula da próxima fase, que acende revelando
  * o novo confronto. Puramente visual — o store já promoveu o jogador.
  */
-export function AdvanceOverlay({ you, opponent, phaseLabel }: AdvanceOverlayProps) {
+export function AdvanceOverlay({
+  you,
+  opponent,
+  phaseLabel,
+  kicker = 'Você avança para',
+}: AdvanceOverlayProps) {
   return (
     <motion.div
       className="advance-overlay"
@@ -30,7 +37,7 @@ export function AdvanceOverlay({ you, opponent, phaseLabel }: AdvanceOverlayProp
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        Você avança para
+        {kicker}
       </motion.p>
       <motion.p
         className="advance-phase"

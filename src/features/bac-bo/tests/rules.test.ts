@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { SeededRng } from '@/shared/lib/random';
 
 import {
-  WIN_PAYOUT_MULTIPLIER,
   netChangeFor,
   payoutFor,
   resolveOutcome,
@@ -11,6 +10,7 @@ import {
   rollRound,
   rollRoundForOutcome,
   sumDicePair,
+  winProfit,
 } from '../engine/rules';
 import type { RoundOutcome } from '../engine/types';
 
@@ -45,9 +45,23 @@ describe('resolveOutcome', () => {
 });
 
 describe('payout e variação líquida', () => {
-  it('vitória paga 1:1 (payout 2× o stake)', () => {
-    expect(payoutFor('win', 50)).toBe(50 * WIN_PAYOUT_MULTIPLIER);
-    expect(netChangeFor('win', 50)).toBe(50);
+  it('vitória leva 90% do stake do adversário (10% ficam com a casa)', () => {
+    expect(winProfit(100)).toBe(90);
+    // O próprio stake volta inteiro; a comissão só incide sobre o ganho.
+    expect(payoutFor('win', 100)).toBe(190);
+    expect(netChangeFor('win', 100)).toBe(90);
+
+    expect(netChangeFor('win', 50)).toBe(45);
+    expect(netChangeFor('win', 25)).toBe(22); // 22,5 → arredonda para baixo
+    expect(netChangeFor('win', 10)).toBe(9);
+  });
+
+  it('a casa nunca cria crédito: o ganho é sempre inteiro e para baixo', () => {
+    for (const stake of [1, 3, 7, 15, 33, 99]) {
+      const profit = winProfit(stake);
+      expect(Number.isInteger(profit)).toBe(true);
+      expect(profit).toBeLessThanOrEqual(stake * 0.9);
+    }
   });
 
   it('empate devolve exatamente o stake', () => {

@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
@@ -11,7 +11,7 @@ import { AvatarBadge } from '../../components/AvatarBadge';
 import { OpponentProfileSheet } from '../../components/OpponentProfileSheet';
 import { illustrativeRating } from '../../components/opponentProfile';
 import type { Opponent } from '../../engine/types';
-import { tournamentPot, tournamentSelectors, useTournamentStore } from '../tournamentStore';
+import { prizeFor, tournamentSelectors, useTournamentStore } from '../tournamentStore';
 import type { TournamentPlayer } from '../types';
 import { TournamentSettingsSheet } from './TournamentSettingsSheet';
 
@@ -30,15 +30,97 @@ function asOpponent(player: TournamentPlayer): Opponent {
   };
 }
 
-/** Assento do lobby: membro presente, ou vaga aguardando. */
+const STAMP_SPRING = { type: 'spring', stiffness: 520, damping: 16 } as const;
+
+/**
+ * Prontidão do assento, na MESMA linguagem da confirmação do duelo 1v1
+ * (ConfirmPanel), em escala de lobby: enquanto espera, um aro tracejado
+ * gira em volta do medalhão; ao confirmar, o anel esmeralda se desenha,
+ * o selo de visto carimba no canto e um flash expande.
+ */
+function ReadyMark({ ready, instant }: { ready: boolean; instant: boolean }) {
+  return (
+    <>
+      {ready ? (
+        <svg className="confirm-ring confirm-ring--seat" viewBox="0 0 100 100" aria-hidden="true">
+          <motion.circle
+            cx="50"
+            cy="50"
+            r="47"
+            fill="none"
+            stroke="#34d399"
+            strokeWidth="4"
+            strokeLinecap="round"
+            transform="rotate(-90 50 50)"
+            initial={instant ? false : { pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={instant ? { duration: 0 } : { duration: 0.5, ease: 'easeOut' }}
+          />
+        </svg>
+      ) : (
+        <motion.svg
+          className="confirm-ring confirm-ring--seat"
+          viewBox="0 0 100 100"
+          aria-hidden="true"
+          animate={instant ? undefined : { rotate: 360 }}
+          transition={instant ? undefined : { repeat: Infinity, duration: 7, ease: 'linear' }}
+        >
+          <circle
+            cx="50"
+            cy="50"
+            r="47"
+            fill="none"
+            stroke="rgba(203, 115, 73, 0.6)"
+            strokeWidth="3.5"
+            strokeDasharray="10 8"
+            strokeLinecap="round"
+          />
+        </motion.svg>
+      )}
+
+      <AnimatePresence>
+        {ready && (
+          <motion.span
+            className="confirm-badge confirm-badge--seat"
+            aria-hidden="true"
+            initial={instant ? false : { scale: 0, rotate: -40, opacity: 0 }}
+            animate={{ scale: 1, rotate: 0, opacity: 1 }}
+            transition={instant ? { duration: 0 } : STAMP_SPRING}
+          >
+            <Icon name="check" size={9} strokeWidth={3.4} />
+          </motion.span>
+        )}
+      </AnimatePresence>
+
+      {ready && !instant && (
+        <motion.span
+          className="confirm-flash confirm-flash--seat"
+          aria-hidden="true"
+          initial={{ opacity: 0.9, scale: 0.9 }}
+          animate={{ opacity: 0, scale: 1.5 }}
+          transition={{ duration: 0.7, ease: 'easeOut' }}
+        />
+      )}
+    </>
+  );
+}
+
+/** Assento do lobby: membro presente (pronto ou não), ou vaga aguardando. */
 function Seat({
   player,
+  ready,
+  leader,
   canKick,
+  instant,
   onKick,
   onOpenProfile,
 }: {
   player: TournamentPlayer | null;
+  ready: boolean;
+  /** Dono da sala: usa coroa em vez do selo de confirmação. */
+  leader: boolean;
   canKick: boolean;
+  instant: boolean;
   onKick: () => void;
   onOpenProfile: () => void;
 }) {
@@ -55,8 +137,17 @@ function Seat({
 
   const face = (
     <>
-      <span className="lobby-seat__avatar" aria-hidden="true">
+      <span className="lobby-seat__avatar">
         <AvatarBadge name={player.name} you={player.isYou} className="text-[1.05rem]" />
+        {/* O dono não confirma nada: onde os outros carimbam o visto, ele
+            usa a coroa da casa. */}
+        {leader ? (
+          <span className="lobby-seat__crown" aria-label="Anfitrião da sala">
+            <Icon name="crown" size={10} strokeWidth={2.4} />
+          </span>
+        ) : (
+          <ReadyMark ready={ready} instant={instant} />
+        )}
       </span>
       <span className="lobby-seat__name">{player.name}</span>
     </>
@@ -67,7 +158,9 @@ function Seat({
       layout
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`lobby-seat ${player.isYou ? 'lobby-seat--you' : ''}`}
+      className={`lobby-seat ${player.isYou ? 'lobby-seat--you' : ''} ${leader ? 'lobby-seat--leader' : ready ? 'lobby-seat--ready' : ''}`}
+      data-testid={`lobby-seat-${player.id}`}
+      data-ready={ready}
     >
       {/* O assento dos OUTROS abre o perfil; o seu é estático (não há
           perfil de si mesmo). O botão fica por dentro do assento, e não
@@ -106,18 +199,26 @@ function Seat({
 export function LobbyScreen() {
   const lobbyName = useTournamentStore((s) => s.lobbyName);
   const lobbyCode = useTournamentStore((s) => s.lobbyCode);
+  const password = useTournamentStore((s) => s.password);
   const visibility = useTournamentStore((s) => s.visibility);
   const size = useTournamentStore((s) => s.size);
-  const stake = useTournamentStore((s) => s.stake);
+  const entryFee = useTournamentStore((s) => s.entryFee);
   const members = useTournamentStore((s) => s.members);
+  const readyIds = useTournamentStore((s) => s.readyIds);
+  const ownerId = useTournamentStore((s) => s.ownerId);
   const chat = useTournamentStore((s) => s.chat);
   const kickMember = useTournamentStore((s) => s.kickMember);
   const sendChat = useTournamentStore((s) => s.sendChat);
+  const confirmPresence = useTournamentStore((s) => s.confirmPresence);
+  const cancelPresence = useTournamentStore((s) => s.cancelPresence);
   const start = useTournamentStore((s) => s.startTournament);
   const leave = useTournamentStore((s) => s.leaveTournament);
   const owner = useTournamentStore(tournamentSelectors.isOwner);
-  const full = useTournamentStore(tournamentSelectors.seatsFull);
+  const youReady = useTournamentStore(tournamentSelectors.youReady);
+  const readyCount = useTournamentStore(tournamentSelectors.readyCount);
+  const allReady = useTournamentStore(tournamentSelectors.allReady);
   const balance = useGameStore((s) => s.balance);
+  const instant = useReducedMotion() ?? false;
 
   const [draft, setDraft] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -129,8 +230,12 @@ export function LobbyScreen() {
   const [kickTarget, setKickTarget] = useState<TournamentPlayer | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const pot = tournamentPot(stake, size);
-  const canAfford = balance >= stake;
+  // No resumo compacto cabe o topo do pódio; a divisão inteira
+  // (50/30/20) vive na ficha da sala, atrás da engrenagem.
+  const prize = prizeFor(1, entryFee, size);
+  // A taxa não é debitada aqui — mas o saldo precisa cobri-la, porque é
+  // ela que sai se o jogador perder.
+  const canAfford = balance >= entryFee;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -157,26 +262,34 @@ export function LobbyScreen() {
         </button>
         <div className="min-w-0 text-center">
           <h1 className="truncate text-xl font-bold tracking-wide">{lobbyName}</h1>
-          <p className="text-xs font-semibold uppercase tracking-widest text-copper">
-            {visibility === 'public' ? 'Pública' : 'Privada'} · Código {lobbyCode}
+          {/* Na sala privada o que interessa é a SENHA (é o que se
+              compartilha para convidar); na pública, o código da sala. */}
+          <p
+            className="flex items-center justify-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-copper"
+            data-testid="lobby-visibility"
+          >
+            <Icon name={visibility === 'public' ? 'globe' : 'lock'} size="1em" />
+            {visibility === 'public' ? (
+              <>Pública · Código {lobbyCode}</>
+            ) : (
+              <>Privada · Senha {password}</>
+            )}
           </p>
         </div>
-        {owner ? (
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Configurações do torneio"
-            data-testid="lobby-settings"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
-          >
-            <Icon name="gear" />
-          </button>
-        ) : (
-          <span className="h-11 w-11 shrink-0" aria-hidden="true" />
-        )}
+        {/* Visível para todos: a folha é a ficha da sala (taxa, prêmio,
+            senha). Só o dono encontra lá algo para mexer. */}
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Detalhes da sala"
+          data-testid="lobby-settings"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
+        >
+          <Icon name="gear" />
+        </button>
       </header>
 
-      {/* Resumo: jogadores · aposta · prêmio (edição pela engrenagem, só o dono) */}
+      {/* Resumo: jogadores · taxa de entrada · prêmio do campeão. */}
       <div className="tournament-summary mb-3">
         <span className="tournament-summary__item flex items-center gap-1.5">
           <Icon name="users" size="0.95em" /> {members.length}/{size}
@@ -185,23 +298,26 @@ export function LobbyScreen() {
           ·
         </span>
         <span className="tournament-summary__item flex items-center gap-1.5">
-          <Icon name="chip" size="0.95em" /> {formatCredits(stake)}
+          <Icon name="chip" size="0.95em" /> {formatCredits(entryFee)}
         </span>
         <span className="tournament-summary__sep" aria-hidden="true">
           ·
         </span>
         <span className="tournament-summary__item tournament-summary__item--prize flex items-center gap-1.5">
-          <Icon name="trophy" size="0.95em" /> {formatCredits(pot)}
+          <Icon name="trophy" size="0.95em" /> {formatCredits(prize)}
         </span>
       </div>
 
-      {/* Assentos */}
+      {/* Assentos, cada um com o seu estado de prontidão. */}
       <div className="lobby-seats">
         {seats.map((player, i) => (
           <Seat
             key={player?.id ?? `empty-${i}`}
             player={player}
+            ready={!!player && readyIds.includes(player.id)}
+            leader={!!player && player.id === ownerId}
             canKick={owner && !!player && !player.isYou}
+            instant={instant}
             onKick={() => player && setKickTarget(player)}
             onOpenProfile={() => player && setProfileOf(player)}
           />
@@ -249,33 +365,74 @@ export function LobbyScreen() {
         </form>
       </div>
 
+      {/* Dois papéis, dois botões: o dono acompanha as confirmações e dá
+          o start; os convidados confirmam — e podem voltar atrás. */}
       <div className="action-stack pb-2 pt-3">
         {owner ? (
           <Button
             onClick={start}
-            disabled={!full || !canAfford}
+            disabled={!allReady || !canAfford}
             size="md"
             fullWidth
             data-testid="start-tournament"
           >
-            {!full
-              ? `AGUARDANDO (${members.length}/${size})`
-              : !canAfford
-                ? 'SALDO INSUFICIENTE'
-                : (
-                    <>
-                      <Icon name="flag" /> INICIAR TORNEIO
-                    </>
-                  )}
+            {!allReady ? (
+              `${readyCount}/${size} JOGADORES CONFIRMADOS`
+            ) : !canAfford ? (
+              'SALDO INSUFICIENTE'
+            ) : (
+              <>
+                <Icon name="flag" /> INICIAR TORNEIO
+              </>
+            )}
           </Button>
         ) : (
-          <div className="bracket-status" role="status">
-            Aguardando o anfitrião iniciar
-            <span className="waiting-dots" aria-hidden="true">
-              <span className="waiting-dot">.</span>
-              <span className="waiting-dot">.</span>
-              <span className="waiting-dot">.</span>
-            </span>
+          <div className="flex flex-col items-center gap-1.5">
+            {youReady && (
+              <p className="text-xs font-bold text-lavender" role="status" data-testid="lobby-waiting">
+                {allReady ? 'Aguardando o anfitrião iniciar' : 'Aguardando os jogadores'}
+                <span className="waiting-dots" aria-hidden="true">
+                  <span className="waiting-dot">.</span>
+                  <span className="waiting-dot">.</span>
+                  <span className="waiting-dot">.</span>
+                </span>
+              </p>
+            )}
+            <AnimatePresence mode="wait" initial={false}>
+              {youReady ? (
+                <motion.div
+                  key="cancel"
+                  className="w-full"
+                  initial={instant ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <Button
+                    variant="danger"
+                    onClick={cancelPresence}
+                    size="md"
+                    fullWidth
+                    data-testid="cancel-presence"
+                  >
+                    <Icon name="close" strokeWidth={2.6} /> CANCELAR
+                  </Button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="confirm"
+                  className="w-full"
+                  initial={instant ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <Button onClick={confirmPresence} size="md" fullWidth data-testid="confirm-presence">
+                    <Icon name="check" strokeWidth={2.4} /> CONFIRMAR PRESENÇA
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
       </div>

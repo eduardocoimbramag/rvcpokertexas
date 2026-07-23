@@ -55,7 +55,7 @@ describe('BracketScreen — avanço de fase não trava o torneio', () => {
       bracket,
       simulating: false,
       size: 8,
-      stake: 10,
+      entryFee: 10,
     });
 
     render(<TournamentApp onExit={() => undefined} />);

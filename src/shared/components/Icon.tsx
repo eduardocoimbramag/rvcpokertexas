@@ -48,6 +48,7 @@ export type IconName =
   | 'target'
   | 'moon'
   | 'gem'
+  | 'medal'
   | 'feather';
 
 /* Partes preenchidas (pips, pupilas) usam fill=currentColor sem traço,
@@ -267,6 +268,17 @@ const GLYPHS: Record<IconName, ReactNode> = {
       <path d="M20.2 3.8a6.1 6.1 0 0 0-8.6 0L5 10.4V19h8.6l6.6-6.6a6.1 6.1 0 0 0 0-8.6z" />
       <path d="M15.8 8.2 3.5 20.5" />
       <path d="M17.3 14.6H9.4" />
+    </>
+  ),
+  /* Medalha do pódio: as duas fitas e o disco. Sem estrela nem número
+     dentro — a colocação já está escrita ao lado, e no tamanho em que
+     ela aparece (≈14px) qualquer detalhe a mais vira borrão. */
+  medal: (
+    <>
+      <path d="M8.2 2.8 10.9 8.8" />
+      <path d="M15.8 2.8 13.1 8.8" />
+      <circle cx="12" cy="14.9" r="6.1" />
+      <circle cx="12" cy="14.9" r="2.5" />
     </>
   ),
 };
