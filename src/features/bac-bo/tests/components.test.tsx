@@ -9,9 +9,10 @@ import { ConfirmPanel } from '../components/ConfirmPanel';
 import { DiceArena } from '../components/DiceArena';
 import { Die3D } from '../components/Die3D';
 import { HistorySheet } from '../components/HistorySheet';
+import { NegotiationPanel } from '../components/NegotiationPanel';
 import { ResultBanner } from '../components/ResultBanner';
-import { StakeSelector } from '../components/StakeSelector';
 import type { HistoryEntry, Match, RoundResult } from '../engine/types';
+import type { NegotiationState } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
 
 const sampleResult: RoundResult = {
@@ -35,32 +36,122 @@ afterEach(() => {
   useGameStore.setState(useGameStore.getInitialState(), true);
 });
 
-describe('StakeSelector', () => {
-  it('desabilita fichas acima do saldo e seleciona ficha válida', async () => {
+describe('NegotiationPanel — mesa de negociação', () => {
+  const match: Match = {
+    id: 'm1',
+    stake: 10,
+    opponent: { id: 'o1', name: 'Luna', avatar: 'L', rating: 1420 },
+    createdAt: 1700000000000,
+  };
+
+  const baseNegotiation: NegotiationState = {
+    messages: [
+      { id: 's1', author: 'system', kind: 'text', text: 'Proponham valores e cheguem a um acordo.' },
+    ],
+    activeProposal: null,
+    agreedStake: null,
+    proposalCooldown: 0,
+    opponentTyping: false,
+    starting: false,
+  };
+
+  const openNegotiation = (patch: Partial<NegotiationState> = {}) => {
+    useGameStore.setState({
+      phase: 'negotiate',
+      match,
+      balance: 500,
+      negotiation: { ...baseNegotiation, ...patch },
+    });
+  };
+
+  it('composer: +10/+100 somam ao lance e o enviar exige valor válido', async () => {
     const user = userEvent.setup();
-    useGameStore.setState({ phase: 'stake', balance: 30, selectedStake: null });
-    render(<StakeSelector />);
+    openNegotiation();
+    render(<NegotiationPanel match={match} />);
 
-    expect(screen.getByTestId('stake-50')).toBeDisabled();
-    expect(screen.getByTestId('stake-10')).toBeEnabled();
-    expect(screen.getByTestId('stake-25')).toBeEnabled();
+    // Sem valor digitado, "Enviar proposta" fica bloqueado.
+    expect(screen.getByTestId('nego-send')).toBeDisabled();
 
-    await user.click(screen.getByTestId('stake-25'));
-    expect(screen.getByTestId('stake-25')).toHaveAttribute('aria-checked', 'true');
-    expect(useGameStore.getState().selectedStake).toBe(25);
+    await user.click(screen.getByTestId('nego-plus-10'));
+    await user.click(screen.getByTestId('nego-plus-100'));
+    expect(screen.getByTestId('nego-input')).toHaveValue('110');
+    expect(screen.getByTestId('nego-send')).toBeEnabled();
   });
 
-  it('sem seleção o botão de busca fica desabilitado', () => {
-    useGameStore.setState({ phase: 'stake', balance: 100, selectedStake: null });
-    render(<StakeSelector />);
-    expect(screen.getByTestId('search-button')).toBeDisabled();
+  it('acima do saldo o envio bloqueia e a dica avisa', async () => {
+    const user = userEvent.setup();
+    openNegotiation();
+    render(<NegotiationPanel match={match} />);
+
+    // Em repouso a dica fica calada: nada de lembrete fixo de limites.
+    expect(screen.queryByTestId('nego-hint')).not.toBeInTheDocument();
+
+    await user.type(screen.getByTestId('nego-input'), '900');
+    expect(screen.getByTestId('nego-send')).toBeDisabled();
+    expect(screen.getByTestId('nego-hint')).toHaveTextContent(/saldo insuficiente/i);
   });
 
-  it('sem saldo mínimo oferece recarga de créditos', () => {
-    useGameStore.setState({ phase: 'stake', balance: 5, selectedStake: null });
-    render(<StakeSelector />);
-    expect(screen.getByTestId('refill-button')).toBeInTheDocument();
-    expect(screen.queryByTestId('search-button')).not.toBeInTheDocument();
+  it('abaixo do mínimo o envio bloqueia e a dica nomeia o piso', async () => {
+    const user = userEvent.setup();
+    openNegotiation();
+    render(<NegotiationPanel match={match} />);
+
+    await user.type(screen.getByTestId('nego-input'), '5');
+    expect(screen.getByTestId('nego-send')).toBeDisabled();
+    expect(screen.getByTestId('nego-hint')).toHaveTextContent(/lance mínimo é 10/i);
+  });
+
+  it('durante o relógio de 10 s o envio mostra a contagem e bloqueia', async () => {
+    const user = userEvent.setup();
+    openNegotiation({ proposalCooldown: 7 });
+    render(<NegotiationPanel match={match} />);
+
+    await user.type(screen.getByTestId('nego-input'), '50');
+    expect(screen.getByTestId('nego-send')).toBeDisabled();
+    expect(screen.getByTestId('nego-cooldown')).toHaveTextContent('7s');
+    expect(screen.getByTestId('nego-hint')).toHaveTextContent(/nova proposta em 7s/i);
+  });
+
+  it('proposta viva do oponente traz o ACEITAR, que fecha o acordo', async () => {
+    const user = userEvent.setup();
+    openNegotiation({
+      messages: [
+        ...baseNegotiation.messages,
+        { id: 'p1', author: 'opponent', kind: 'proposal', amount: 60, status: 'pending' },
+      ],
+      activeProposal: { messageId: 'p1', from: 'opponent', amount: 60 },
+    });
+    render(<NegotiationPanel match={match} />);
+
+    // Antes do acordo, iniciar fica bloqueado.
+    expect(screen.getByTestId('nego-start')).toBeDisabled();
+
+    await user.click(screen.getByTestId('nego-accept'));
+    expect(useGameStore.getState().negotiation?.agreedStake).toBe(60);
+
+    // A conversa não ganha mensagem: o cartão do lance recebe o selo e o
+    // iniciar destrava. Nada de faixa de "acordo fechado" no chat.
+    expect(await screen.findByTestId('nego-accepted')).toBeInTheDocument();
+    expect(screen.getByTestId('nego-start')).toBeEnabled();
+    expect(screen.getByTestId('nego-chat').textContent).not.toMatch(/acordo fechado/i);
+    // Com a mesa selada, o composer sai de cena.
+    expect(screen.queryByTestId('nego-send')).not.toBeInTheDocument();
+  });
+
+  it('desistir abandona a mesa e volta ao menu', async () => {
+    const user = userEvent.setup();
+    openNegotiation();
+    render(<NegotiationPanel match={match} />);
+
+    await user.click(screen.getByTestId('nego-quit'));
+    expect(useGameStore.getState().phase).toBe('idle');
+    expect(useGameStore.getState().negotiation).toBeNull();
+  });
+
+  it('indicador de digitação aparece com o oponente escrevendo', () => {
+    openNegotiation({ opponentTyping: true });
+    render(<NegotiationPanel match={match} />);
+    expect(screen.getByTestId('nego-typing')).toBeInTheDocument();
   });
 });
 
@@ -321,8 +412,8 @@ describe('HistorySheet', () => {
   });
 });
 
-describe('App (fluxo Home → Tutorial → Stake)', () => {
-  it('primeira jogada abre o tutorial e termina na seleção de aposta', async () => {
+describe('App (fluxo Home → Tutorial → Busca)', () => {
+  it('primeira jogada abre o tutorial e termina na busca por oponente', async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -335,12 +426,14 @@ describe('App (fluxo Home → Tutorial → Stake)', () => {
     await user.click(screen.getByTestId('tutorial-next'));
     await user.click(screen.getByTestId('tutorial-next'));
 
-    expect(useGameStore.getState().phase).toBe('stake');
-    expect(await screen.findByText('Escolha sua aposta')).toBeInTheDocument();
+    // Sem tela de aposta: o 1v1 cai direto na busca (o valor é
+    // negociado com o oponente depois da confirmação).
+    expect(useGameStore.getState().phase).toBe('search');
+    expect(await screen.findByText('Procurando oponente…')).toBeInTheDocument();
     expect(useGameStore.getState().settings.tutorialSeen).toBe(true);
   });
 
-  it('com tutorial já visto, JOGAR vai direto para a aposta', async () => {
+  it('com tutorial já visto, JOGAR vai direto para a busca', async () => {
     const user = userEvent.setup();
     useGameStore.setState({
       settings: { ...useGameStore.getState().settings, tutorialSeen: true },
@@ -348,6 +441,6 @@ describe('App (fluxo Home → Tutorial → Stake)', () => {
     render(<App />);
 
     await user.click(screen.getByTestId('play-button'));
-    expect(useGameStore.getState().phase).toBe('stake');
+    expect(useGameStore.getState().phase).toBe('search');
   });
 });

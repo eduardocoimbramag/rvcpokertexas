@@ -66,6 +66,7 @@ export default function App() {
         <div aria-live="polite" className="sr-only">
           {phase === 'search' && 'Procurando oponente.'}
           {phase === 'found' && 'Oponente encontrado.'}
+          {phase === 'negotiate' && 'Mesa de negociação aberta. Proponham o valor da aposta.'}
           {phase === 'completed' &&
             result &&
             (result.outcome === 'win'

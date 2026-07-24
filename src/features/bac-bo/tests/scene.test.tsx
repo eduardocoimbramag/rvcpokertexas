@@ -20,10 +20,10 @@ describe('resolveDealerReaction', () => {
   it('mapeia cada fase para a reação da especificação (§9.1)', () => {
     const expected: Record<GamePhase, string> = {
       idle: 'idle',
-      stake: 'present',
       search: 'idle',
       found: 'greet',
       confirm: 'present',
+      negotiate: 'present',
       coinflip: 'anticipate',
       countdown: 'anticipate',
       rolling: 'shake',
@@ -43,7 +43,7 @@ describe('resolveDealerReaction', () => {
   });
 
   it('fora de completed, o resultado residual é ignorado', () => {
-    expect(resolveDealerReaction('stake', 'win')).toBe('present');
+    expect(resolveDealerReaction('negotiate', 'win')).toBe('present');
     expect(resolveDealerReaction('rolling', 'tie')).toBe('shake');
   });
 });
@@ -179,7 +179,7 @@ describe('AmbientLayer — coluna de cena e extensão de ambiente', () => {
     const { rerender } = render(<AmbientLayer />);
     expect(screen.getByTestId('scene-ambient').className).not.toContain('scene-ambient--game');
 
-    useGameStore.setState({ phase: 'stake' });
+    useGameStore.setState({ phase: 'search' });
     rerender(<AmbientLayer />);
     expect(screen.getByTestId('scene-ambient').className).toContain('scene-ambient--game');
   });

@@ -1,8 +1,15 @@
 import { create } from 'zustand';
 
 import { appEnv } from '@/shared/config/env';
+import { createId } from '@/shared/lib/ids';
 
-import { COIN_PICK_SECONDS, COUNTDOWN_START, HISTORY_LIMIT, TIMINGS } from '../animations/timings';
+import {
+  COIN_PICK_SECONDS,
+  COUNTDOWN_START,
+  HISTORY_LIMIT,
+  PROPOSAL_COOLDOWN_SECONDS,
+  TIMINGS,
+} from '../animations/timings';
 import type { GameEngine } from '../engine/GameEngine';
 import { GameEngineError } from '../engine/GameEngine';
 import { createGameEngine } from '../engine/createGameEngine';
@@ -17,18 +24,24 @@ import type {
 import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageService';
 import type { DiceColorId, DiceColors } from './diceColors';
 import { DEFAULT_DICE_COLORS, assignColors, randomDiceColor } from './diceColors';
+import type { NegotiationMessage, Negotiator, NegotiatorReply } from './negotiation';
+import { BOT_BEATS, NEGOTIATION_INTRO, createBotNegotiator } from './negotiation';
 
 /**
  * Máquina de estados do fluxo de jogo (seção 12 da especificação).
  * Toda mudança de fase passa por `canTransition` — transições fora do
  * mapa são ignoradas, o que torna impossível a UI "pular" etapas.
+ *
+ * O 1v1 não tem mais seleção prévia de aposta: a busca começa direto da
+ * Home e o valor nasce na mesa de negociação (fase `negotiate`), entre
+ * a confirmação do duelo e o cara-ou-coroa.
  */
 export type GamePhase =
   | 'idle'
-  | 'stake'
   | 'search'
   | 'found'
   | 'confirm'
+  | 'negotiate'
   | 'coinflip'
   | 'countdown'
   | 'rolling'
@@ -37,17 +50,17 @@ export type GamePhase =
   | 'error';
 
 export const PHASE_TRANSITIONS: Record<GamePhase, readonly GamePhase[]> = {
-  idle: ['stake'],
-  stake: ['search', 'idle'],
-  search: ['found', 'stake', 'error'],
+  idle: ['search'],
+  search: ['found', 'idle', 'error'],
   found: ['confirm'],
-  confirm: ['coinflip', 'stake'],
+  confirm: ['negotiate', 'idle'],
+  negotiate: ['coinflip', 'idle', 'error'],
   coinflip: ['countdown', 'error'],
   countdown: ['rolling', 'error'],
   rolling: ['reveal', 'error'],
   reveal: ['completed'],
-  completed: ['stake', 'idle'],
-  error: ['stake', 'idle'],
+  completed: ['search', 'idle'],
+  error: ['search', 'idle'],
 };
 
 export function canTransition(from: GamePhase, to: GamePhase): boolean {
@@ -61,6 +74,34 @@ export interface MatchConfirmations {
 }
 
 const NO_CONFIRMATIONS: MatchConfirmations = { player: false, opponent: false };
+
+/** Proposta viva na mesa de negociação (a última ainda não superada). */
+export interface NegotiationProposalRef {
+  messageId: string;
+  from: 'player' | 'opponent';
+  amount: number;
+}
+
+/**
+ * Mesa de negociação (fase `negotiate`): os dois lados trocam lances no
+ * chat até um aceitar o valor do outro. Só o acordo (`agreedStake`)
+ * libera o "Iniciar partida"; o débito do stake continua acontecendo
+ * apenas na virada para o cara-ou-coroa.
+ */
+export interface NegotiationState {
+  /** Linha do tempo do chat (avisos, falas, propostas e o aperto de mãos). */
+  messages: NegotiationMessage[];
+  /** Proposta em aberto; `null` sem lance vivo (ou após o acordo). */
+  activeProposal: NegotiationProposalRef | null;
+  /** Valor acordado; `null` enquanto não há aperto de mãos. */
+  agreedStake: number | null;
+  /** Segundos até o jogador poder propor de novo (0 = livre). */
+  proposalCooldown: number;
+  /** O oponente está "digitando" no chat. */
+  opponentTyping: boolean;
+  /** Beat de início em andamento — trava as ações da mesa. */
+  starting: boolean;
+}
 
 /** Face da moeda do sorteio pré-partida. */
 export type CoinSide = 'cara' | 'coroa';
@@ -100,11 +141,12 @@ const COUNTDOWN_WORDS: Record<number, string> = {
 export interface GameStoreState {
   phase: GamePhase;
   balance: number;
-  selectedStake: number | null;
   match: Match | null;
   result: RoundResult | null;
-  /** Estado da confirmação dupla — o countdown só nasce com os dois `true`. */
+  /** Estado da confirmação dupla — a negociação só nasce com os dois `true`. */
   confirmations: MatchConfirmations;
+  /** Mesa de negociação da rodada; `null` fora da fase negotiate. */
+  negotiation: NegotiationState | null;
   /** Sorteio de cara-ou-coroa da rodada; `null` fora da fase coinflip. */
   coinFlip: CoinFlipState | null;
   /** Cor dos dados de cada lado (o vencedor do sorteio muda a sua). */
@@ -119,14 +161,23 @@ export interface GameStoreState {
   devForcedOutcome: RoundOutcome | null;
   /** Vencedor forçado do cara-ou-coroa (apenas DevTools; e2e). */
   devForcedCoinWinner: 'player' | 'opponent' | null;
+  /** Oponente aceita qualquer proposta (apenas DevTools; e2e). */
+  devNegotiationAutoAccept: boolean;
 
-  goToStake: () => void;
-  goHome: () => void;
-  selectStake: (stake: number) => void;
+  /** Busca direta do 1v1 (Home, jogar de novo e tentar de novo). */
   startSearch: () => Promise<void>;
+  goHome: () => void;
   cancelSearch: () => void;
   confirmMatch: () => void;
   declineMatch: () => void;
+  /** Envia um lance de créditos na mesa de negociação. */
+  sendProposal: (amount: number) => void;
+  /** Aceita a proposta viva do oponente (fecha o acordo). */
+  acceptProposal: () => void;
+  /** Acordo fechado: fixa o stake na engine e abre o cara-ou-coroa. */
+  startDuel: () => void;
+  /** Abandona a mesa de negociação e volta ao menu. */
+  abandonNegotiation: () => void;
   /** Escolha de cor do vencedor do cara-ou-coroa (fase coinflip/pick). */
   chooseDiceColor: (color: DiceColorId) => void;
   playAgain: () => void;
@@ -142,6 +193,7 @@ export interface GameStoreState {
   setSceneryQuality: (scenery: SceneQualitySetting) => void;
   devSetForcedOutcome: (outcome: RoundOutcome | null) => void;
   devSetForcedCoinWinner: (winner: 'player' | 'opponent' | null) => void;
+  devSetNegotiationAutoAccept: (enabled: boolean) => void;
   devAddCredits: (amount: number) => void;
   devResetAll: () => void;
 }
@@ -152,6 +204,8 @@ export interface GameStoreDeps {
   initialBalance?: number;
   /** Fonte de aleatoriedade do cara-ou-coroa (determinística nos testes). */
   rng?: () => number;
+  /** Fábrica da cabeça do oponente na negociação (stub nos testes). */
+  createNegotiator?: () => Negotiator;
 }
 
 /**
@@ -170,6 +224,17 @@ export function createGameStore(deps: GameStoreDeps = {}) {
   const timers = new Set<ReturnType<typeof setTimeout>>();
   let searchAbort: AbortController | null = null;
   const rng = deps.rng ?? Math.random;
+  const createNegotiator = deps.createNegotiator ?? (() => createBotNegotiator(rng));
+
+  /** Cabeça do oponente na mesa corrente (uma por partida). */
+  let negotiator: Negotiator | null = null;
+  /**
+   * Geração das jogadas agendadas do bot: cada nova ação do jogador
+   * (proposta, aceite, desistência) incrementa a sequência e as jogadas
+   * antigas — cumprimento, contraproposta a um lance já superado —
+   * morrem no guard sem efeito.
+   */
+  let botSeq = 0;
 
   const store = create<GameStoreState>()((set, get) => {
     const schedule = (fn: () => void, ms: number): void => {
@@ -209,6 +274,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       transitionTo('error');
     };
 
+    /** Delay "humano" sorteado dentro de uma janela [min, max]. */
+    const within = (min: number, max: number): number => min + Math.random() * (max - min);
+
     /**
      * O oponente simulado confirma sozinho após um delay natural — antes
      * ou depois do jogador, o que dá vida à espera. Guardas de fase e de
@@ -216,8 +284,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
      */
     const scheduleOpponentConfirm = (matchId: string): void => {
       const { opponentConfirmMinMs, opponentConfirmMaxMs } = TIMINGS;
-      const delay =
-        opponentConfirmMinMs + Math.random() * (opponentConfirmMaxMs - opponentConfirmMinMs);
+      const delay = within(opponentConfirmMinMs, opponentConfirmMaxMs);
       schedule(() => {
         const { phase, match, confirmations } = get();
         if (phase !== 'confirm' || match?.id !== matchId || confirmations.opponent) return;
@@ -229,8 +296,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
 
     /**
      * Com os dois lados prontos, trava o duelo: um beat para a animação
-     * de "duelo confirmado" respirar, então debita o stake e abre o
-     * cara-ou-coroa. Chamado após CADA confirmação; só age na segunda.
+     * de "duelo confirmado" respirar, então abre a mesa de negociação.
+     * Nada é debitado aqui — o valor ainda vai nascer da conversa.
+     * Chamado após CADA confirmação; só age na segunda.
      */
     const startWhenBothConfirmed = (): void => {
       const { confirmations } = get();
@@ -239,22 +307,271 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       audioManager.playSfx('locked');
       vibrate([30, 40, 60]);
       schedule(() => {
-        const { match, balance, phase } = get();
+        const { match, phase } = get();
         if (phase !== 'confirm' || !match) return;
-
-        let nextBalance: number;
-        try {
-          nextBalance = debitStake(balance, match.stake);
-        } catch {
-          failWith('Saldo insuficiente para esta aposta.');
-          return;
-        }
-
-        if (!transitionTo('coinflip')) return;
-        set({ balance: nextBalance });
-        persist();
-        runCoinFlip();
+        if (!transitionTo('negotiate')) return;
+        beginNegotiation(match.id);
       }, TIMINGS.confirmLockInMs);
+    };
+
+    /* ---------- Mesa de negociação ---------- */
+
+    /** Ajusta a negociação corrente sem perder o que já foi conversado. */
+    const patchNegotiation = (patch: Partial<NegotiationState>): void => {
+      const { negotiation } = get();
+      if (!negotiation) return;
+      set({ negotiation: { ...negotiation, ...patch } });
+    };
+
+    const pushNegotiationMessage = (message: NegotiationMessage): void => {
+      const { negotiation } = get();
+      if (!negotiation) return;
+      set({ negotiation: { ...negotiation, messages: [...negotiation.messages, message] } });
+    };
+
+    /**
+     * Guard das jogadas agendadas do bot: a jogada só vale se ainda for
+     * da geração corrente, na mesma partida, com a mesa aberta e sem
+     * acordo fechado.
+     */
+    const botTurnAlive = (matchId: string, seq: number): boolean => {
+      const { phase, match, negotiation } = get();
+      return (
+        seq === botSeq &&
+        phase === 'negotiate' &&
+        match?.id === matchId &&
+        negotiation !== null &&
+        negotiation.agreedStake === null &&
+        !negotiation.starting
+      );
+    };
+
+    /** Um lance novo tira o anterior da mesa (fica no chat como "superada"). */
+    const supersedeActiveProposal = (): void => {
+      const { negotiation } = get();
+      if (!negotiation?.activeProposal) return;
+      const { messageId } = negotiation.activeProposal;
+      set({
+        negotiation: {
+          ...negotiation,
+          activeProposal: null,
+          messages: negotiation.messages.map((message) =>
+            message.id === messageId ? { ...message, status: 'superseded' as const } : message,
+          ),
+        },
+      });
+    };
+
+    /** Lance do oponente, com fala opcional antes da proposta. */
+    const botPropose = (amount: number, quip: string | null): void => {
+      supersedeActiveProposal();
+      const { negotiation } = get();
+      if (!negotiation) return;
+      const messageId = createId();
+      const messages: NegotiationMessage[] = [...negotiation.messages];
+      if (quip) messages.push({ id: createId(), author: 'opponent', kind: 'text', text: quip });
+      messages.push({
+        id: messageId,
+        author: 'opponent',
+        kind: 'proposal',
+        amount,
+        status: 'pending',
+      });
+      set({
+        negotiation: {
+          ...negotiation,
+          opponentTyping: false,
+          messages,
+          activeProposal: { messageId, from: 'opponent', amount },
+        },
+      });
+      audioManager.playSfx('stake');
+      vibrate(20);
+    };
+
+    /**
+     * Aperto de mãos: sela a proposta viva como o valor do duelo. Vale
+     * para os dois sentidos — o bot aceitando o lance do jogador e o
+     * jogador aceitando o lance do bot.
+     *
+     * O chat NÃO ganha mensagem nova: quem anuncia o acordo é o próprio
+     * cartão do lance (que recebe o selo "aceita"), o cabeçalho do vidro
+     * e o CTA de início destravando. A conversa fica como estava.
+     */
+    const settleAgreement = (): void => {
+      const { negotiation } = get();
+      const proposal = negotiation?.activeProposal;
+      if (!negotiation || !proposal) return;
+      botSeq += 1; // nenhuma jogada pendente do bot sobrevive ao acordo
+      set({
+        negotiation: {
+          ...negotiation,
+          opponentTyping: false,
+          proposalCooldown: 0,
+          agreedStake: proposal.amount,
+          activeProposal: null,
+          messages: negotiation.messages.map((message) =>
+            message.id === proposal.messageId
+              ? { ...message, status: 'accepted' as const }
+              : message,
+          ),
+        },
+      });
+      audioManager.playSfx('locked');
+      vibrate([30, 40, 60]);
+    };
+
+    /** Relógio de 10 s entre propostas do jogador (anti-spam de lances). */
+    const runProposalCooldown = (matchId: string, value: number): void => {
+      const { phase, match, negotiation } = get();
+      if (phase !== 'negotiate' || match?.id !== matchId || !negotiation) return;
+      patchNegotiation({ proposalCooldown: value });
+      if (value <= 0) return;
+      schedule(() => runProposalCooldown(matchId, value - 1), 1000);
+    };
+
+    /** Resposta do bot a um lance do jogador (ler → digitar → decidir). */
+    const scheduleBotReply = (matchId: string, amount: number, seq: number): void => {
+      schedule(
+        () => {
+          if (!botTurnAlive(matchId, seq)) return;
+          patchNegotiation({ opponentTyping: true });
+          schedule(
+            () => {
+              if (!botTurnAlive(matchId, seq)) return;
+              const reply: NegotiatorReply = get().devNegotiationAutoAccept
+                ? { action: 'accept' }
+                : (negotiator?.respond(amount, { balance: get().balance }) ?? {
+                    action: 'accept',
+                  });
+              if (reply.action === 'accept') {
+                settleAgreement();
+              } else {
+                botPropose(reply.amount, reply.quip);
+              }
+            },
+            within(BOT_BEATS.replyTypingMinMs, BOT_BEATS.replyTypingMaxMs),
+          );
+        },
+        within(BOT_BEATS.replyDelayMinMs, BOT_BEATS.replyDelayMaxMs),
+      );
+    };
+
+    /**
+     * Abre a mesa: aviso do sistema e a abertura do bot em beats de
+     * conversa real (cumprimento digitado, pausa, proposta inicial).
+     * Se o jogador propuser antes, a geração muda e a abertura morre —
+     * o bot passa a responder ao lance dele.
+     */
+    const beginNegotiation = (matchId: string): void => {
+      negotiator = createNegotiator();
+      const seq = ++botSeq;
+      set({
+        negotiation: {
+          messages: [{ id: createId(), author: 'system', kind: 'text', text: NEGOTIATION_INTRO }],
+          activeProposal: null,
+          agreedStake: null,
+          proposalCooldown: 0,
+          opponentTyping: false,
+          starting: false,
+        },
+      });
+
+      schedule(
+        () => {
+          if (!botTurnAlive(matchId, seq)) return;
+          patchNegotiation({ opponentTyping: true });
+          schedule(
+            () => {
+              if (!botTurnAlive(matchId, seq)) return;
+              const opening = negotiator?.opening({ balance: get().balance });
+              if (!opening) return;
+              patchNegotiation({ opponentTyping: false });
+              pushNegotiationMessage({
+                id: createId(),
+                author: 'opponent',
+                kind: 'text',
+                text: opening.greeting,
+              });
+              audioManager.playSfx('tap');
+              schedule(
+                () => {
+                  if (!botTurnAlive(matchId, seq)) return;
+                  patchNegotiation({ opponentTyping: true });
+                  schedule(
+                    () => {
+                      if (!botTurnAlive(matchId, seq)) return;
+                      botPropose(opening.amount, null);
+                    },
+                    within(BOT_BEATS.openTypingMinMs, BOT_BEATS.openTypingMaxMs),
+                  );
+                },
+                within(BOT_BEATS.openDelayMinMs, BOT_BEATS.openDelayMaxMs),
+              );
+            },
+            within(BOT_BEATS.greetTypingMinMs, BOT_BEATS.greetTypingMaxMs),
+          );
+        },
+        within(BOT_BEATS.greetDelayMinMs, BOT_BEATS.greetDelayMaxMs),
+      );
+    };
+
+    /* ---------- Busca e rodada ---------- */
+
+    /**
+     * Busca direta (a Home, o "jogar de novo" e o "tentar novamente"
+     * caem aqui): sem seleção prévia de valor — a partida abre no stake
+     * mínimo e o valor real nasce na negociação.
+     */
+    const beginSearch = async (): Promise<void> => {
+      if (isBroke(get().balance)) return; // sem saldo mínimo não há mesa
+      if (!transitionTo('search')) return;
+      set({
+        match: null,
+        result: null,
+        error: null,
+        confirmations: NO_CONFIRMATIONS,
+        negotiation: null,
+        coinFlip: null,
+        diceColors: DEFAULT_DICE_COLORS,
+      });
+      audioManager.playSfx('tap');
+      audioManager.startMusic();
+      searchAbort = new AbortController();
+      try {
+        const match = await engine.findMatch({ signal: searchAbort.signal });
+        if (get().phase !== 'search') return;
+        set({ match, confirmations: NO_CONFIRMATIONS });
+        if (transitionTo('found')) {
+          audioManager.playSfx('found');
+          vibrate(60);
+          schedule(() => {
+            if (transitionTo('confirm')) scheduleOpponentConfirm(match.id);
+          }, TIMINGS.foundSplashMs);
+        }
+      } catch (error) {
+        if (error instanceof GameEngineError && error.code === 'aborted') return;
+        failWith('Falha ao buscar oponente. Tente novamente.');
+      }
+    };
+
+    /** Volta segura ao menu: mata timers, busca e mesa em andamento. */
+    const resetToIdle = (): void => {
+      clearTimers();
+      searchAbort?.abort();
+      botSeq += 1;
+      negotiator = null;
+      if (transitionTo('idle')) {
+        set({
+          match: null,
+          result: null,
+          error: null,
+          confirmations: NO_CONFIRMATIONS,
+          negotiation: null,
+          coinFlip: null,
+          diceColors: DEFAULT_DICE_COLORS,
+        });
+      }
     };
 
     /** Ajusta o coinFlip corrente sem perder os campos já decididos. */
@@ -410,7 +727,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           schedule(completeRound, TIMINGS.revealMs);
         }, TIMINGS.rollingMs);
       } catch {
-        // Falha na engine: devolve o stake debitado na confirmação.
+        // Falha na engine: devolve o stake debitado no início do duelo.
         set({ balance: creditPayout(get().balance, match.stake) });
         persist();
         failWith('Não foi possível concluir a rodada. Seu stake foi devolvido.');
@@ -440,10 +757,10 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     return {
       phase: 'idle',
       balance: persisted?.balance ?? initialBalance,
-      selectedStake: null,
       match: null,
       result: null,
       confirmations: NO_CONFIRMATIONS,
+      negotiation: null,
       coinFlip: null,
       diceColors: DEFAULT_DICE_COLORS,
       history: persisted?.history ?? [],
@@ -452,76 +769,17 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       settings: persisted?.settings ?? DEFAULT_SETTINGS,
       devForcedOutcome: null,
       devForcedCoinWinner: null,
+      devNegotiationAutoAccept: false,
 
-      goToStake: () => {
-        if (transitionTo('stake')) {
-          set({
-            match: null,
-            result: null,
-            error: null,
-            confirmations: NO_CONFIRMATIONS,
-            coinFlip: null,
-            diceColors: DEFAULT_DICE_COLORS,
-          });
-          audioManager.playSfx('tap');
-          audioManager.startMusic();
-        }
-      },
+      startSearch: () => beginSearch(),
 
       goHome: () => {
-        clearTimers();
-        searchAbort?.abort();
-        if (transitionTo('idle')) {
-          set({
-            match: null,
-            result: null,
-            selectedStake: null,
-            error: null,
-            confirmations: NO_CONFIRMATIONS,
-            coinFlip: null,
-            diceColors: DEFAULT_DICE_COLORS,
-          });
-        }
-      },
-
-      selectStake: (stake) => {
-        if (get().phase !== 'stake') return;
-        if (!validateStake(get().balance, stake).ok) return;
-        set({ selectedStake: stake });
-        audioManager.playSfx('stake');
-      },
-
-      startSearch: async () => {
-        const { balance, selectedStake } = get();
-        if (selectedStake === null || !validateStake(balance, selectedStake).ok) return;
-        if (!transitionTo('search')) return;
-
-        audioManager.playSfx('tap');
-        searchAbort = new AbortController();
-        try {
-          const match = await engine.findMatch({
-            stake: selectedStake,
-            signal: searchAbort.signal,
-          });
-          if (get().phase !== 'search') return;
-          set({ match, confirmations: NO_CONFIRMATIONS });
-          if (transitionTo('found')) {
-            audioManager.playSfx('found');
-            vibrate(60);
-            schedule(() => {
-              if (transitionTo('confirm')) scheduleOpponentConfirm(match.id);
-            }, TIMINGS.foundSplashMs);
-          }
-        } catch (error) {
-          if (error instanceof GameEngineError && error.code === 'aborted') return;
-          failWith('Falha ao buscar oponente. Tente novamente.');
-        }
+        resetToIdle();
       },
 
       cancelSearch: () => {
         if (get().phase !== 'search') return;
-        searchAbort?.abort();
-        transitionTo('stake');
+        resetToIdle();
       },
 
       confirmMatch: () => {
@@ -538,8 +796,107 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         const { phase, confirmations } = get();
         // Quem confirmou deu a palavra: só dá para recusar antes disso.
         if (phase !== 'confirm' || confirmations.player) return;
-        set({ match: null, confirmations: NO_CONFIRMATIONS });
-        transitionTo('stake');
+        resetToIdle();
+      },
+
+      sendProposal: (amount) => {
+        const { phase, negotiation, match, balance } = get();
+        if (phase !== 'negotiate' || !negotiation || !match) return;
+        if (negotiation.agreedStake !== null || negotiation.starting) return;
+        if (!validateStake(balance, amount).ok) return;
+
+        // Propor exatamente o valor na mesa do oponente é um aperto de
+        // mãos — não conta como lance novo (nem entra no cooldown).
+        if (
+          negotiation.activeProposal?.from === 'opponent' &&
+          negotiation.activeProposal.amount === amount
+        ) {
+          get().acceptProposal();
+          return;
+        }
+
+        if (negotiation.proposalCooldown > 0) return;
+
+        const seq = ++botSeq; // há lance novo: jogadas antigas do bot caducam
+        supersedeActiveProposal();
+        const fresh = get().negotiation;
+        if (!fresh) return;
+        const messageId = createId();
+        set({
+          negotiation: {
+            ...fresh,
+            messages: [
+              ...fresh.messages,
+              { id: messageId, author: 'player', kind: 'proposal', amount, status: 'pending' },
+            ],
+            activeProposal: { messageId, from: 'player', amount },
+            proposalCooldown: PROPOSAL_COOLDOWN_SECONDS,
+          },
+        });
+        audioManager.playSfx('stake');
+        vibrate(20);
+        schedule(() => runProposalCooldown(match.id, PROPOSAL_COOLDOWN_SECONDS - 1), 1000);
+        scheduleBotReply(match.id, amount, seq);
+      },
+
+      acceptProposal: () => {
+        const { phase, negotiation, balance } = get();
+        if (phase !== 'negotiate' || !negotiation || negotiation.starting) return;
+        if (negotiation.agreedStake !== null) return;
+        const proposal = negotiation.activeProposal;
+        if (!proposal || proposal.from !== 'opponent') return;
+        if (!validateStake(balance, proposal.amount).ok) return;
+        settleAgreement();
+      },
+
+      startDuel: () => {
+        const { phase, negotiation, match, balance } = get();
+        if (phase !== 'negotiate' || !negotiation || !match) return;
+        const stake = negotiation.agreedStake;
+        if (stake === null || negotiation.starting) return;
+        if (!validateStake(balance, stake).ok) {
+          failWith('Saldo insuficiente para esta aposta.');
+          return;
+        }
+
+        botSeq += 1;
+        set({ negotiation: { ...negotiation, starting: true, opponentTyping: false } });
+        audioManager.playSfx('ready');
+        vibrate(30);
+
+        void (async () => {
+          try {
+            // O valor acordado vira a verdade da engine ANTES do débito:
+            // payout e histórico derivam do stake gravado na partida.
+            const updated = await engine.setStake({ matchId: match.id, stake });
+            if (get().phase !== 'negotiate' || get().match?.id !== match.id) return;
+            set({ match: updated });
+            schedule(() => {
+              const { phase: current, balance: currentBalance } = get();
+              if (current !== 'negotiate') return;
+              let nextBalance: number;
+              try {
+                nextBalance = debitStake(currentBalance, stake);
+              } catch {
+                failWith('Saldo insuficiente para esta aposta.');
+                return;
+              }
+              if (!transitionTo('coinflip')) return;
+              set({ balance: nextBalance });
+              persist();
+              runCoinFlip();
+            }, TIMINGS.negotiationStartMs);
+          } catch {
+            failWith('Não foi possível iniciar a partida. Tente novamente.');
+          }
+        })();
+      },
+
+      abandonNegotiation: () => {
+        const { phase, negotiation } = get();
+        if (phase !== 'negotiate' || negotiation?.starting) return;
+        audioManager.playSfx('tap');
+        resetToIdle();
       },
 
       chooseDiceColor: (color) => {
@@ -549,16 +906,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       },
 
       playAgain: () => {
-        if (transitionTo('stake')) {
-          set({
-            match: null,
-            result: null,
-            confirmations: NO_CONFIRMATIONS,
-            coinFlip: null,
-            diceColors: DEFAULT_DICE_COLORS,
-          });
-          audioManager.playSfx('tap');
-        }
+        if (get().phase !== 'completed') return;
+        void beginSearch();
       },
 
       dismissError: () => {
@@ -568,10 +917,17 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           match: null,
           result: null,
           confirmations: NO_CONFIRMATIONS,
+          negotiation: null,
           coinFlip: null,
           diceColors: DEFAULT_DICE_COLORS,
         });
-        transitionTo('stake');
+        // Sem saldo mínimo a nova busca seria inútil: volta ao menu,
+        // onde a recarga de créditos mora.
+        if (isBroke(get().balance)) {
+          transitionTo('idle');
+          return;
+        }
+        void beginSearch();
       },
 
       refillCredits: () => {
@@ -618,6 +974,11 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         set({ devForcedCoinWinner: winner });
       },
 
+      devSetNegotiationAutoAccept: (enabled) => {
+        if (!appEnv.devToolsEnabled) return;
+        set({ devNegotiationAutoAccept: enabled });
+      },
+
       devAddCredits: (amount) => {
         if (!appEnv.devToolsEnabled) return;
         set({ balance: Math.max(0, get().balance + amount) });
@@ -628,14 +989,16 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         if (!appEnv.devToolsEnabled) return;
         clearTimers();
         searchAbort?.abort();
+        botSeq += 1;
+        negotiator = null;
         storage.clear();
         set({
           phase: 'idle',
           balance: initialBalance,
-          selectedStake: null,
           match: null,
           result: null,
           confirmations: NO_CONFIRMATIONS,
+          negotiation: null,
           coinFlip: null,
           diceColors: DEFAULT_DICE_COLORS,
           history: [],
@@ -644,6 +1007,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           settings: DEFAULT_SETTINGS,
           devForcedOutcome: null,
           devForcedCoinWinner: null,
+          devNegotiationAutoAccept: false,
         });
       },
     };

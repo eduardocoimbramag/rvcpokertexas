@@ -45,6 +45,38 @@ describe('LocalBacBoGameEngine.findMatch', () => {
     controller.abort();
     await expect(promise).rejects.toMatchObject({ code: 'aborted' });
   });
+
+  it('sem stake (fluxo de negociação), abre a partida no stake mínimo', async () => {
+    const engine = createTestEngine();
+    const match = await engine.findMatch({});
+    expect(match.stake).toBe(10);
+  });
+});
+
+describe('LocalBacBoGameEngine.setStake', () => {
+  it('grava o valor negociado e o payout da rodada deriva dele', async () => {
+    const engine = createTestEngine();
+    const match = await engine.findMatch({});
+    const updated = await engine.setStake({ matchId: match.id, stake: 130 });
+    expect(updated.stake).toBe(130);
+
+    const result = await engine.playRound({ matchId: match.id });
+    expect(result.stake).toBe(130);
+    expect(result.payout).toBe(payoutFor(result.outcome, 130));
+    expect(result.netChange).toBe(netChangeFor(result.outcome, 130));
+  });
+
+  it('rejeita partidas inexistentes e stakes inválidos', async () => {
+    const engine = createTestEngine();
+    await expect(engine.setStake({ matchId: 'nao-existe', stake: 50 })).rejects.toMatchObject({
+      code: 'match-not-found',
+    });
+
+    const match = await engine.findMatch({});
+    await expect(engine.setStake({ matchId: match.id, stake: 7 })).rejects.toMatchObject({
+      code: 'invalid-stake',
+    });
+  });
 });
 
 describe('LocalBacBoGameEngine.playRound', () => {

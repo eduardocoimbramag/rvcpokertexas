@@ -4,7 +4,9 @@ import { expect, test } from '@playwright/test';
 /**
  * E2E do fluxo de jogo em viewport mobile.
  * O DevTools (habilitado no build de preview do Playwright) força os
- * resultados para tornar as verificações determinísticas.
+ * resultados para tornar as verificações determinísticas — inclusive o
+ * auto-aceite da negociação (o bot fecha qualquer proposta), que fixa o
+ * valor da aposta nos fluxos de resultado.
  */
 
 /** Estado persistido com tutorial já visto e sons desligados. */
@@ -48,13 +50,30 @@ async function forceCoinWinner(page: Page, winner: 'player' | 'opponent') {
   await page.getByTestId('devtools-toggle').click();
 }
 
+/** Liga o auto-aceite da negociação: o bot fecha qualquer proposta. */
+async function forceNegoAutoAccept(page: Page) {
+  await page.getByTestId('devtools-toggle').click();
+  await page.getByTestId('force-nego-accept').click();
+  await page.getByTestId('devtools-toggle').click();
+}
+
+/**
+ * Atravessa a mesa de negociação propondo `stake` (bot em auto-aceite)
+ * e inicia a partida.
+ */
+async function negotiateStake(page: Page, stake: number) {
+  // Matchmaking (1,2–2,6 s) → splash → confirmação dupla → negociação.
+  await page.getByTestId('nego-input').fill(String(stake), { timeout: 15_000 });
+  await page.getByTestId('nego-send').click();
+  // O aceite do bot chega em ~2–4 s; o clique espera o CTA destravar.
+  await page.getByTestId('nego-start').click({ timeout: 15_000 });
+}
+
 async function playRound(page: Page, stake: number) {
   await forceCoinWinner(page, 'opponent');
-  await page.getByTestId(`stake-${stake}`).click();
-  await page.getByTestId('search-button').click();
-  // Matchmaking simulado (1,2–2,6 s) → splash → confirmação dupla
-  // (o oponente confirma sozinho e o cara-ou-coroa abre a rodada).
+  await forceNegoAutoAccept(page);
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
+  await negotiateStake(page, stake);
   // A moeda entra em cena com o lado sorteado do jogador.
   await expect(page.getByTestId('coinflip-overlay')).toBeVisible({ timeout: 10_000 });
   // Câmera vertical: só a mesa em quadro enquanto os dados rolam
@@ -68,29 +87,47 @@ async function playRound(page: Page, stake: number) {
   await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'front');
 }
 
-test('primeira jogada: tutorial completo e vitória leva 90% da aposta', async ({ page }) => {
+test('primeira jogada: tutorial, negociação e vitória leva 90% da aposta', async ({ page }) => {
   await page.goto('/');
 
-  // Home → Tutorial (primeira visita) → Stake.
+  // Home → Tutorial (primeira visita) → busca direta por oponente.
   await page.getByTestId('play-button').click();
   await page.getByTestId('tutorial-next').click();
   await page.getByTestId('tutorial-next').click();
   await page.getByTestId('tutorial-next').click();
 
-  // A dealer apresenta a mesa na seleção de stake (docs/scenario.md §9.1).
+  await forceOutcome(page, 'win');
+  await forceCoinWinner(page, 'opponent');
+  await forceNegoAutoAccept(page);
+
+  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
+
+  // Mesa de negociação sobre o mesmo salão; a dealer apresenta a mesa
+  // (docs/scenario.md §9.1).
+  await expect(page.getByTestId('negotiation-panel')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('dealer')).toHaveAttribute('data-reaction', 'present');
 
-  await forceOutcome(page, 'win');
-  await playRound(page, 50);
+  // Sem acordo, o início fica bloqueado.
+  await expect(page.getByTestId('nego-start')).toBeDisabled();
 
-  await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/);
+  // Proposta de 50: o lance entra no chat e o bot aceita.
+  await page.getByTestId('nego-input').fill('50');
+  await page.getByTestId('nego-send').click();
+  await expect(page.getByTestId('nego-proposal-player')).toBeVisible();
+  // O acordo não vira mensagem: o próprio cartão do lance ganha o selo.
+  await expect(page.getByTestId('nego-accepted')).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId('nego-start').click();
+  await expect(page.getByTestId('coinflip-overlay')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/, { timeout: 45_000 });
+
   // A variação sobe para a pílula de saldo e o contador chega ao total.
   await expect(page.getByTestId('balance')).toContainText('1.045');
-  // ...e comemora a vitória do jogador.
+  // ...e a dealer comemora a vitória do jogador.
   await expect(page.getByTestId('dealer')).toHaveAttribute('data-reaction', 'celebrate');
 });
 
-test('derrota: o stake é perdido', async ({ page }) => {
+test('derrota: o stake negociado é perdido', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');
 
@@ -133,6 +170,32 @@ test('persistência: saldo e histórico sobrevivem ao reload', async ({ page }) 
   await expect(page.getByTestId('history-list')).toContainText('+45');
 });
 
+test('negociação: contraproposta do bot pode ser aceita; desistir volta ao menu', async ({
+  page,
+}) => {
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByTestId('play-button').click();
+  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
+
+  // Lance mínimo (10): o alvo do bot é sempre maior, então a resposta é
+  // garantidamente uma CONTRAPROPOSTA — que traz o botão de aceitar.
+  await page.getByTestId('nego-input').fill('10', { timeout: 15_000 });
+  await page.getByTestId('nego-send').click();
+  await expect(page.getByTestId('nego-accept')).toBeVisible({ timeout: 15_000 });
+
+  // Aceitar fecha o acordo e destrava o início.
+  await page.getByTestId('nego-accept').click();
+  await expect(page.getByTestId('nego-accepted')).toBeVisible();
+  await expect(page.getByTestId('nego-start')).toBeEnabled();
+
+  // Desistir abandona a mesa sem debitar nada.
+  await page.getByTestId('nego-quit').click();
+  await expect(page.getByTestId('play-button')).toBeVisible();
+  await expect(page.getByTestId('balance')).toContainText('1.000');
+});
+
 test('cara-ou-coroa: vencendo o sorteio, o jogador escolhe a cor dos dados', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');
@@ -140,10 +203,10 @@ test('cara-ou-coroa: vencendo o sorteio, o jogador escolhe a cor dos dados', asy
   await page.getByTestId('play-button').click();
   await forceOutcome(page, 'win');
   await forceCoinWinner(page, 'player');
+  await forceNegoAutoAccept(page);
 
-  await page.getByTestId('stake-50').click();
-  await page.getByTestId('search-button').click();
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
+  await negotiateStake(page, 50);
 
   // Moeda no ar → veredito sozinho em cena → escolha dos dados
   // (intro + voo + resultado + veredito ≈ 7,7 s).
@@ -178,16 +241,14 @@ test('cara-ou-coroa: vencendo o sorteio, o jogador escolhe a cor dos dados', asy
   await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/, { timeout: 30_000 });
 });
 
-test('cancelar a busca não debita créditos', async ({ page }) => {
+test('cancelar a busca não debita créditos e volta ao menu', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');
 
   await page.getByTestId('play-button').click();
-  await page.getByTestId('stake-50').click();
-  await page.getByTestId('search-button').click();
   await page.getByTestId('cancel-search').click();
 
-  // De volta à seleção de stake com o saldo intacto.
-  await expect(page.getByTestId('search-button')).toBeVisible();
+  // De volta à Home com o saldo intacto.
+  await expect(page.getByTestId('play-button')).toBeVisible();
   await expect(page.getByTestId('balance')).toContainText('1.000');
 });

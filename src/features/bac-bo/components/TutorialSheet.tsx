@@ -10,20 +10,20 @@ import { useGameStore } from '../store/gameStore';
 export interface TutorialSheetProps {
   open: boolean;
   onClose: () => void;
-  /** Quando verdadeiro, fechar o tutorial leva direto à seleção de stake. */
+  /** Quando verdadeiro, fechar o tutorial já inicia a busca por oponente. */
   continueToGame?: boolean;
 }
 
 const STEPS: readonly { icon: IconName; title: string; text: string }[] = [
   {
-    icon: 'chip',
-    title: 'Escolha sua aposta',
-    text: 'Selecione quantos créditos quer apostar no duelo. Você começa com um saldo virtual.',
-  },
-  {
     icon: 'swords',
     title: 'Enfrente um oponente',
-    text: 'Encontramos um adversário para você. Confirme o duelo para começar a rodada.',
+    text: 'Encontramos um adversário para você. Confirme o duelo para abrir a mesa de negociação.',
+  },
+  {
+    icon: 'coins',
+    title: 'Negocie a aposta',
+    text: 'Troquem propostas no chat até fecharem o valor do duelo. Quem propõe espera o outro aceitar — só o acordo libera a partida.',
   },
   {
     icon: 'dice',
@@ -36,7 +36,7 @@ const STEPS: readonly { icon: IconName; title: string; text: string }[] = [
 export function TutorialSheet({ open, onClose, continueToGame = false }: TutorialSheetProps) {
   const [step, setStep] = useState(0);
   const markTutorialSeen = useGameStore((state) => state.markTutorialSeen);
-  const goToStake = useGameStore((state) => state.goToStake);
+  const startSearch = useGameStore((state) => state.startSearch);
 
   const isLastStep = step === STEPS.length - 1;
   const current = STEPS[step] ?? STEPS[0];
@@ -45,7 +45,7 @@ export function TutorialSheet({ open, onClose, continueToGame = false }: Tutoria
     markTutorialSeen();
     onClose();
     setStep(0);
-    if (continueToGame) goToStake();
+    if (continueToGame) void startSearch();
   };
 
   const close = () => {

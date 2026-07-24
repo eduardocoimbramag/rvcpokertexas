@@ -17,6 +17,8 @@ export function DevToolsPanel() {
   const devSetForcedOutcome = useGameStore((state) => state.devSetForcedOutcome);
   const forcedCoinWinner = useGameStore((state) => state.devForcedCoinWinner);
   const devSetForcedCoinWinner = useGameStore((state) => state.devSetForcedCoinWinner);
+  const negoAutoAccept = useGameStore((state) => state.devNegotiationAutoAccept);
+  const devSetNegotiationAutoAccept = useGameStore((state) => state.devSetNegotiationAutoAccept);
   const devAddCredits = useGameStore((state) => state.devAddCredits);
   const devResetAll = useGameStore((state) => state.devResetAll);
 
@@ -77,6 +79,17 @@ export function DevToolsPanel() {
               </button>
             ))}
           </div>
+          <p className="font-bold text-lavender">Negociação:</p>
+          <button
+            type="button"
+            onClick={() => devSetNegotiationAutoAccept(!negoAutoAccept)}
+            data-testid="force-nego-accept"
+            className={`rounded-lg px-2 py-1 text-left font-bold ${
+              negoAutoAccept ? 'bg-gold text-arena-950' : 'bg-arena-700 text-ivory'
+            }`}
+          >
+            Bot aceita qualquer proposta
+          </button>
           <button
             type="button"
             onClick={() => devAddCredits(1000)}

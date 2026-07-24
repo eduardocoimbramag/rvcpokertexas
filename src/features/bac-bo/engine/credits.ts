@@ -3,9 +3,6 @@
  * recebem saldo/stake e retornam novos valores ou vereditos.
  */
 
-/** Stakes pré-definidos exibidos como fichas na UI. */
-export const STAKE_PRESETS: readonly number[] = [10, 25, 50];
-
 /**
  * Comissão da casa sobre o dinheiro GANHO — nunca sobre o que o jogador
  * já tinha. É a única saída de créditos do sistema e vale igual nas duas
@@ -20,8 +17,12 @@ export function afterHouseEdge(amount: number): number {
   return Math.floor(amount * (1 - HOUSE_EDGE));
 }
 
-/** Menor stake permitido na mesa. */
-export const MIN_STAKE = STAKE_PRESETS[0] ?? 10;
+/**
+ * Menor valor que pode ir à mesa — o piso de qualquer aposta do jogo:
+ * o lance da negociação do 1v1 e a taxa de entrada do torneio. Não
+ * existem mais valores pré-definidos; quem digita o número é a pessoa.
+ */
+export const MIN_STAKE = 10;
 
 export type StakeValidation =
   { ok: true } | { ok: false; reason: 'invalid-stake' | 'insufficient-balance' };
@@ -54,11 +55,6 @@ export function creditPayout(balance: number, payout: number): number {
     throw new RangeError(`Payout inválido: ${payout}`);
   }
   return balance + payout;
-}
-
-/** Fichas disponíveis para o saldo atual. */
-export function availableStakes(balance: number): readonly number[] {
-  return STAKE_PRESETS.filter((stake) => stake <= balance);
 }
 
 /** Verdadeiro quando o saldo não cobre nem o menor stake. */

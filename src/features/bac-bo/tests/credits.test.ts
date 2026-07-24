@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   MIN_STAKE,
-  STAKE_PRESETS,
-  availableStakes,
   creditPayout,
   debitStake,
   isBroke,
@@ -48,14 +46,6 @@ describe('creditPayout', () => {
   it('lança para payouts inválidos', () => {
     expect(() => creditPayout(50, -1)).toThrow(RangeError);
     expect(() => creditPayout(50, 1.5)).toThrow(RangeError);
-  });
-});
-
-describe('availableStakes', () => {
-  it('filtra fichas pelo saldo', () => {
-    expect(availableStakes(0)).toEqual([]);
-    expect(availableStakes(60)).toEqual([10, 25, 50]);
-    expect(availableStakes(10_000)).toEqual([...STAKE_PRESETS]);
   });
 });
 

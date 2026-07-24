@@ -263,7 +263,10 @@ function TossScene({ playerSide, result, tossing, landed, instant }: TossScenePr
               transition={{ type: 'spring', stiffness: 320, damping: 20 }}
               data-testid="coin-verdict"
             >
-              <p className="font-display text-engraved text-3xl font-bold tracking-wide text-[#7a4503]">
+              {/* Caixa alta pelo CSS, não no texto: o anúncio sai em
+                  versal como o resto da mesa e o leitor de tela continua
+                  recebendo a frase escrita ao natural. */}
+              <p className="font-display text-engraved text-3xl font-bold uppercase tracking-wide text-[#7a4503]">
                 Deu {SIDE_LABEL[result]}!
               </p>
             </motion.div>

@@ -105,6 +105,10 @@ h2 {
   position: relative;
   z-index: 1;
   flex: 1;
+  /* min-height 0: sem isto o mínimo automático (auto) herda a altura do
+     CONTEÚDO e a casca estoura o #root em telas com conteúdo rolável
+     (o chat da negociação) — a rolagem interna nunca engataria. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -2841,6 +2845,451 @@ h2 {
 @media (prefers-reduced-motion: reduce) {
   .advance-overlay {
     display: none;
+  }
+}
+
+/* ==================== Mesa de negociação ==================== */
+
+/* Esta fase é a ÚNICA que sobe além do couro: a conversa precisa de
+   janela, e o vidro é translúcido o bastante para a dealer continuar
+   legível atrás dele. A margem negativa devolve metade do
+   `dealer-spacer` (que reserva o corpo da dealer em todas as outras
+   fases) ao conteúdo — em `--dealer-h`, então o ganho acompanha a
+   altura da tela em vez de ser um número fixo. O corte fica na altura
+   do peito: o rosto, que é o que dá presença à cena, segue livre. */
+.nego-stage {
+  margin-top: calc(var(--dealer-h) * -0.5);
+}
+
+/* Vidro vinho translúcido sobre o couro: a conversa acontece POR CIMA
+   do salão, sem escondê-lo — mesmo gesto do .confirm-waiting, aqui em
+   painel inteiro com blur. O aro âmbar discreto e o filete de luz no
+   topo são a mesma lapidação dos cards do clube. */
+.nego-chat {
+  position: relative;
+  isolation: isolate;
+  border-radius: 1.25rem;
+  background: rgba(42, 8, 16, 0.55);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(245, 183, 111, 0.28),
+    0 14px 34px rgba(0, 0, 0, 0.38);
+  overflow: hidden;
+}
+
+/* Cabeçalho do chat: identidade do oponente + presença. */
+.nego-chat__head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.9rem;
+  background: rgba(20, 4, 4, 0.35);
+  border-bottom: 1px solid rgba(245, 183, 111, 0.18);
+}
+
+.nego-chat__status {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-lavender);
+}
+
+/* Ponto de presença: âmbar negociando, esmeralda com o acordo selado. */
+.nego-chat__presence {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  background: var(--color-gold);
+  box-shadow: 0 0 8px rgba(245, 183, 111, 0.8);
+}
+
+.nego-chat__presence--ready {
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
+}
+
+/* Rolagem interna da conversa, com barra fina no tom do clube. */
+.nego-chat__log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.8rem 0.8rem 0.6rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 183, 111, 0.4) transparent;
+}
+
+.nego-chat__log::-webkit-scrollbar {
+  width: 5px;
+}
+
+.nego-chat__log::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgba(245, 183, 111, 0.35);
+}
+
+/* Aviso da mesa: pastilha central em caixa alta, tinta taupe. */
+.nego-system {
+  align-self: center;
+  max-width: 90%;
+  padding: 0.3rem 0.8rem;
+  border-radius: 9999px;
+  background: rgba(20, 4, 4, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.22);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--color-lavender);
+}
+
+/* Bolha de fala: vinho lapidado, canto "de origem" reto como nos
+   mensageiros. O lado do jogador leva o aro azul; o do oponente, o
+   vermelho — a mesma semântica de cor dos dados. */
+.nego-bubble {
+  max-width: 82%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-ivory);
+}
+
+.nego-bubble--opponent {
+  align-self: flex-start;
+  border-bottom-left-radius: 0.3rem;
+  background: rgba(76, 10, 21, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(239, 68, 68, 0.28);
+}
+
+.nego-bubble--player {
+  align-self: flex-end;
+  border-bottom-right-radius: 0.3rem;
+  background: rgba(30, 41, 90, 0.66);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(59, 130, 246, 0.35);
+}
+
+/* Bolha "digitando…": só os três pontos pulsando. */
+.nego-typing {
+  padding-block: 0.55rem;
+}
+
+.nego-typing .waiting-dot {
+  font-size: 0.5rem;
+  color: var(--color-lavender);
+  margin-inline: 1px;
+}
+
+/* Cartão de proposta: um lance formal sobre a mesa — kicker, valor e a
+   situação (aguardando/aceita/superada). Enxuto de propósito: só um
+   degrau acima de uma bolha de fala (0,82rem), o suficiente para o lance
+   se destacar da conversa sem tomar meia janela de chat. */
+.nego-proposal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  max-width: 78%;
+  padding: 0.4rem 0.7rem 0.45rem;
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, rgba(95, 20, 32, 0.92) 0%, rgba(42, 8, 16, 0.92) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(245, 183, 111, 0.4),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+  transition:
+    opacity 0.25s ease,
+    filter 0.25s ease;
+}
+
+.nego-proposal--player {
+  align-self: flex-end;
+  align-items: flex-end;
+  border-bottom-right-radius: 0.3rem;
+}
+
+.nego-proposal--opponent {
+  align-self: flex-start;
+  border-bottom-left-radius: 0.3rem;
+}
+
+/* Lance superado: continua no histórico, mas apagado — a mesa só tem
+   UMA proposta viva por vez. */
+.nego-proposal--superseded {
+  opacity: 0.55;
+  filter: saturate(0.6);
+}
+
+.nego-proposal__kicker {
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-lavender);
+}
+
+/* Marfim, não ouro: a mesma tinta da pílula de saldo — ficha e
+   algarismos leem como VALOR EM CRÉDITOS, não como ornamento. Como o
+   ícone é currentColor, a cor no contêiner pinta os dois de uma vez. */
+.nego-proposal__amount {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-size: 1.05rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ivory);
+}
+
+.nego-proposal__amount svg {
+  align-self: center;
+  /* Mesma proporção ícone/número da pílula de saldo. */
+  width: 1.05em;
+  height: 1.05em;
+}
+
+.nego-proposal__amount small {
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-lavender);
+}
+
+/* Selo de situação da proposta. */
+.nego-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 9999px;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nego-tag--wait {
+  color: var(--color-lavender);
+  box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.35);
+}
+
+.nego-tag--muted {
+  color: #a08472;
+  box-shadow: inset 0 0 0 1px rgba(160, 132, 114, 0.3);
+  text-decoration: line-through;
+}
+
+.nego-tag--ok {
+  color: #34d399;
+  box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.5);
+}
+
+/* Botão de aceite dentro do cartão do oponente: ouro maciço compacto,
+   o mesmo metal dos CTAs. */
+.nego-accept {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin-top: 0.12rem;
+  padding: 0.28rem 0.72rem;
+  border-radius: 0.6rem;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #2a1206;
+  background: linear-gradient(180deg, #fcd9a0 0%, #f5b76f 42%, #e2a052 78%, #c67e38 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -2px 0 rgba(74, 42, 16, 0.5),
+    0 0 0 1px #8a5a28,
+    0 0 14px rgba(245, 183, 111, 0.45);
+  transition: filter 0.15s ease;
+}
+
+.nego-accept:active {
+  filter: brightness(1.12);
+}
+
+.nego-accept:focus-visible {
+  outline: 2px solid #f5b76f;
+  outline-offset: 2px;
+}
+
+/* Composer de lances: o campo de valor + o enviar, na base do vidro.
+   A linha em si é do .amount-stepper; aqui ficam só o forro e o filete
+   que separam o composer da conversa. */
+.nego-composer {
+  padding: 0.6rem 0.7rem;
+  border-top: 1px solid rgba(245, 183, 111, 0.18);
+  background: rgba(20, 4, 4, 0.35);
+}
+
+/* ---------- Campo de créditos com atalhos (AmountStepper) ---------- */
+
+/* Padrão de digitar valor da casa: campo à esquerda, atalhos de
+   incremento e (opcionalmente) uma ação colada à direita. Nasceu na
+   mesa de negociação do 1v1 e vale também para a taxa de entrada do
+   torneio — um único gesto para "quantos créditos?" em todo o jogo. */
+.amount-stepper {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.amount-stepper__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.8rem;
+  background: rgba(20, 4, 4, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.3);
+  font-size: 1rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--color-gold-bright);
+  caret-color: var(--color-gold);
+}
+
+.amount-stepper__input::placeholder {
+  color: rgba(203, 169, 138, 0.55);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.amount-stepper__input:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1.5px var(--color-gold),
+    0 0 10px rgba(245, 183, 111, 0.3);
+}
+
+/* Atalhos +10/+100: fichas rápidas de incremento. */
+.amount-stepper__bump {
+  padding: 0 0.65rem;
+  border-radius: 0.8rem;
+  background: rgba(76, 10, 21, 0.85);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 0 1px rgba(203, 115, 73, 0.45);
+  font-size: 0.74rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-gold-bright);
+  transition: filter 0.15s ease;
+}
+
+.amount-stepper__bump:active:not(:disabled) {
+  filter: brightness(1.2);
+}
+
+.amount-stepper__bump:disabled {
+  opacity: 0.5;
+}
+
+.amount-stepper__bump:focus-visible {
+  outline: 2px solid #f5b76f;
+  outline-offset: 2px;
+}
+
+/* Enviar proposta: o mesmo ouro dos CTAs, compacto. Desabilitado (valor
+   inválido ou relógio de 10 s) apaga para o vinho neutro. */
+.nego-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 5.5rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.8rem;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #2a1206;
+  background: linear-gradient(180deg, #fcd9a0 0%, #f5b76f 42%, #e2a052 78%, #c67e38 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -2px 0 rgba(74, 42, 16, 0.5),
+    0 0 0 1px #8a5a28;
+  transition: filter 0.15s ease;
+}
+
+.nego-send:active:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.nego-send:disabled {
+  background: #3a1218;
+  color: #a08472;
+  box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.22);
+}
+
+.nego-send:focus-visible {
+  outline: 2px solid #f5b76f;
+  outline-offset: 2px;
+}
+
+.nego-send__cooldown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dica sob o composer (limites, relógio, saldo insuficiente). */
+.nego-hint {
+  padding: 0 0.9rem 0.55rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  color: var(--color-lavender);
+}
+
+/* Com o acordo selado, o CTA de início ganha um halo respirando —
+   animado em box-shadow (só a luz pulsa; a caixa não se move). */
+.nego-start--ready {
+  animation: nego-start-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes nego-start-glow {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.6),
+      inset 0 -2px 0 rgba(74, 42, 16, 0.5),
+      0 0 0 1px #8a5a28,
+      0 0 14px rgba(245, 183, 111, 0.35);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.6),
+      inset 0 -2px 0 rgba(74, 42, 16, 0.5),
+      0 0 0 1px #8a5a28,
+      0 0 30px rgba(245, 183, 111, 0.75);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nego-chat {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(42, 8, 16, 0.88);
+  }
+
+  .nego-start--ready {
+    animation: none;
+    box-shadow: 0 0 26px rgba(245, 183, 111, 0.55);
   }
 }
 

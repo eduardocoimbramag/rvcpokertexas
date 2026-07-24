@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 
+import { isBroke } from '../engine/credits';
 import { audioManager } from '../services/AudioManager';
 import { useGameStore } from '../store/gameStore';
 import { BalancePill } from './BalancePill';
@@ -24,22 +25,26 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const balance = useGameStore((state) => state.balance);
   const tutorialSeen = useGameStore((state) => state.settings.tutorialSeen);
-  const goToStake = useGameStore((state) => state.goToStake);
+  const startSearch = useGameStore((state) => state.startSearch);
+  const refillCredits = useGameStore((state) => state.refillCredits);
+
+  const broke = isBroke(balance);
 
   const handlePlay = () => {
-    // Fluxo da especificação: Home → Tutorial → Stake (tutorial só na primeira vez).
+    // Fluxo atualizado: Home → Tutorial → Busca direta (a aposta é
+    // negociada com o oponente depois da confirmação do duelo).
     if (!tutorialSeen) {
       onOpenTutorial();
       return;
     }
-    goToStake();
+    void startSearch();
   };
 
   const handleTournament = () => {
     // Único gesto garantido antes do torneio: o áudio nasce AQUI. O
-    // fluxo de torneio não passa pelo goToStake do 1v1, e o WebKit só
-    // cria AudioContext dentro de um gesto do usuário — sem isso a
-    // primeira partida seria muda no iOS/Safari.
+    // fluxo de torneio não passa pela busca do 1v1 (startSearch), e o
+    // WebKit só cria AudioContext dentro de um gesto do usuário — sem
+    // isso a primeira partida seria muda no iOS/Safari.
     audioManager.playSfx('tap');
     onOpenTournament();
   };
@@ -84,9 +89,17 @@ export function HomeScreen({
       </motion.div>
 
       <div className="flex w-full flex-col gap-3">
-        <Button onClick={handlePlay} fullWidth data-testid="play-button">
-          <Icon name="dice" /> 1V1
-        </Button>
+        {broke ? (
+          // Sem saldo para o menor lance da mesa: a recarga assume o
+          // lugar do 1V1 (antes ela morava na tela de aposta, extinta).
+          <Button onClick={refillCredits} fullWidth data-testid="refill-button">
+            <Icon name="chip" /> RECARREGAR CRÉDITOS
+          </Button>
+        ) : (
+          <Button onClick={handlePlay} fullWidth data-testid="play-button">
+            <Icon name="dice" /> 1V1
+          </Button>
+        )}
         <Button
           variant="secondary"
           onClick={handleTournament}

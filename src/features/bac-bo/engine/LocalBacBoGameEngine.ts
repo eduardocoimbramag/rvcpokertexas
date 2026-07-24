@@ -2,8 +2,8 @@ import { createId } from '@/shared/lib/ids';
 import type { Rng } from '@/shared/lib/random';
 import { CryptoRng, pickRandom, randomInt } from '@/shared/lib/random';
 
-import { validateStake } from './credits';
-import type { FindMatchParams, GameEngine, PlayRoundParams } from './GameEngine';
+import { MIN_STAKE, validateStake } from './credits';
+import type { FindMatchParams, GameEngine, PlayRoundParams, SetStakeParams } from './GameEngine';
 import { GameEngineError } from './GameEngine';
 import {
   netChangeFor,
@@ -62,10 +62,13 @@ export class LocalBacBoGameEngine implements GameEngine {
   }
 
   async findMatch(params: FindMatchParams): Promise<Match> {
-    // O saldo é responsabilidade da camada de créditos; aqui validamos apenas a forma.
-    const stakeCheck = validateStake(Number.MAX_SAFE_INTEGER, params.stake);
+    // Sem stake (fluxo de negociação), a partida abre com o mínimo da
+    // mesa — o valor final chega depois via setStake. O saldo é
+    // responsabilidade da camada de créditos; aqui validamos só a forma.
+    const stake = params.stake ?? MIN_STAKE;
+    const stakeCheck = validateStake(Number.MAX_SAFE_INTEGER, stake);
     if (!stakeCheck.ok) {
-      throw new GameEngineError('invalid-stake', `Stake inválido: ${params.stake}`);
+      throw new GameEngineError('invalid-stake', `Stake inválido: ${stake}`);
     }
 
     const [minDelay, maxDelay] = this.matchmakingDelayMs;
@@ -75,12 +78,28 @@ export class LocalBacBoGameEngine implements GameEngine {
     const match = matchSchema.parse({
       id: createId(),
       opponent: { ...profile, id: createId() },
-      stake: params.stake,
+      stake,
       createdAt: Date.now(),
     });
 
     this.activeMatches.set(match.id, match);
     return match;
+  }
+
+  async setStake(params: SetStakeParams): Promise<Match> {
+    const match = this.activeMatches.get(params.matchId);
+    if (!match) {
+      throw new GameEngineError('match-not-found', `Partida não encontrada: ${params.matchId}`);
+    }
+
+    const stakeCheck = validateStake(Number.MAX_SAFE_INTEGER, params.stake);
+    if (!stakeCheck.ok) {
+      throw new GameEngineError('invalid-stake', `Stake inválido: ${params.stake}`);
+    }
+
+    const updated = matchSchema.parse({ ...match, stake: params.stake });
+    this.activeMatches.set(updated.id, updated);
+    return updated;
   }
 
   async playRound(params: PlayRoundParams): Promise<RoundResult> {

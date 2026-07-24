@@ -1,6 +1,5 @@
 import { createId } from '@/shared/lib/ids';
 
-import { STAKE_PRESETS } from '../engine/credits';
 import type { DicePair, DieValue } from '../engine/types';
 import type {
   ChatMessage,
@@ -41,6 +40,13 @@ const LOBBY_NAMES = [
   'Arena VIP',
   'Clube dos Ases',
 ];
+
+/**
+ * Taxas plausíveis das salas alheias da lista. É só um sorteio para a
+ * vitrine parecer viva — quem cria uma sala digita o valor que quiser,
+ * sem lista nenhuma.
+ */
+const SIMULATED_FEES = [10, 25, 50, 100, 250];
 
 /**
  * Sugestões para a sala do PRÓPRIO jogador — o campo de nome já nasce
@@ -138,7 +144,7 @@ export function makeLobbyListings(): LobbyListing[] {
         hostName: pick(HOST_NAMES),
         size,
         filled: randInt(1, size - 1),
-        fee: pick(STAKE_PRESETS),
+        fee: pick(SIMULATED_FEES),
         visibility,
         password: visibility === 'private' ? randomLobbyPassword() : '',
       };

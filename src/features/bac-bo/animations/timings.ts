@@ -26,9 +26,14 @@ export const TIMINGS = {
   opponentConfirmMaxMs: 2400,
   /**
    * Beat de "duelo travado" após ambos confirmarem: tempo da faixa
-   * dourada subir e do flare no VS queimar antes do cara-ou-coroa.
+   * dourada subir e do flare no VS queimar antes da mesa de negociação.
    */
   confirmLockInMs: 1600,
+  /**
+   * Beat entre o toque em "Iniciar partida" (acordo fechado) e o
+   * cara-ou-coroa: o selo de início respira antes do corte de cena.
+   */
+  negotiationStartMs: 1000,
   /** Cara-ou-coroa: apresentação do lado sorteado para o jogador. */
   coinIntroMs: 1600,
   /** Voo completo da moeda: subida + giros + queda + quique. */
@@ -73,6 +78,12 @@ export const COUNTDOWN_START = 5;
  * sorteia a cor por ele.
  */
 export const COIN_PICK_SECONDS = 10;
+
+/**
+ * Intervalo mínimo entre propostas do jogador na mesa de negociação,
+ * em segundos: cada proposta é um lance ponderado, não spam de valores.
+ */
+export const PROPOSAL_COOLDOWN_SECONDS = 10;
 
 /** Máximo de rodadas mantidas no histórico persistido. */
 export const HISTORY_LIMIT = 50;

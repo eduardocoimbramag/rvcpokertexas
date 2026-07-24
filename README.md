@@ -66,7 +66,7 @@ src/
     │   ├── ambient/ · table/        # Ambiente global e feltro/trilho em CSS/SVG
     │   └── dealer/                  # Rig SVG com 10 reações por evento (plugável p/ Rive)
     ├── animations/          # Durações canônicas e rotações do dado 3D
-    ├── components/          # Home, Arena, Die3D, ScoreBoard, StakeSelector, …
+    ├── components/          # Home, Arena, Die3D, ScoreBoard, NegotiationPanel, …
     └── tests/               # Unitários + componentes
 e2e/                         # Playwright (viewport Pixel 7)
 ```

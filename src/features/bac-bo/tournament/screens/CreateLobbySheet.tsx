@@ -6,7 +6,8 @@ import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
 import { formatCredits } from '@/shared/lib/format';
 
-import { STAKE_PRESETS } from '../../engine/credits';
+import { AmountStepper } from '../../components/AmountStepper';
+import { MIN_STAKE } from '../../engine/credits';
 import { useGameStore } from '../../store/gameStore';
 import { randomLobbyPassword, suggestLobbyName } from '../simulation';
 import { useTournamentStore } from '../tournamentStore';
@@ -41,10 +42,14 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
   const [visibility, setVisibility] = useState<LobbyVisibility>('public');
   const [name, setName] = useState(suggestLobbyName);
   const [size, setSize] = useState<TournamentSize>(8);
-  const [fee, setFee] = useState<number>(STAKE_PRESETS[0] ?? 10);
+  // A taxa é texto enquanto se digita (o campo precisa poder ficar
+  // vazio); o número derivado alimenta a validação E a premiação, que
+  // por isso recalcula a cada tecla.
+  const [feeDraft, setFeeDraft] = useState(String(MIN_STAKE));
   const [password, setPassword] = useState(randomLobbyPassword);
   const [touched, setTouched] = useState(false);
 
+  const fee = Number.parseInt(feeDraft, 10) || 0;
   const trimmed = name.trim();
   const isPrivate = visibility === 'private';
   const nameError = trimmed.length === 0 ? 'Dê um nome à sala.' : null;
@@ -52,7 +57,12 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
     isPrivate && password.length !== PASSWORD_LENGTH
       ? `A senha tem ${PASSWORD_LENGTH} dígitos.`
       : null;
-  const feeError = fee > balance ? 'Sua taxa precisa caber no saldo.' : null;
+  const feeError =
+    fee < MIN_STAKE
+      ? `A taxa mínima é de ${MIN_STAKE} créditos.`
+      : fee > balance
+        ? 'Sua taxa precisa caber no saldo.'
+        : null;
   const error = nameError ?? passwordError ?? feeError;
 
   const submit = () => {
@@ -154,36 +164,24 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
           </div>
         </Field>
 
+        {/* Taxa livre, no mesmo campo com atalhos da mesa de negociação:
+            o valor é da pessoa, não de uma lista de fichas. */}
         <Field label="Taxa de entrada" error={touched ? feeError : null}>
-          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Taxa de entrada">
-            {STAKE_PRESETS.map((value) => {
-              const disabled = value > balance;
-              const selected = fee === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  disabled={disabled}
-                  onClick={() => setFee(value)}
-                  data-testid={`create-fee-${value}`}
-                  className={`stake-chip flex min-h-16 flex-col items-center justify-center gap-0.5 font-black tabular-nums ${
-                    selected ? 'stake-chip--selected' : ''
-                  }`}
-                >
-                  <span className="text-2xl leading-none">{formatCredits(value)}</span>
-                  <span
-                    className={`text-[9px] font-semibold uppercase tracking-wide ${selected ? 'text-gold-bright/80' : 'text-lavender'}`}
-                  >
-                    créditos
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <AmountStepper
+            value={feeDraft}
+            onChange={setFeeDraft}
+            label="Taxa de entrada em créditos"
+            placeholder={`Mín. ${MIN_STAKE}`}
+            data-testid="create-fee"
+            stepTestIdPrefix="create-fee-plus"
+          />
+          <p className="field__hint">
+            Seu saldo: {formatCredits(balance)} créditos. Só sai do seu saldo se você perder.
+          </p>
         </Field>
 
+        {/* Recalcula a cada tecla: a premiação é função direta da taxa e
+            do tamanho da mesa, então acompanha o campo acima ao vivo. */}
         <Field label="Premiação">
           <PrizeSplit fee={fee} size={size} data-testid="create-prize" />
         </Field>

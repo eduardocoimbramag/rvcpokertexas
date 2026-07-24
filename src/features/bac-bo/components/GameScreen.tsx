@@ -15,13 +15,13 @@ import { CountdownOverlay } from './CountdownOverlay';
 import { DiceArena } from './DiceArena';
 import { FoundSplash } from './FoundSplash';
 import { MatchmakingOverlay } from './MatchmakingOverlay';
+import { NegotiationPanel } from './NegotiationPanel';
 import { ResultBanner } from './ResultBanner';
-import { StakeSelector } from './StakeSelector';
 
 /**
  * Tela de jogo: renderiza o conteúdo correspondente à fase atual da
- * máquina de estados. A navegação "voltar" só existe em fases seguras
- * (não é possível abandonar uma rodada em andamento).
+ * máquina de estados. Não há navegação "voltar" — cada fase tem a sua
+ * saída própria (cancelar a busca, recusar o duelo, desistir da mesa).
  */
 export function GameScreen() {
   const phase = useGameStore((state) => state.phase);
@@ -30,39 +30,27 @@ export function GameScreen() {
   const result = useGameStore((state) => state.result);
   const countdown = useGameStore((state) => state.countdown);
   const error = useGameStore((state) => state.error);
-  const goHome = useGameStore((state) => state.goHome);
   const dismissError = useGameStore((state) => state.dismissError);
   const dealerReaction = useDealerReaction();
 
-  const canGoBack = phase === 'stake';
-
   // Saldo segurado: enquanto a rodada corre (stake já debitado no
-  // lock-in), a pílula continua exibindo o saldo PRÉ-rodada — o débito
-  // fica invisível e só aparece na animação do resultado. No completed
-  // a pílula recebe o saldo final + o netChange para animar a variação.
+  // início do duelo), a pílula continua exibindo o saldo PRÉ-rodada — o
+  // débito fica invisível e só aparece na animação do resultado. No
+  // completed a pílula recebe o saldo final + o netChange para animar a
+  // variação.
   const roundActive =
     phase === 'coinflip' || phase === 'countdown' || phase === 'rolling' || phase === 'reveal';
   const displayBalance = roundActive && match ? balance + match.stake : balance;
   const balanceDelta = phase === 'completed' && result ? result.netChange : null;
 
   return (
-    <main className="flex flex-1 flex-col px-6 py-4">
+    // min-h-0: o viewport é fixo (#root overflow hidden) — a fase de
+    // negociação rola DENTRO do chat, nunca estica a página.
+    <main className="flex min-h-0 flex-1 flex-col px-6 py-4">
       {/* relative z-20: na câmera vertical a mesa toma a tela inteira
           (o recorte da cena sobe além do header) — o HUD flutua acima. */}
       <header className="relative z-20 mb-4 flex items-center justify-between">
-        {canGoBack ? (
-          <button
-            type="button"
-            onClick={goHome}
-            aria-label="Voltar para o início"
-            data-testid="back-button"
-            className="grid h-11 w-11 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
-          >
-            <Icon name="chevron-left" />
-          </button>
-        ) : (
-          <span className="h-11 w-11" aria-hidden="true" />
-        )}
+        <span className="h-11 w-11" aria-hidden="true" />
         <BalancePill balance={displayBalance} delta={balanceDelta} />
       </header>
 
@@ -72,16 +60,16 @@ export function GameScreen() {
         <AnimatePresence mode="wait">
           <motion.div
             key={phaseGroup(phase)}
-            className="flex flex-1 flex-col"
+            className="flex min-h-0 flex-1 flex-col"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.2 }}
           >
-            {phase === 'stake' && <StakeSelector />}
             {phase === 'search' && <MatchmakingOverlay />}
             {phase === 'found' && match && <FoundSplash match={match} />}
             {phase === 'confirm' && match && <ConfirmPanel match={match} />}
+            {phase === 'negotiate' && match && <NegotiationPanel match={match} />}
             {phase === 'coinflip' && <CoinFlipOverlay />}
             {phase === 'countdown' && <CountdownOverlay value={countdown} />}
             {(phase === 'rolling' || phase === 'reveal' || phase === 'completed') && match && (

@@ -45,7 +45,7 @@ export function TableScene({ reaction, camera = 'front', children }: TableSceneP
   const quality = resolveSceneQuality(scenery, reducedMotion ?? false);
 
   if (quality === 'off') {
-    return <div className="flex flex-1 flex-col">{children}</div>;
+    return <div className="flex min-h-0 flex-1 flex-col">{children}</div>;
   }
 
   const overhead = camera === 'overhead';
@@ -53,7 +53,7 @@ export function TableScene({ reaction, camera = 'front', children }: TableSceneP
 
   return (
     <div
-      className={`scene-stage relative flex flex-1 flex-col ${overhead ? 'scene-stage--overhead' : ''}`}
+      className={`scene-stage relative flex min-h-0 flex-1 flex-col ${overhead ? 'scene-stage--overhead' : ''}`}
       data-testid="table-scene"
       data-camera={camera}
     >
@@ -87,7 +87,7 @@ export function TableScene({ reaction, camera = 'front', children }: TableSceneP
         </motion.div>
       </div>
 
-      <div className="relative z-10 flex flex-1 flex-col">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         <div className="dealer-spacer" aria-hidden="true" />
         {children}
       </div>

@@ -5,7 +5,8 @@ import { Icon } from '@/shared/components/Icon';
 
 import { useGameStore } from '../store/gameStore';
 
-/** Fase Search: radar pulsante enquanto o oponente simulado é encontrado. */
+/** Fase Search: radar pulsante enquanto o oponente simulado é
+    encontrado. Cancelar a busca devolve o jogador ao menu. */
 export function MatchmakingOverlay() {
   const cancelSearch = useGameStore((state) => state.cancelSearch);
 

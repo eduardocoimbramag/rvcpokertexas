@@ -345,10 +345,10 @@ import type { DealerReaction } from './DealerController';
 
 const PHASE_TO_REACTION: Record<GamePhase, DealerReaction> = {
   idle: 'idle',
-  stake: 'present',
   search: 'idle',
   found: 'greet',
   confirm: 'present',
+  negotiate: 'present',
   countdown: 'anticipate',
   rolling: 'shake',
   reveal: 'reveal',
@@ -373,7 +373,7 @@ export function resolveDealerReaction(
 
 ### 7.5. Integração no `GameScreen` (mínima e não-invasiva)
 
-Envolver o conteúdo de jogo com `<TableScene>`. Só a área de jogo (`rolling`/`reveal`/`completed`) e a `stake`/`confirm` mostram o dealer; matchmaking e erro usam o dealer em modo neutro.
+Envolver o conteúdo de jogo com `<TableScene>`. Só a área de jogo (`rolling`/`reveal`/`completed`) e a `confirm`/`negotiate` mostram o dealer; matchmaking e erro usam o dealer em modo neutro.
 
 ```tsx
 // dentro de GameScreen, envolvendo o bloco da arena:
@@ -483,10 +483,10 @@ O coração do "dealer vivo". Cada reação é **sincronizada com os `TIMINGS` q
 | Fase / Evento | Reação | O que o dealer faz | Duração | Loop | Sinal sonoro atual |
 |---|---|---|---|---|---|
 | `idle` (Home) | `idle` | Respiração sutil, pisca ~1×/5 s | ∞ | sim | — |
-| `stake` | `present` | Gesto de "façam suas apostas", olha pro jogador | entra em 400 ms → idle | idle | `stake` ao escolher ficha |
 | `search` | `idle` | Espera, olha o relógio ocasionalmente | ∞ | sim | — |
 | `found` | `greet` | Acena / meneia a cabeça | dentro de **1400 ms** (`foundSplashMs`) | não | `found` |
 | `confirm` | `present` | Apresenta a mesa com as duas mãos | entra 400 ms → idle | idle | — |
+| `negotiate` | `present` | Apresenta a mesa enquanto os jogadores negociam a aposta | entra 400 ms → idle | idle | `stake` a cada proposta |
 | `countdown` (3→2→1) | `anticipate` | Ergue o copo, corpo tenso; um "batida" por tick | 3 × **900 ms** (`countdownTickMs`) | pulsa | `countdownTick` ×3, `countdownGo` |
 | `rolling` | `shake` | Chacoalha o copo vigorosamente | **2000 ms** (`rollingMs`) | sim | `roll` |
 | `reveal` | `reveal` | "Solta" os dados, inclina-se para conferir | **1600 ms** (`revealMs`) | não | `reveal` |

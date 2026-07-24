@@ -9,10 +9,11 @@ import type { DealerReaction } from './DealerController';
  */
 const PHASE_TO_REACTION: Record<GamePhase, DealerReaction> = {
   idle: 'idle',
-  stake: 'present',
   search: 'idle',
   found: 'greet',
   confirm: 'present',
+  // A dealer "apresenta a mesa" enquanto os jogadores negociam o valor.
+  negotiate: 'present',
   coinflip: 'anticipate',
   countdown: 'anticipate',
   rolling: 'shake',

@@ -3,7 +3,6 @@ import { useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
-import { formatCredits } from '@/shared/lib/format';
 
 import type { Match } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
@@ -142,7 +141,7 @@ function ReadySeat({ name, accent, confirmed, instant, onOpenProfile }: ReadySea
  * O jogador confirma no botão; o oponente confirma sozinho instantes
  * depois (ou antes!). Cada confirmação carimba o assento correspondente;
  * com ambos prontos, o VS flareja e a faixa "duelo confirmado" fecha o
- * pacto antes do countdown.
+ * pacto antes da mesa de negociação.
  */
 export function ConfirmPanel({ match }: ConfirmPanelProps) {
   const confirmMatch = useGameStore((state) => state.confirmMatch);
@@ -205,10 +204,8 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
           />
         </div>
 
-        <div className="rounded-2xl border border-arena-line bg-arena-800 px-8 py-3 text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-lavender">Aposta</p>
-          <p className="text-2xl font-black tabular-nums text-gold">{formatCredits(match.stake)}</p>
-        </div>
+        {/* Sem placa de aposta aqui: o valor do duelo nasce DEPOIS, na
+            mesa de negociação — esta fase só sela o pareamento. */}
       </div>
 
       {/* Mesma faixa de segurança do CTA da tela de aposta

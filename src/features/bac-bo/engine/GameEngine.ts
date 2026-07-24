@@ -17,6 +17,15 @@ export interface GameEngine {
   findMatch(params: FindMatchParams): Promise<Match>;
 
   /**
+   * Fixa o stake negociado de uma partida antes da rodada começar.
+   * Chamado ao fim da mesa de negociação — o valor acordado passa a ser
+   * a verdade da engine (payout, netChange e histórico derivam dele).
+   * @throws {GameEngineError} `match-not-found` se a partida não existir.
+   * @throws {GameEngineError} `invalid-stake` se o stake for inválido.
+   */
+  setStake(params: SetStakeParams): Promise<Match>;
+
+  /**
    * Executa a rodada de uma partida e devolve o resultado resolvido.
    * A UI nunca calcula somas, vencedor ou payout — apenas exibe este objeto.
    * @throws {GameEngineError} `match-not-found` se a partida não existir.
@@ -25,9 +34,20 @@ export interface GameEngine {
 }
 
 export interface FindMatchParams {
-  stake: number;
+  /**
+   * Stake inicial da partida. Opcional desde a mesa de negociação: a
+   * busca acontece ANTES de o valor existir — a engine abre a partida
+   * com o stake mínimo e `setStake` grava o valor acordado depois.
+   */
+  stake?: number;
   /** Permite cancelar a busca (botão "cancelar" do matchmaking). */
   signal?: AbortSignal;
+}
+
+export interface SetStakeParams {
+  matchId: string;
+  /** Valor acordado na negociação (inteiro ≥ stake mínimo). */
+  stake: number;
 }
 
 export interface PlayRoundParams {

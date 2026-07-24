@@ -3,14 +3,26 @@ import { vi } from 'vitest';
 
 import { SeededRng } from '@/shared/lib/random';
 
-import { COIN_PICK_SECONDS, COUNTDOWN_START, TIMINGS } from '../animations/timings';
-import type { FindMatchParams, GameEngine, PlayRoundParams } from '../engine/GameEngine';
+import {
+  COIN_PICK_SECONDS,
+  COUNTDOWN_START,
+  PROPOSAL_COOLDOWN_SECONDS,
+  TIMINGS,
+} from '../animations/timings';
+import type {
+  FindMatchParams,
+  GameEngine,
+  PlayRoundParams,
+  SetStakeParams,
+} from '../engine/GameEngine';
 import { LocalBacBoGameEngine } from '../engine/LocalBacBoGameEngine';
 import { netChangeFor, payoutFor } from '../engine/rules';
 import type { DicePair, Match, RoundOutcome, RoundResult } from '../engine/types';
 import type { PersistedState } from '../services/GameStorageService';
 import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageService';
 import { canTransition, createGameStore } from '../store/gameStore';
+import type { Negotiator } from '../store/negotiation';
+import { BOT_OPENING_MAX_MS, BOT_REPLY_MAX_MS } from '../store/negotiation';
 
 const DICE_FOR_OUTCOME: Record<RoundOutcome, { player: DicePair; opponent: DicePair }> = {
   win: { player: [6, 5], opponent: [2, 3] },
@@ -28,9 +40,19 @@ class StubEngine implements GameEngine {
   }
 
   findMatch(params: FindMatchParams): Promise<Match> {
-    this.lastStake = params.stake;
+    this.lastStake = params.stake ?? 10;
     return Promise.resolve({
       id: 'match-1',
+      opponent: { id: 'opp-1', name: 'Stub', avatar: 'S', rating: 1000 },
+      stake: this.lastStake,
+      createdAt: 0,
+    });
+  }
+
+  setStake(params: SetStakeParams): Promise<Match> {
+    this.lastStake = params.stake;
+    return Promise.resolve({
+      id: params.matchId,
       opponent: { id: 'opp-1', name: 'Stub', avatar: 'S', rating: 1000 },
       stake: params.stake,
       createdAt: 0,
@@ -55,6 +77,22 @@ class StubEngine implements GameEngine {
   }
 }
 
+/** Negociador-stub que aceita qualquer lance (fluxo determinístico). */
+function acceptAllNegotiator(): Negotiator {
+  return {
+    opening: () => ({ greeting: 'E aí!', amount: 40 }),
+    respond: () => ({ action: 'accept', quip: 'Fechado' }),
+  };
+}
+
+/** Negociador-stub que sempre contrapropõe +10 (mantém a mesa aberta). */
+function counterAllNegotiator(): Negotiator {
+  return {
+    opening: () => ({ greeting: 'E aí!', amount: 40 }),
+    respond: (amount) => ({ action: 'counter', amount: amount + 10, quip: 'Sobe mais' }),
+  };
+}
+
 function createMemoryStorage(): Storage {
   const data = new Map<string, string>();
   return {
@@ -77,12 +115,14 @@ function createTestStore(
   outcome: RoundOutcome,
   storage = createMemoryStorage(),
   rng: () => number = () => 0.25,
+  createNegotiator: () => Negotiator = acceptAllNegotiator,
 ) {
   return createGameStore({
     engine: new StubEngine(outcome),
     storage: new GameStorageService(storage),
     initialBalance: 500,
     rng,
+    createNegotiator,
   });
 }
 
@@ -90,6 +130,30 @@ function createTestStore(
 function seqRng(values: readonly number[]): () => number {
   let index = 0;
   return () => values[Math.min(index++, values.length - 1)] ?? 0;
+}
+
+/** Da Home até a mesa de negociação (busca + splash + confirmação dupla). */
+async function reachNegotiation(store: ReturnType<typeof createTestStore>) {
+  void store.getState().startSearch();
+  await vi.advanceTimersByTimeAsync(TIMINGS.foundSplashMs);
+  expect(store.getState().phase).toBe('confirm');
+
+  store.getState().confirmMatch();
+  await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
+  expect(store.getState().phase).toBe('negotiate');
+}
+
+/** Fecha o acordo no valor dado (stub aceita) e inicia a partida. */
+async function agreeAndStart(store: ReturnType<typeof createTestStore>, stake: number) {
+  store.getState().sendProposal(stake);
+  await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS);
+  expect(store.getState().negotiation?.agreedStake).toBe(stake);
+
+  store.getState().startDuel();
+  // setStake resolve num microtask; o beat de início vem em seguida.
+  await vi.advanceTimersByTimeAsync(0);
+  await vi.advanceTimersByTimeAsync(TIMINGS.negotiationStartMs);
+  expect(store.getState().phase).toBe('coinflip');
 }
 
 /** Do lock-in até o countdown: atravessa o cara-ou-coroa vencendo-o. */
@@ -104,23 +168,10 @@ async function passCoinFlip(store: ReturnType<typeof createTestStore>) {
   expect(store.getState().phase).toBe('countdown');
 }
 
-/** Percorre o fluxo completo até a fase informada. */
+/** Percorre o fluxo completo (com negociação) até a fase informada. */
 async function playUntilCompleted(store: ReturnType<typeof createTestStore>, stake: number) {
-  store.getState().goToStake();
-  store.getState().selectStake(stake);
-  void store.getState().startSearch();
-  await vi.advanceTimersByTimeAsync(0); // resolve findMatch
-  expect(store.getState().phase).toBe('found');
-
-  await vi.advanceTimersByTimeAsync(TIMINGS.foundSplashMs);
-  expect(store.getState().phase).toBe('confirm');
-
-  store.getState().confirmMatch();
-  expect(store.getState().confirmations.player).toBe(true);
-
-  // Espera o oponente confirmar (delay aleatório ≤ máximo) + beat de
-  // lock-in; o duelo travado abre o cara-ou-coroa.
-  await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
+  await reachNegotiation(store);
+  await agreeAndStart(store, stake);
   await passCoinFlip(store);
 
   await vi.advanceTimersByTimeAsync(TIMINGS.countdownTickMs * COUNTDOWN_START);
@@ -143,15 +194,18 @@ afterEach(() => {
 
 describe('máquina de estados', () => {
   it('só permite transições declaradas', () => {
-    expect(canTransition('idle', 'stake')).toBe(true);
+    expect(canTransition('idle', 'search')).toBe(true);
     expect(canTransition('idle', 'rolling')).toBe(false);
-    expect(canTransition('stake', 'countdown')).toBe(false);
-    expect(canTransition('confirm', 'coinflip')).toBe(true);
-    expect(canTransition('confirm', 'countdown')).toBe(false);
+    expect(canTransition('confirm', 'negotiate')).toBe(true);
+    expect(canTransition('confirm', 'coinflip')).toBe(false);
+    expect(canTransition('negotiate', 'coinflip')).toBe(true);
+    expect(canTransition('negotiate', 'idle')).toBe(true);
+    expect(canTransition('negotiate', 'countdown')).toBe(false);
     expect(canTransition('coinflip', 'countdown')).toBe(true);
     expect(canTransition('countdown', 'rolling')).toBe(true);
     expect(canTransition('reveal', 'completed')).toBe(true);
-    expect(canTransition('completed', 'search')).toBe(false);
+    expect(canTransition('completed', 'search')).toBe(true);
+    expect(canTransition('search', 'coinflip')).toBe(false);
   });
 
   it('ações fora de fase são ignoradas', () => {
@@ -159,16 +213,21 @@ describe('máquina de estados', () => {
     // confirmMatch em idle não faz nada.
     store.getState().confirmMatch();
     expect(store.getState().phase).toBe('idle');
-    // selectStake em idle não faz nada.
-    store.getState().selectStake(50);
-    expect(store.getState().selectedStake).toBeNull();
+    // Lances e início fora da mesa de negociação não fazem nada.
+    store.getState().sendProposal(50);
+    store.getState().startDuel();
+    expect(store.getState().phase).toBe('idle');
+    expect(store.getState().negotiation).toBeNull();
   });
 
-  it('rejeita stake acima do saldo', () => {
-    const store = createTestStore('win');
-    store.getState().goToStake();
-    store.getState().selectStake(10_000);
-    expect(store.getState().selectedStake).toBeNull();
+  it('sem saldo mínimo, a busca não abre', () => {
+    const storage = createMemoryStorage();
+    const broke: PersistedState = { balance: 5, history: [], settings: DEFAULT_SETTINGS };
+    new GameStorageService(storage).save(broke);
+
+    const store = createTestStore('win', storage);
+    void store.getState().startSearch();
+    expect(store.getState().phase).toBe('idle');
   });
 });
 
@@ -184,7 +243,7 @@ describe('fluxo completo da rodada', () => {
     expect(store.getState().history[0]?.opponentName).toBe('Stub');
   });
 
-  it('derrota: o stake é perdido', async () => {
+  it('derrota: o stake negociado é perdido', async () => {
     const store = createTestStore('lose');
     await playUntilCompleted(store, 50);
 
@@ -200,34 +259,38 @@ describe('fluxo completo da rodada', () => {
     expect(store.getState().history[0]?.netChange).toBe(0);
   });
 
-  it('o saldo fica debitado durante a rodada (após ambos confirmarem)', async () => {
+  it('o débito só acontece no início da partida, depois do acordo', async () => {
     const store = createTestStore('win');
-    store.getState().goToStake();
-    store.getState().selectStake(100);
-    void store.getState().startSearch();
-    await vi.advanceTimersByTimeAsync(TIMINGS.foundSplashMs);
-    store.getState().confirmMatch();
-
-    // Só a confirmação do jogador ainda não debita nada.
+    await reachNegotiation(store);
     expect(store.getState().balance).toBe(500);
 
-    await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
+    store.getState().sendProposal(100);
+    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS);
+    // Acordo fechado, mas nada debitado até o "Iniciar partida".
+    expect(store.getState().negotiation?.agreedStake).toBe(100);
+    expect(store.getState().balance).toBe(500);
+
+    store.getState().startDuel();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(TIMINGS.negotiationStartMs);
+    expect(store.getState().phase).toBe('coinflip');
     expect(store.getState().balance).toBe(400);
   });
 
-  it('jogar de novo volta para a seleção de stake mantendo o saldo', async () => {
+  it('jogar de novo inicia uma nova busca mantendo o saldo', async () => {
     const store = createTestStore('win');
     await playUntilCompleted(store, 50);
     store.getState().playAgain();
 
-    expect(store.getState().phase).toBe('stake');
+    expect(store.getState().phase).toBe('search');
     expect(store.getState().balance).toBe(545);
     expect(store.getState().result).toBeNull();
+    expect(store.getState().negotiation).toBeNull();
   });
 });
 
 describe('cancelamento e recusa', () => {
-  it('cancelar a busca volta ao stake sem debitar', async () => {
+  it('cancelar a busca volta ao menu sem debitar', async () => {
     const store = createGameStore({
       engine: new LocalBacBoGameEngine({
         rng: new SeededRng(1),
@@ -237,47 +300,41 @@ describe('cancelamento e recusa', () => {
       initialBalance: 500,
     });
 
-    store.getState().goToStake();
-    store.getState().selectStake(50);
     void store.getState().startSearch();
     expect(store.getState().phase).toBe('search');
 
     store.getState().cancelSearch();
-    expect(store.getState().phase).toBe('stake');
+    expect(store.getState().phase).toBe('idle');
     expect(store.getState().balance).toBe(500);
 
     // Mesmo depois do delay original, a busca cancelada não avança.
     await vi.advanceTimersByTimeAsync(3000);
-    expect(store.getState().phase).toBe('stake');
+    expect(store.getState().phase).toBe('idle');
   });
 
-  it('recusar a partida volta ao stake sem debitar', async () => {
+  it('recusar a partida volta ao menu sem debitar', async () => {
     const store = createTestStore('win');
-    store.getState().goToStake();
-    store.getState().selectStake(50);
     void store.getState().startSearch();
     await vi.advanceTimersByTimeAsync(TIMINGS.foundSplashMs);
     expect(store.getState().phase).toBe('confirm');
 
     store.getState().declineMatch();
-    expect(store.getState().phase).toBe('stake');
+    expect(store.getState().phase).toBe('idle');
     expect(store.getState().balance).toBe(500);
     expect(store.getState().match).toBeNull();
   });
 });
 
 describe('confirmação dupla', () => {
-  /** Leva o store até a fase confirm com stake de 50. */
+  /** Leva o store até a fase confirm. */
   async function reachConfirm(store: ReturnType<typeof createTestStore>) {
-    store.getState().goToStake();
-    store.getState().selectStake(50);
     void store.getState().startSearch();
     await vi.advanceTimersByTimeAsync(TIMINGS.foundSplashMs);
     expect(store.getState().phase).toBe('confirm');
     expect(store.getState().confirmations).toEqual({ player: false, opponent: false });
   }
 
-  it('só a confirmação do jogador não trava o duelo', async () => {
+  it('só a confirmação do jogador não abre a negociação', async () => {
     const store = createTestStore('win');
     await reachConfirm(store);
 
@@ -286,15 +343,16 @@ describe('confirmação dupla', () => {
     await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMinMs - 1);
     expect(store.getState().confirmations).toEqual({ player: true, opponent: false });
     expect(store.getState().phase).toBe('confirm');
-    expect(store.getState().balance).toBe(500);
 
-    // Com os dois prontos, o lock-in debita o stake e abre o cara-ou-coroa.
+    // Com os dois prontos, o lock-in abre a mesa de negociação — sem
+    // débito nenhum (o valor ainda vai nascer da conversa).
     await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
-    expect(store.getState().phase).toBe('coinflip');
-    expect(store.getState().balance).toBe(450);
+    expect(store.getState().phase).toBe('negotiate');
+    expect(store.getState().balance).toBe(500);
+    expect(store.getState().negotiation?.agreedStake).toBeNull();
   });
 
-  it('o oponente confirmando primeiro não inicia o duelo nem debita', async () => {
+  it('o oponente confirmando primeiro não abre a mesa nem debita', async () => {
     const store = createTestStore('win');
     await reachConfirm(store);
 
@@ -320,26 +378,170 @@ describe('confirmação dupla', () => {
 
     await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs);
     store.getState().declineMatch();
-    expect(store.getState().phase).toBe('stake');
+    expect(store.getState().phase).toBe('idle');
     expect(store.getState().confirmations).toEqual({ player: false, opponent: false });
 
     // Nenhum timer residual ressuscita o duelo recusado.
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(store.getState().phase).toBe('stake');
+    expect(store.getState().phase).toBe('idle');
+    expect(store.getState().balance).toBe(500);
+  });
+});
+
+describe('mesa de negociação', () => {
+  it('a proposta do jogador entra no chat e o bot pode aceitá-la', async () => {
+    const store = createTestStore('win');
+    await reachNegotiation(store);
+
+    store.getState().sendProposal(80);
+    const negotiation = store.getState().negotiation;
+    expect(negotiation?.activeProposal).toMatchObject({ from: 'player', amount: 80 });
+    expect(
+      negotiation?.messages.filter(
+        (message) => message.kind === 'proposal' && message.author === 'player',
+      ),
+    ).toHaveLength(1);
+
+    const beforeReply = store.getState().negotiation?.messages.length ?? 0;
+    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS);
+    const settled = store.getState().negotiation;
+    expect(settled?.agreedStake).toBe(80);
+    expect(settled?.activeProposal).toBeNull();
+    // O lance ganha o selo de aceito e MAIS NADA entra no chat — o
+    // acordo não vira mensagem.
+    expect(settled?.messages.find((message) => message.kind === 'proposal')?.status).toBe(
+      'accepted',
+    );
+    expect(settled?.messages).toHaveLength(beforeReply);
+  });
+
+  it('só uma proposta a cada 10 segundos', async () => {
+    const store = createTestStore(
+      'win',
+      createMemoryStorage(),
+      () => 0.25,
+      counterAllNegotiator,
+    );
+    await reachNegotiation(store);
+
+    store.getState().sendProposal(50);
+    expect(store.getState().negotiation?.proposalCooldown).toBe(PROPOSAL_COOLDOWN_SECONDS);
+
+    // Dentro do relógio, lances novos são ignorados.
+    await vi.advanceTimersByTimeAsync(4000);
+    store.getState().sendProposal(70);
+    const playerLances = (state = store.getState()) =>
+      state.negotiation?.messages.filter(
+        (message) => message.kind === 'proposal' && message.author === 'player',
+      ) ?? [];
+    expect(playerLances()).toHaveLength(1);
+
+    // Zerado o relógio (o bot contrapôs no meio, sem fechar a mesa),
+    // o próximo lance entra normalmente.
+    await vi.advanceTimersByTimeAsync(PROPOSAL_COOLDOWN_SECONDS * 1000);
+    expect(store.getState().negotiation?.proposalCooldown).toBe(0);
+    store.getState().sendProposal(70);
+    expect(playerLances()).toHaveLength(2);
+  });
+
+  it('um lance novo supera o anterior — só existe uma proposta viva', async () => {
+    const store = createTestStore(
+      'win',
+      createMemoryStorage(),
+      () => 0.25,
+      counterAllNegotiator,
+    );
+    await reachNegotiation(store);
+
+    store.getState().sendProposal(50);
+    // O bot contrapõe 60: o lance do jogador sai da mesa como "superado".
+    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS);
+    const negotiation = store.getState().negotiation;
+    expect(negotiation?.activeProposal).toMatchObject({ from: 'opponent', amount: 60 });
+    const playerProposal = negotiation?.messages.find(
+      (message) => message.kind === 'proposal' && message.author === 'player',
+    );
+    expect(playerProposal?.status).toBe('superseded');
+  });
+
+  it('aceitar a proposta do oponente fecha o acordo', async () => {
+    const store = createTestStore(
+      'win',
+      createMemoryStorage(),
+      () => 0.25,
+      counterAllNegotiator,
+    );
+    await reachNegotiation(store);
+
+    // A abertura do bot (cumprimento + proposta inicial de 40) chega.
+    await vi.advanceTimersByTimeAsync(BOT_OPENING_MAX_MS);
+    expect(store.getState().negotiation?.activeProposal).toMatchObject({
+      from: 'opponent',
+      amount: 40,
+    });
+
+    const before = store.getState().negotiation?.messages.length ?? 0;
+    store.getState().acceptProposal();
+    const settled = store.getState().negotiation;
+    expect(settled?.agreedStake).toBe(40);
+    expect(settled?.messages).toHaveLength(before);
+    expect(settled?.messages.at(-1)?.status).toBe('accepted');
+  });
+
+  it('propor o valor exato da proposta viva do oponente é um aceite', async () => {
+    const store = createTestStore(
+      'win',
+      createMemoryStorage(),
+      () => 0.25,
+      counterAllNegotiator,
+    );
+    await reachNegotiation(store);
+    await vi.advanceTimersByTimeAsync(BOT_OPENING_MAX_MS);
+
+    store.getState().sendProposal(40);
+    expect(store.getState().negotiation?.agreedStake).toBe(40);
+  });
+
+  it('lances inválidos são ignorados (abaixo do mínimo, acima do saldo, quebrado)', async () => {
+    const store = createTestStore('win');
+    await reachNegotiation(store);
+
+    store.getState().sendProposal(5);
+    store.getState().sendProposal(10_000);
+    store.getState().sendProposal(50.5);
+    expect(
+      store
+        .getState()
+        .negotiation?.messages.filter((message) => message.kind === 'proposal'),
+    ).toHaveLength(0);
+    expect(store.getState().negotiation?.activeProposal).toBeNull();
+  });
+
+  it('iniciar sem acordo é ignorado; desistir volta ao menu sem rastro', async () => {
+    const store = createTestStore('win');
+    await reachNegotiation(store);
+
+    store.getState().startDuel();
+    expect(store.getState().phase).toBe('negotiate');
+    expect(store.getState().balance).toBe(500);
+
+    store.getState().abandonNegotiation();
+    expect(store.getState().phase).toBe('idle');
+    expect(store.getState().negotiation).toBeNull();
+    expect(store.getState().match).toBeNull();
+
+    // Nenhum timer residual (resposta do bot, cooldown) ressuscita a mesa.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(store.getState().phase).toBe('idle');
     expect(store.getState().balance).toBe(500);
   });
 });
 
 describe('cara-ou-coroa', () => {
-  /** Leva o store até a fase coinflip (stake 50, ambos confirmados). */
+  /** Leva o store até a fase coinflip (acordo de 50, partida iniciada). */
   async function reachCoinFlip(store: ReturnType<typeof createTestStore>) {
-    store.getState().goToStake();
-    store.getState().selectStake(50);
-    void store.getState().startSearch();
-    await vi.advanceTimersByTimeAsync(TIMINGS.foundSplashMs);
-    store.getState().confirmMatch();
-    await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
-    expect(store.getState().phase).toBe('coinflip');
+    await reachNegotiation(store);
+    await agreeAndStart(store, 50);
   }
 
   const COIN_BEATS =
@@ -366,9 +568,10 @@ describe('cara-ou-coroa', () => {
     await reachCoinFlip(store);
     await vi.advanceTimersByTimeAsync(COIN_BEATS);
 
-    // O relógio já corre. Quanto dele sobrou depende do delay ALEATÓRIO
-    // com que o oponente confirmou o duelo, então o teste anda a partir
-    // do que o relógio marca — nunca de um instante absoluto.
+    // O relógio já corre. Quanto dele sobrou depende dos delays
+    // ALEATÓRIOS do caminho (confirmação do oponente, resposta do bot),
+    // então o teste anda a partir do que o relógio marca — nunca de um
+    // instante absoluto.
     const left = store.getState().coinFlip?.pickSeconds ?? 0;
     expect(left).toBeGreaterThan(0);
     expect(left).toBeLessThanOrEqual(COIN_PICK_SECONDS);

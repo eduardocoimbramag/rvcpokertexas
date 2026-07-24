@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 
+import { isBroke } from '../engine/credits';
 import type { RoundOutcome, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
 import { Confetti } from './Confetti';
@@ -22,9 +23,14 @@ const OUTCOME_COPY: Record<RoundOutcome, { title: string; className: string }> =
 export function ResultBanner({ result }: ResultBannerProps) {
   const playAgain = useGameStore((state) => state.playAgain);
   const goHome = useGameStore((state) => state.goHome);
+  const balance = useGameStore((state) => state.balance);
+  const refillCredits = useGameStore((state) => state.refillCredits);
   const reducedMotion = useReducedMotion();
 
   const copy = OUTCOME_COPY[result.outcome];
+  // Sem saldo para o menor lance, "jogar de novo" seria um beco: a
+  // recarga assume o CTA (o botão volta a ser o duelo após recarregar).
+  const broke = isBroke(balance);
 
   return (
     // O banner ocupa toda a faixa livre abaixo dos dados (flex-1) e a
@@ -76,9 +82,15 @@ export function ResultBanner({ result }: ResultBannerProps) {
           0.375rem): ações mais juntas neste desfecho, sem alterar as
           demais telas que usam .action-stack. */}
       <div className="action-stack action-stack--tight">
-        <Button onClick={playAgain} size="md" fullWidth data-testid="play-again">
-          <Icon name="dice" /> JOGAR DE NOVO
-        </Button>
+        {broke ? (
+          <Button onClick={refillCredits} size="md" fullWidth data-testid="refill-button">
+            <Icon name="chip" /> RECARREGAR CRÉDITOS
+          </Button>
+        ) : (
+          <Button onClick={playAgain} size="md" fullWidth data-testid="play-again">
+            <Icon name="dice" /> JOGAR DE NOVO
+          </Button>
+        )}
         <Button variant="secondary" onClick={goHome} size="md" fullWidth data-testid="go-home">
           INÍCIO
         </Button>

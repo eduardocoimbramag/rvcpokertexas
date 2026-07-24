@@ -43,9 +43,9 @@ async function playTournamentMatch(page: Page) {
   await page.getByTestId('create-room').click();
 
   // Tudo se escolhe na criação: sala de 4 (enche bem mais rápido que a
-  // de 8, com os bots entrando um a um) e a menor taxa de entrada.
+  // de 8, com os bots entrando um a um) e a taxa digitada à mão.
   await page.getByTestId('create-size-4').click();
-  await page.getByTestId('create-fee-10').click();
+  await page.getByTestId('create-fee').fill('10');
   await page.getByTestId('create-confirm').click();
 
   // O dono não confirma presença — mas só inicia quando todos os outros
@@ -75,7 +75,17 @@ test('sala privada: características escolhidas na criação, senha na porta', a
   await page.getByTestId('create-name').fill('Mesa do Teste');
   await page.getByTestId('create-password').fill('4821');
   await page.getByTestId('create-size-4').click();
-  await page.getByTestId('create-fee-10').click();
+
+  // Taxa livre: os atalhos somam sobre o valor digitado (10 + 100 = 110)
+  // e a premiação acompanha a mudança na hora — 110 × 3 assentos
+  // perdedores, menos os 10% da casa, metade para o campeão = 148.
+  await page.getByTestId('create-fee').fill('10');
+  await page.getByTestId('create-fee-plus-100').click();
+  await expect(page.getByTestId('create-fee')).toHaveValue('110');
+  await expect(page.getByTestId('create-prize')).toContainText('148');
+
+  // De volta a 10 para o resto do fluxo caber no saldo semeado.
+  await page.getByTestId('create-fee').fill('10');
   await page.getByTestId('create-confirm').click();
 
   // A sala nasce com tudo o que foi escolhido, e a senha fica à mão do
