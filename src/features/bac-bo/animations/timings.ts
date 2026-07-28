@@ -48,20 +48,21 @@ export const TIMINGS = {
    */
   actionResolveMs: 700,
   /**
-   * Beat de um LANCE na mesa: da carta assentar (ou do "parou" sair) até
-   * a vez trocar de lado. É o tempo de ler o anúncio — a mesa alterna um
-   * lance de cada vez, e cada um precisa ser visto antes do próximo.
+   * Beat da REVELAÇÃO de uma vez: os dois lances saem juntos e ficam em
+   * cena até a vez seguinte abrir. São duas linhas para ler (o seu lance
+   * e o dele), então precisa de mais fôlego que um anúncio de um só.
    */
-  moveAnnounceMs: 1100,
-  /** Quanto o anúncio do lance fica em cena (um pouco além do beat). */
-  announceHoldMs: 1600,
+  turnRevealMs: 1900,
+  /** Quanto a revelação fica em cena (um pouco além do beat). */
+  revealHoldMs: 2300,
   /**
-   * Janela em que o rival "pensa" antes de jogar a vez dele. Sorteada
-   * dentro do intervalo: um adversário que responde sempre no mesmo
-   * tempo denuncia que é máquina.
+   * Janela em que o rival bate o martelo dentro dos 20 s da vez.
+   * Sorteada: um adversário que decide sempre no mesmo tempo denuncia
+   * que é máquina — e o suspense de não saber quando ele fecha é metade
+   * da tensão de uma vez simultânea.
    */
-  opponentThinkMinMs: 700,
-  opponentThinkMaxMs: 1500,
+  opponentChoiceMinMs: 1400,
+  opponentChoiceMaxMs: 6000,
   /** Cada carta que o rival pede na vez dele é um beat próprio. */
   opponentHitMs: 950,
   /**

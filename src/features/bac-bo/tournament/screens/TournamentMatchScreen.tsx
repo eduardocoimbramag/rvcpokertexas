@@ -18,7 +18,8 @@ import { audioManager } from '../../services/AudioManager';
 import { TableScene } from '../../scene/TableScene';
 import type { SceneCamera } from '../../scene/TableScene';
 import type { DealerReaction } from '../../scene/dealer/DealerController';
-import type { GamePhase, TableAnnouncement } from '../../store/gameStore';
+import type { GamePhase, TurnClock, TurnReveal } from '../../store/gameStore';
+import { TURN_SECONDS } from '../../store/gameStore';
 import { useTournamentStore } from '../tournamentStore';
 
 /**
@@ -56,7 +57,7 @@ const COUNTDOWN_LINE = 'mb-1.5 text-center text-xs font-extrabold';
  * carrega um motor de duelo próprio e a mão é jogada de verdade
  * (PEDIR/PARAR), não pré-decidida. Abre com a MESMA apresentação de
  * duelo do 1v1 (Você → VS → adversário) e segue em countdown →
- * distribuição → sua vez → vez do rival → showdown. Empate
+ * distribuição → vezes simultâneas de 20 s → showdown. Empate
  * re-distribui (mata-mata não admite empate); ao terminar, grava o
  * placar e oferece o retorno ao chaveamento.
  */
@@ -72,8 +73,11 @@ export function TournamentMatchScreen() {
   const [round, setRound] = useState<BlackjackRoundState | null>(null);
   const [result, setResult] = useState<RoundResult | null>(null);
   const [actionPending, setActionPending] = useState(false);
-  const [announcement, setAnnouncement] = useState<TableAnnouncement | null>(null);
-  /** As ocultas já viraram (o beat do último anúncio passou). */
+  const [reveal, setReveal] = useState<TurnReveal | null>(null);
+  const [turn, setTurn] = useState<TurnClock>({ seconds: 0, opponentReady: false });
+  /** Uma vez fechada = uma janela de escolha nova (reinicia o relógio). */
+  const [turnId, setTurnId] = useState(0);
+  /** As ocultas já viraram (o beat da última revelação passou). */
   const [showdown, setShowdown] = useState(false);
   // Já nasce cheio: a tela é remontada a cada partida (key do stage), e
   // o rótulo só aparece na fase completed — não precisa ser reiniciado
@@ -119,25 +123,26 @@ export function TournamentMatchScreen() {
   }, [phase]);
 
   /**
-   * Conduz a mesa a partir do estado que o motor devolveu: anuncia o
-   * lance e agenda a troca de vez. Espelha o `handOff` do 1v1 — a mesa é
-   * uma só, e o rodízio tem de bater beat a beat nos dois modos.
+   * Conduz a mesa a partir do estado que o motor devolveu: revela os
+   * dois lances da vez que fechou. Espelha o `handOff` do 1v1 — a mesa é
+   * uma só, e o ritmo tem de bater beat a beat nos dois modos.
    */
   const applyRound = useCallback((next: BlackjackRoundState) => {
     setRound(next);
     setResult(next.result ?? null);
-    if (next.lastMove) {
-      setAnnouncement({ ...next.lastMove, id: createId() });
-      audioManager.playSfx(next.lastMove.action === 'hit' ? 'tap' : 'ready');
+    setTurnId((n) => n + 1);
+    if (next.lastTurn) {
+      setReveal({ ...next.lastTurn, id: createId() });
+      audioManager.playSfx(next.lastTurn.player?.action === 'hit' ? 'tap' : 'ready');
     }
   }, []);
 
-  // O anúncio sai de cena sozinho um beat depois de entrar.
+  // A revelação sai de cena sozinha um beat depois de entrar.
   useEffect(() => {
-    if (!announcement) return;
-    const timer = setTimeout(() => setAnnouncement(null), TIMINGS.announceHoldMs);
+    if (!reveal) return;
+    const timer = setTimeout(() => setReveal(null), TIMINGS.revealHoldMs);
     return () => clearTimeout(timer);
-  }, [announcement]);
+  }, [reveal]);
 
   // Distribuição: o motor tira as cartas do baralho (o mesmo da partida
   // — empates re-distribuem sem reembaralhar) e a mesa as apresenta nos
@@ -173,63 +178,124 @@ export function TournamentMatchScreen() {
     };
   }, [phase, backToBracket]);
 
-  // UM lance do jogador na vez dele.
-  const applyAction = useCallback(
-    async (action: 'hit' | 'stand') => {
-      const engine = engineRef.current;
-      const matchId = engineMatchIdRef.current;
-      if (!engine || !matchId) return;
-      setActionPending(true);
-      audioManager.playSfx('tap');
-      try {
-        applyRound(await engine.act({ matchId, action }));
-      } finally {
-        setActionPending(false);
-      }
-    },
-    [applyRound],
-  );
-  const hit = useCallback(() => void applyAction('hit'), [applyAction]);
-  const stand = useCallback(() => void applyAction('stand'), [applyAction]);
-
-  // Vez do rival: UM lance, depois de o anúncio do lance anterior
-  // respirar. O estado novo re-dispara o efeito — é assim que ele
-  // encadeia várias cartas seguidas sem nenhum laço explícito.
-  useEffect(() => {
-    if (phase !== 'table' || round?.phase !== 'opponentTurn') return;
+  // Trava a SUA escolha da vez. Nada sai na mesa até o rival bater o
+  // martelo dele — a vez é simultânea aqui como no 1v1.
+  const commitChoice = useCallback(async (action: 'hit' | 'stand') => {
     const engine = engineRef.current;
     const matchId = engineMatchIdRef.current;
     if (!engine || !matchId) return;
+    setActionPending(true);
+    audioManager.playSfx('tap');
+    try {
+      setRound(await engine.commit({ matchId, action }));
+    } finally {
+      setActionPending(false);
+    }
+  }, []);
+  const hit = useCallback(() => void commitChoice('hit'), [commitChoice]);
+  const stand = useCallback(() => void commitChoice('stand'), [commitChoice]);
+
+  /**
+   * Fecha a vez: executa os dois lances de uma vez só. O ref é a trava
+   * contra a corrida entre os dois gatilhos (o relógio zerando e o
+   * segundo martelo caindo no mesmo instante) — sem ela, duas chamadas
+   * jogariam DUAS vezes seguidas.
+   */
+  const resolvingRef = useRef(false);
+  const closeTurn = useCallback(() => {
+    const engine = engineRef.current;
+    const matchId = engineMatchIdRef.current;
+    if (!engine || !matchId || resolvingRef.current) return;
+    resolvingRef.current = true;
+    void (async () => {
+      try {
+        const next = await engine.resolveTurn({ matchId });
+        setReveal(null);
+        applyRound(next);
+      } catch {
+        backToBracket();
+      } finally {
+        resolvingRef.current = false;
+      }
+    })();
+  }, [applyRound, backToBracket]);
+
+  /* Janela de escolha. Depende do `turnId` (uma vez fechada = uma janela
+     nova), NUNCA do `round` inteiro: travar a sua escolha muda o round,
+     e o relógio não pode reiniciar por causa disso. */
+  const roundRef = useRef<BlackjackRoundState | null>(null);
+  useEffect(() => {
+    roundRef.current = round;
+  }, [round]);
+  useEffect(() => {
+    const current = roundRef.current;
+    if (phase !== 'table' || !current || current.phase !== 'choosing') return;
+
     let cancelled = false;
-    // Na distribuição não há lance a anunciar: a primeira vez abre sem
-    // o beat do anúncio.
-    const beat = round.lastMove ? TIMINGS.moveAnnounceMs : 0;
-    const think =
-      TIMINGS.opponentThinkMinMs +
-      Math.random() * (TIMINGS.opponentThinkMaxMs - TIMINGS.opponentThinkMinMs);
-    const timer = setTimeout(() => {
-      void (async () => {
-        try {
-          const next = await engine.advance({ matchId });
-          if (!cancelled) applyRound(next);
-        } catch {
-          if (!cancelled) backToBracket();
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    // Na distribuição não há revelação a esperar: a primeira vez abre já.
+    const beat = current.lastTurn ? TIMINGS.turnRevealMs : 0;
+    const waitingPlayer = !current.playerClosed;
+    const waitingOpponent = !current.opponentClosed;
+
+    timers.push(
+      setTimeout(() => {
+        if (cancelled) return;
+        setTurn({ seconds: waitingPlayer ? TURN_SECONDS : 0, opponentReady: !waitingOpponent });
+
+        if (waitingOpponent) {
+          const at = Math.min(
+            TIMINGS.opponentChoiceMinMs +
+              Math.random() * (TIMINGS.opponentChoiceMaxMs - TIMINGS.opponentChoiceMinMs),
+            TURN_SECONDS * 1000 - 1500,
+          );
+          timers.push(
+            setTimeout(() => {
+              if (cancelled) return;
+              setTurn((clock) => ({ ...clock, opponentReady: true }));
+              audioManager.playSfx('tap');
+            }, at),
+          );
         }
-      })();
-    }, beat + think);
+
+        if (!waitingPlayer) return;
+        // Relógio de 20 s: zerou, a mesa para a mão de quem não escolheu.
+        for (let s = TURN_SECONDS - 1; s >= 0; s -= 1) {
+          const value = s;
+          timers.push(
+            setTimeout(
+              () => {
+                if (cancelled) return;
+                setTurn((clock) => ({ ...clock, seconds: value }));
+                if (value === 0) closeTurn();
+              },
+              (TURN_SECONDS - s) * 1000,
+            ),
+          );
+        }
+      }, beat),
+    );
+
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      timers.forEach(clearTimeout);
     };
-  }, [phase, round, applyRound, backToBracket]);
+  }, [phase, turnId, closeTurn]);
+
+  // A vez fecha assim que os DOIS baterem o martelo.
+  useEffect(() => {
+    if (phase !== 'table' || !round || round.phase !== 'choosing') return;
+    const playerIn = round.playerClosed || round.playerChoice !== undefined;
+    if (playerIn && turn.opponentReady) closeTurn();
+  }, [phase, round, turn.opponentReady, closeTurn]);
 
   // Mãos fechadas → showdown: as ocultas viram, o quadro respira e o
   // desfecho entra. Empate re-distribui (mata-mata não admite empate).
   useEffect(() => {
     if (phase !== 'table' || round?.phase !== 'settled' || !result) return;
     const tie = result.outcome === 'tie';
-    const beat = round.lastMove ? TIMINGS.moveAnnounceMs : 0;
-    const reveal = setTimeout(() => setShowdown(true), beat);
+    const beat = round.lastTurn ? TIMINGS.turnRevealMs : 0;
+    const revealTimer = setTimeout(() => setShowdown(true), beat);
     const finish = setTimeout(
       () => {
         if (tie) {
@@ -245,7 +311,7 @@ export function TournamentMatchScreen() {
       beat + TIMINGS.revealMs + TIMINGS.settleMs + (tie ? TIMINGS.roundEndMs : 0),
     );
     return () => {
-      clearTimeout(reveal);
+      clearTimeout(revealTimer);
       clearTimeout(finish);
     };
   }, [phase, round, result]);
@@ -313,8 +379,8 @@ export function TournamentMatchScreen() {
   const feeLine = `Taxa de entrada de ${formatCredits(entryFee)} debitada`;
 
   /* A fase que a MESA enxerga: enquanto a rodada corre, quem manda é o
-     estado do motor (de quem é a vez); o showdown só entra depois de o
-     último anúncio respirar. */
+     estado do motor; o showdown só entra depois de a última revelação
+     respirar (até lá as ocultas continuam viradas). */
   const arenaPhase: GamePhase =
     phase === 'completed'
       ? 'completed'
@@ -323,8 +389,8 @@ export function TournamentMatchScreen() {
         : round.phase === 'settled'
           ? showdown
             ? 'settle'
-            : 'opponentTurn'
-          : round.phase;
+            : 'dealing'
+          : 'turn';
 
   const reaction: DealerReaction =
     phase === 'intro'
@@ -396,7 +462,8 @@ export function TournamentMatchScreen() {
                 onHit={hit}
                 onStand={stand}
                 actionPending={actionPending}
-                announcement={announcement}
+                reveal={reveal}
+                turn={turn}
               />
               {arenaPhase === 'settle' && result?.outcome === 'tie' && (
                 <div className="pointer-events-none absolute inset-0 z-10 flex flex-col">
@@ -421,7 +488,8 @@ export function TournamentMatchScreen() {
                       contagem real ocupa do lado de baixo — sem isso o
                       centro do título cairia acima do meio real. */}
                   <p aria-hidden className={`invisible ${COUNTDOWN_LINE}`}>
-                    <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Retornando em {returnSecs}s
+                    <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Retornando
+                    em {returnSecs}s
                   </p>
 
                   {/* Uma cópia invisível do subtítulo acima do título
@@ -471,7 +539,8 @@ export function TournamentMatchScreen() {
                     className={`text-engraved text-[#123324] ${COUNTDOWN_LINE}`}
                     data-testid="auto-return"
                   >
-                    <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Retornando em {returnSecs}s
+                    <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Retornando
+                    em {returnSecs}s
                   </p>
 
                   <div className="action-stack">

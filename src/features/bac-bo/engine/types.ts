@@ -94,21 +94,21 @@ export const roundResultSchema = z.object({
 export type RoundResult = z.infer<typeof roundResultSchema>;
 
 /**
- * Fase de uma rodada em andamento. É de quem a fase, é de quem a VEZ: a
- * mesa alterna um lance de cada vez entre os dois duelistas.
+ * Fase de uma rodada em andamento.
+ *
+ * A vez é SIMULTÂNEA: em `choosing` os dois duelistas decidem ao mesmo
+ * tempo, cada um sem saber o que o outro escolheu, e os dois lances são
+ * executados juntos quando a vez fecha. Ninguém joga "depois" de
+ * ninguém — é um duelo, não um rodízio.
  */
-export const roundPhaseSchema = z.enum(['playerTurn', 'opponentTurn', 'settled']);
+export const roundPhaseSchema = z.enum(['choosing', 'settled']);
 export type RoundPhase = z.infer<typeof roundPhaseSchema>;
 
 /** Os dois lados da mesa. */
 export const duelistSchema = z.enum(['player', 'opponent']);
 export type Duelist = z.infer<typeof duelistSchema>;
 
-/**
- * O último lance da mesa, para ela poder ANUNCIAR o que aconteceu. Cada
- * vez produz exatamente um destes — é o que o jogador lê antes de a vez
- * passar para o outro lado.
- */
+/** O lance de um duelista numa vez, já executado. */
 export const tableMoveSchema = z.object({
   by: duelistSchema,
   action: playerActionSchema,
@@ -116,8 +116,20 @@ export const tableMoveSchema = z.object({
   closed: z.boolean(),
   /** O lance estourou a mão (só acontece pedindo carta). */
   bust: z.boolean(),
+  /** Ninguém escolheu a tempo: a mesa parou a mão pelo dono dela. */
+  timedOut: z.boolean(),
 });
 export type TableMove = z.infer<typeof tableMoveSchema>;
+
+/**
+ * Os dois lances de uma vez, revelados JUNTOS — é o que a mesa anuncia.
+ * Um lado sai de fora quando a mão dele já estava fechada.
+ */
+export const tableTurnSchema = z.object({
+  player: tableMoveSchema.optional(),
+  opponent: tableMoveSchema.optional(),
+});
+export type TableTurn = z.infer<typeof tableTurnSchema>;
 
 /**
  * Estado de uma rodada interativa, do PONTO DE VISTA DO JOGADOR.
@@ -127,8 +139,10 @@ export type TableMove = z.infer<typeof tableMoveSchema>;
  * rival e a oculta nem sai da engine — não há como a UI (nem o DevTools)
  * espiar o que ainda não foi virado. No `settled` o `result` abre tudo.
  *
- * A vez é ALTERNADA: um lance de cada lado, e quem já fechou a mão sai
- * do rodízio (o outro segue sozinho até fechar também).
+ * A vez é SIMULTÂNEA: os dois escolhem ao mesmo tempo e os dois lances
+ * saem juntos. A escolha do rival NUNCA atravessa esta fronteira antes
+ * da hora — o que sai daqui é só o `lastTurn`, com os dois lances já
+ * executados. Quem já fechou a mão fica de fora das vezes seguintes.
  */
 export const blackjackRoundStateSchema = z
   .object({
@@ -140,10 +154,12 @@ export const blackjackRoundStateSchema = z
     opponentVisible: z.array(cardSchema),
     /** Quantas cartas do rival seguem viradas para baixo (0 no showdown). */
     opponentHidden: z.number().int().min(0),
-    /** Ações legais do jogador neste momento (vazio fora da vez dele). */
+    /** Ações legais agora (vazio depois de você travar a sua escolha). */
     legalActions: z.array(playerActionSchema),
-    /** Lance que acabou de acontecer; ausente na distribuição. */
-    lastMove: tableMoveSchema.optional(),
+    /** A escolha que você já travou nesta vez; ausente enquanto pensa. */
+    playerChoice: playerActionSchema.optional(),
+    /** Os dois lances da vez que acabou de fechar. */
+    lastTurn: tableTurnSchema.optional(),
     /** A sua mão já fechou (parou, estourou ou fez 21). */
     playerClosed: z.boolean(),
     /** A mão do rival já fechou. */
@@ -153,9 +169,12 @@ export const blackjackRoundStateSchema = z
   .refine((state) => (state.phase === 'settled') === (state.result !== undefined), {
     message: 'result deve existir se — e somente se — a rodada estiver settled',
   })
-  .refine((state) => state.legalActions.length > 0 === (state.phase === 'playerTurn'), {
-    message: 'só a vez do jogador oferece ações',
-  });
+  .refine(
+    (state) =>
+      state.legalActions.length > 0 ===
+      (state.phase === 'choosing' && !state.playerClosed && state.playerChoice === undefined),
+    { message: 'só há ações enquanto a sua mão está viva e sem escolha travada' },
+  );
 export type BlackjackRoundState = z.infer<typeof blackjackRoundStateSchema>;
 
 /** Entrada do histórico persistido (resultado + nome do oponente). */

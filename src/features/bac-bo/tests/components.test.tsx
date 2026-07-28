@@ -57,7 +57,7 @@ const sampleResult: RoundResult = {
  */
 const sampleRound: BlackjackRoundState = {
   matchId: 'm1',
-  phase: 'playerTurn',
+  phase: 'choosing',
   playerHand: [card('10', 'spades'), card('9', 'hearts')],
   opponentVisible: [card('10', 'clubs')],
   opponentHidden: 1,
@@ -83,7 +83,12 @@ describe('NegotiationPanel — mesa de negociação', () => {
 
   const baseNegotiation: NegotiationState = {
     messages: [
-      { id: 's1', author: 'system', kind: 'text', text: 'Proponham valores e cheguem a um acordo.' },
+      {
+        id: 's1',
+        author: 'system',
+        kind: 'text',
+        text: 'Proponham valores e cheguem a um acordo.',
+      },
     ],
     activeProposal: null,
     agreedStake: null,
@@ -278,7 +283,7 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
   const renderArena = (overrides: Partial<HandsArenaProps> = {}) =>
     render(
       <HandsArena
-        phase="playerTurn"
+        phase="turn"
         match={match}
         round={sampleRound}
         result={null}
@@ -336,7 +341,7 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
   });
 
   it('a barra de ações só existe na sua vez', () => {
-    renderArena({ phase: 'opponentTurn', round: null, result: sampleResult });
+    renderArena({ phase: 'settle', round: null, result: sampleResult });
 
     expect(screen.queryByTestId('action-hit')).not.toBeInTheDocument();
     expect(screen.queryByTestId('action-stand')).not.toBeInTheDocument();
@@ -425,6 +430,76 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     renderArena({ onRequestDouble, canRequestDouble: true });
     await user.click(screen.getByTestId('action-double'));
     expect(onRequestDouble).toHaveBeenCalledTimes(1);
+  });
+
+  it('a vez é simultânea: relógio correndo e as duas placas acesas', () => {
+    renderArena({ turn: { seconds: 14, opponentReady: false } });
+
+    expect(screen.getByTestId('turn-clock')).toHaveTextContent('14s');
+    // Os dois ainda têm de bater o martelo: as duas placas acendem.
+    expect(screen.getByTestId('nameplate-player')).toHaveClass('is-turn');
+    expect(screen.getByTestId('nameplate-opponent')).toHaveClass('is-turn');
+    expect(screen.getByTestId('status-player')).toHaveTextContent('ESCOLHENDO');
+    expect(screen.getByTestId('status-opponent')).toHaveTextContent('ESCOLHENDO');
+  });
+
+  it('travada a sua escolha, o rodapé passa a esperar o rival', () => {
+    renderArena({
+      round: { ...sampleRound, playerChoice: 'stand', legalActions: [] },
+      turn: { seconds: 9, opponentReady: false },
+    });
+
+    // O QUE você escolheu não aparece em lugar nenhum da mesa: só que
+    // você já escolheu.
+    expect(screen.getByTestId('status-player')).toHaveTextContent('PRONTO');
+    expect(screen.getByTestId('nameplate-player')).not.toHaveClass('is-turn');
+    expect(screen.getByTestId('turn-wait')).toHaveTextContent('Aguardando Luna');
+    expect(screen.queryByTestId('action-hit')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('turn-clock')).not.toBeInTheDocument();
+  });
+
+  it('a revelação mostra os DOIS lances de uma vez', () => {
+    renderArena({
+      reveal: {
+        id: 'r1',
+        player: { by: 'player', action: 'hit', closed: false, bust: false, timedOut: false },
+        opponent: { by: 'opponent', action: 'stand', closed: true, bust: false, timedOut: false },
+      },
+    });
+
+    const call = screen.getByTestId('turn-call');
+    expect(call).toHaveTextContent('PEDIU CARTA');
+    expect(call).toHaveTextContent('PAROU');
+  });
+
+  it('o lance perdido no relógio é anunciado como tempo esgotado', () => {
+    renderArena({
+      reveal: {
+        id: 'r2',
+        player: { by: 'player', action: 'stand', closed: true, bust: false, timedOut: true },
+      },
+    });
+
+    expect(screen.getByTestId('turn-call')).toHaveTextContent('TEMPO');
+  });
+
+  it('a dobra vira placar: recusada apaga o botão, aceita põe fogo nele', () => {
+    const declined = renderArena({
+      onRequestDouble: () => undefined,
+      doubleBet: { status: 'declined', amount: 100, open: false },
+    });
+    expect(screen.getByTestId('action-double')).toHaveTextContent('DOBRA RECUSADA');
+    expect(screen.getByTestId('action-double')).toBeDisabled();
+    expect(declined.container.querySelector('.double-cta--declined')).toBeInTheDocument();
+    declined.unmount();
+
+    const accepted = renderArena({
+      onRequestDouble: () => undefined,
+      doubleBet: { status: 'accepted', amount: 200, open: false },
+    });
+    expect(screen.getByTestId('action-double')).toHaveTextContent('APOSTA DOBRADA · 200');
+    // O invólucro em brasa é quem desenha o fogo nas bordas.
+    expect(accepted.container.querySelector('.double-cta--accepted')).toBeInTheDocument();
   });
 
   it('com a dobra no ar a mesa inteira espera a resposta do rival', () => {

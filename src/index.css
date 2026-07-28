@@ -86,10 +86,11 @@ h2 {
 
   /* Altura reservada para a barra de ações da rodada, em TODAS as fases
      da mesa (ver .arena-actions): duas fileiras de botão `size="md"`
-     (2×2,75rem) + o respiro entre elas (0,75rem) + o respiro para as
-     cartas (0,75rem). É medida de layout e não de estilo: a mesa
-     espelhada e o brasão derivam a geometria dela. */
-  --arena-actions-h: 7rem;
+     (2×2,75rem) + o relógio da vez (1,2rem) + os dois respiros entre
+     eles (2×0,75rem) + o respiro para as cartas (0,75rem). É medida de
+     layout e não de estilo: a mesa espelhada e o brasão derivam a
+     geometria dela. */
+  --arena-actions-h: 8.9rem;
 
   /* As duas bordas de uma mão. A placa de nome fica na de FORA e o total
      na de DENTRO; como as duas mãos têm a mesma composição espelhada, a
@@ -1291,7 +1292,8 @@ h2 {
   }
 }
 
-/* Veredito do showdown, na mesma linha da placa. */
+/* Situação na mesma linha da placa: "escolhendo…", "pronto" ou o
+   veredito do showdown. */
 .nameplate__verdict {
   padding-left: 0.4rem;
   border-left: 1px solid rgba(252, 217, 160, 0.25);
@@ -1309,6 +1311,13 @@ h2 {
 
 .nameplate__verdict--stand {
   color: var(--color-lavender);
+}
+
+/* Estado da escolha (antes do showdown): discreto de propósito — a
+   informação aqui é só SE o martelo caiu, nunca o que foi escolhido. */
+.nameplate__verdict--ready {
+  color: rgba(243, 230, 216, 0.6);
+  font-size: 0.56rem;
 }
 
 /* ---------- Total da mão (borda interna, apontado para o centro) ---------- */
@@ -1362,63 +1371,134 @@ h2 {
   opacity: 0.55;
 }
 
-/* ---------- Anúncio do lance ---------- */
+/* ---------- Revelação da vez ---------- */
 
-/* Faixa no miolo do feltro: quem jogou e o que fez. Entra pelo lado de
-   quem jogou (o `y` inicial do componente), então o olho já sabe de onde
-   veio antes de ler. */
-.move-call {
+/* O painel no miolo do feltro com os DOIS lances da vez. Ninguém sabia o
+   que o outro tinha escolhido até esta caixa abrir — é o momento de
+   tensão do duelo, e por isso ela é um painel, não uma linha: as duas
+   escolhas aparecem juntas, uma sob a outra. */
+.turn-call {
   position: absolute;
   top: 50%;
   left: 50%;
   z-index: 3;
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+  min-width: 12.5rem;
   translate: -50% -50%;
-  padding: 0.38rem 1rem 0.42rem;
-  border-radius: 9999px;
-  background: linear-gradient(180deg, rgba(24, 8, 10, 0.92) 0%, rgba(14, 5, 6, 0.86) 100%);
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.55rem 0.9rem 0.6rem;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(24, 8, 10, 0.93) 0%, rgba(14, 5, 6, 0.88) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 0 0 1px rgba(245, 183, 111, 0.45),
-    0 8px 22px rgba(0, 0, 0, 0.45);
+    0 10px 26px rgba(0, 0, 0, 0.5);
   white-space: nowrap;
 }
 
-.move-call__who {
-  font-size: 0.62rem;
+.turn-call__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.turn-call__who {
+  font-size: 0.6rem;
   font-weight: 900;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
-.move-call--player .move-call__who {
+.turn-call__row--player .turn-call__who {
   color: var(--color-player-soft);
 }
 
-.move-call--opponent .move-call__who {
+.turn-call__row--opponent .turn-call__who {
   color: var(--color-opponent-soft);
 }
 
-.move-call__what {
+.turn-call__what {
   font-family: var(--font-display);
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--color-gold-bright);
 }
 
-.move-call.is-bust .move-call__what {
+.turn-call__row.is-bust .turn-call__what {
   color: #ff9d9d;
 }
 
-/* ---------- Aviso de vez do rival (pé da mesa) ---------- */
+/* ---------- Relógio da vez ---------- */
 
-/* Fora da sua vez a barra de ações sai e o slot fica com esta pastilha:
-   o rodapé nunca fica mudo, e o jogador sabe que a mesa está esperando
-   o outro lado — não ele.
+/* Os 20 s que os dois têm para escolher, em cima dos botões. A barra
+   esvazia da direita para a esquerda e, nos últimos cinco segundos,
+   tudo vira brasa: é o aviso de que a mesa vai parar a mão sozinha. */
+.turn-clock {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.turn-clock__track {
+  position: relative;
+  overflow: hidden;
+  height: 0.28rem;
+  flex: 1;
+  border-radius: 9999px;
+  background: rgba(20, 8, 8, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.16);
+}
+
+.turn-clock__fill {
+  display: block;
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, var(--color-copper), var(--color-gold-bright));
+  /* Acompanha o tique de 1 s sem "pular": a barra desce contínua. */
+  transition:
+    width 1s linear,
+    background 0.4s ease;
+}
+
+.turn-clock__value {
+  min-width: 2.2ch;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ivory);
+  text-align: right;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.turn-clock.is-urgent .turn-clock__fill {
+  background: linear-gradient(90deg, #8f1616, #ff6b3d);
+}
+
+.turn-clock.is-urgent .turn-clock__value {
+  color: #ff9d6b;
+  animation: clock-urgent 1s ease-in-out infinite;
+}
+
+@keyframes clock-urgent {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---------- Espera pelo rival (pé da mesa) ---------- */
+
+/* Você já bateu o martelo e a mesa aguarda o outro lado: a barra de
+   ações sai e o slot fica com esta pastilha — o rodapé nunca fica mudo.
    `margin-block: auto` vence o `flex-end` do slot e centra a pastilha
    nele: ela flutua sobre o FELTRO em vez de encostar na moldura de
    mogno lá embaixo, onde tinta escura ficaria ilegível. */
@@ -1617,6 +1697,104 @@ h2 {
 .double-answer.is-muted {
   opacity: 0.22;
   scale: 0.86;
+}
+
+/* ---------- O botão da dobra e o placar dela ---------- */
+
+/* O invólucro existe só para o FOGO: o `.btn` tem `overflow: hidden` e
+   `isolation: isolate`, então nada pode vazar das bordas dele. A chama
+   mora aqui fora, atrás do botão. */
+.double-cta {
+  position: relative;
+  width: 100%;
+}
+
+.double-cta > .btn {
+  position: relative;
+  z-index: 1;
+}
+
+/* Recusa: o botão morre ali. Sem aro, sem brilho, sem convite —
+   o que sobrou é o placar do que aconteceu. */
+.double-cta--declined > .btn:disabled {
+  background: rgba(24, 10, 12, 0.5);
+  color: #7d6255;
+  box-shadow: inset 0 0 0 1px rgba(125, 98, 85, 0.2);
+}
+
+/* Aceite: a mesa dobrou e o botão PEGA FOGO. Duas camadas de chama
+   girando em sentidos e velocidades diferentes (é o desencontro que o
+   olho lê como fogo, não uma só girando), mais o brasido pulsando por
+   baixo e a tinta em champagne. Fica assim até o fim da mão: o valor em
+   jogo virou outro, e a mesa não deixa ninguém esquecer. */
+@property --fire-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.double-cta--accepted::before,
+.double-cta--accepted::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  z-index: 0;
+  border-radius: 1.15rem;
+  background: conic-gradient(
+    from var(--fire-angle),
+    #ff3d00,
+    #ffb300,
+    #fff1a8,
+    #ff6d00,
+    #b71c1c,
+    #ff3d00
+  );
+  animation: fire-turn 2.6s linear infinite;
+  pointer-events: none;
+}
+
+/* A segunda língua de fogo: mais larga, borrada e girando ao contrário —
+   é ela que dá volume à chama e a faz "lamber" a borda. */
+.double-cta--accepted::after {
+  inset: -5px;
+  filter: blur(7px);
+  opacity: 0.75;
+  animation:
+    fire-turn 4.1s linear infinite reverse,
+    fire-breathe 1.3s ease-in-out infinite;
+}
+
+@keyframes fire-turn {
+  to {
+    --fire-angle: 360deg;
+  }
+}
+
+@keyframes fire-breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+/* A tinta do botão em brasa: fundo de carvão quente e letra champagne,
+   para o texto continuar legível dentro da chama. */
+.double-cta--accepted > .btn:disabled {
+  background: linear-gradient(180deg, #4a1206 0%, #24080a 100%);
+  color: var(--color-gold-bright);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 196, 130, 0.3),
+    inset 0 0 18px rgba(255, 109, 0, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .double-cta--accepted::before,
+  .double-cta--accepted::after {
+    animation: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

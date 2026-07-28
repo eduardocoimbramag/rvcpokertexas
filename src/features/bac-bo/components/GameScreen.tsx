@@ -18,13 +18,7 @@ import { NegotiationPanel } from './NegotiationPanel';
 import { ResultBanner } from './ResultBanner';
 
 /** Fases em que a rodada está sobre a mesa (grupo arena). */
-const ARENA_PHASES: readonly GamePhase[] = [
-  'dealing',
-  'playerTurn',
-  'opponentTurn',
-  'settle',
-  'completed',
-];
+const ARENA_PHASES: readonly GamePhase[] = ['dealing', 'turn', 'settle', 'completed'];
 
 /**
  * Tela de jogo: renderiza o conteúdo correspondente à fase atual da
@@ -42,7 +36,8 @@ export function GameScreen() {
   const stand = useGameStore((state) => state.stand);
   const doubleBet = useGameStore((state) => state.doubleBet);
   const requestDouble = useGameStore((state) => state.requestDouble);
-  const announcement = useGameStore((state) => state.announcement);
+  const reveal = useGameStore((state) => state.reveal);
+  const turn = useGameStore((state) => state.turn);
   const countdown = useGameStore((state) => state.countdown);
   const error = useGameStore((state) => state.error);
   const dismissError = useGameStore((state) => state.dismissError);
@@ -53,11 +48,7 @@ export function GameScreen() {
   // fica invisível e só aparece na animação do resultado. No completed a
   // pílula recebe o saldo final + o netChange para animar a variação.
   const roundActive =
-    phase === 'countdown' ||
-    phase === 'dealing' ||
-    phase === 'playerTurn' ||
-    phase === 'opponentTurn' ||
-    phase === 'settle';
+    phase === 'countdown' || phase === 'dealing' || phase === 'turn' || phase === 'settle';
   const displayBalance = roundActive && match ? balance + match.stake : balance;
   const balanceDelta = phase === 'completed' && result ? result.netChange : null;
 
@@ -110,7 +101,8 @@ export function GameScreen() {
                   onRequestDouble={requestDouble}
                   doubleBet={doubleBet}
                   canRequestDouble={canRequestDouble}
-                  announcement={announcement}
+                  reveal={reveal}
+                  turn={turn}
                 />
                 {phase === 'completed' && result && <ResultBanner result={result} />}
               </div>

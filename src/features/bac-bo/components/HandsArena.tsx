@@ -9,9 +9,16 @@ import { handStep } from '../animations/cards';
 import { TIMINGS } from '../animations/timings';
 import type { HandValue } from '../engine/rules';
 import { handValue } from '../engine/rules';
-import type { BlackjackRoundState, Card, Duelist, Match, RoundResult } from '../engine/types';
-import type { DoubleBetState, GamePhase, TableAnnouncement } from '../store/gameStore';
-import { useGameStore } from '../store/gameStore';
+import type {
+  BlackjackRoundState,
+  Card,
+  Duelist,
+  Match,
+  RoundResult,
+  TableMove,
+} from '../engine/types';
+import type { DoubleBetState, GamePhase, TurnClock, TurnReveal } from '../store/gameStore';
+import { TURN_SECONDS, useGameStore } from '../store/gameStore';
 import { Card3D } from './Card3D';
 
 export interface HandsArenaProps {
@@ -33,8 +40,10 @@ export interface HandsArenaProps {
   doubleBet?: DoubleBetState | null;
   /** A dobra está ao alcance agora (saldo cobre e ninguém pediu ainda). */
   canRequestDouble?: boolean;
-  /** Lance que a mesa está anunciando ("REX PEDIU CARTA"). */
-  announcement?: TableAnnouncement | null;
+  /** Os dois lances da vez que acabou de fechar, revelados juntos. */
+  reveal?: TurnReveal | null;
+  /** Relógio da vez e o martelo do rival. */
+  turn?: TurnClock;
 }
 
 /**
@@ -53,19 +62,18 @@ export interface HandsArenaProps {
  * baixo, e cada carta nova que ele pede empurra a anterior para cima —
  * a informação chega em conta-gotas, e a última só abre no showdown.
  *
- * A VEZ é de um lado por vez: a placa de nome de quem está jogando
- * acende, e cada lance vira um anúncio na faixa livre antes de a mesa
- * trocar de lado. Ninguém pede duas cartas seguidas enquanto o outro
- * tiver mão viva.
+ * A VEZ é SIMULTÂNEA: os dois escolhem ao mesmo tempo, com 20 s no
+ * relógio, cada um sem saber o que o outro vai fazer. A placa de nome
+ * acende enquanto o lado ainda pensa e apaga quando ele bate o martelo;
+ * fechada a vez, os DOIS lances são revelados juntos na faixa livre.
+ * Quem não escolher a tempo tem a mão parada pela mesa.
  *
  * Cada fase é uma cena:
  * - `dealing`: as quatro cartas voam do baralho em fila (som no
  *   assentamento de cada uma — o Card3D cuida do próprio beat).
- * - `playerTurn`: a barra PEDIR/PARAR abre; o total da sua mão acompanha
- *   ao vivo (soft mostra as duas leituras, "7/17") e o do rival mostra
- *   só o que está aberto, com um "+?" lembrando o que falta.
- * - `opponentTurn`: a mesa espera o lance dele — a carta que ele pedir
- *   entra empurrando a anterior para o campo aberto.
+ * - `turn`: o relógio corre e a barra PEDIR/PARAR abre; o total da sua
+ *   mão acompanha ao vivo (soft mostra as duas leituras, "7/17") e o do
+ *   rival mostra só o que está aberto, com um "+?" lembrando o que falta.
  * - `settle`: showdown — as ocultas viram e os totais finais aparecem.
  * - `completed` (câmera frontal): o placar migra para as placas que
  *   flanqueiam a crupiê; com cenário desligado ele fica na faixa.
@@ -170,10 +178,10 @@ function verdictOf(bust: boolean, natural: boolean): { label: string; tone: stri
 interface NameplateProps {
   side: Duelist;
   name: string;
-  /** É a vez deste lado: a placa acende e respira. */
+  /** Este lado ainda tem de bater o martelo: a placa acende e respira. */
   active: boolean;
-  /** Veredito do showdown, quando já houver. */
-  verdict: { label: string; tone: string } | null;
+  /** Situação na mesma linha: "escolhendo…", "pronto" ou o veredito. */
+  status: { label: string; tone: string } | null;
 }
 
 /**
@@ -181,12 +189,13 @@ interface NameplateProps {
  * cima é do rival) — o lado de dentro é do total, que aponta para o
  * centro da mesa.
  *
- * A placa é também o indicador de vez: acesa em ouro, com um ponto que
- * respira, ela diz de quem é o lance sem precisar de mais nenhum texto.
- * No showdown ela recebe o veredito na mesma linha — altura fixa, então
- * nada empurra as cartas do lugar.
+ * A placa é também o painel de estado do duelista: acesa em ouro, com o
+ * ponto respirando, enquanto ele ainda pensa; apagada quando bate o
+ * martelo. O que ele ESCOLHEU nunca aparece aqui — só que já escolheu.
+ * No showdown a mesma linha recebe o veredito. Altura fixa, então nada
+ * disso empurra as cartas do lugar.
  */
-function Nameplate({ side, name, active, verdict }: NameplateProps) {
+function Nameplate({ side, name, active, status }: NameplateProps) {
   return (
     <div
       className={`nameplate nameplate--${side} ${active ? 'is-turn' : ''}`}
@@ -194,12 +203,12 @@ function Nameplate({ side, name, active, verdict }: NameplateProps) {
     >
       <span className="nameplate__dot" aria-hidden="true" />
       <span className="nameplate__name">{name}</span>
-      {verdict && (
+      {status && (
         <span
-          className={`nameplate__verdict nameplate__verdict--${verdict.tone}`}
-          data-testid={`verdict-${side}`}
+          className={`nameplate__verdict nameplate__verdict--${status.tone}`}
+          data-testid={status.tone === 'ready' ? `status-${side}` : `verdict-${side}`}
         >
-          {verdict.label}
+          {status.label}
         </span>
       )}
     </div>
@@ -243,40 +252,127 @@ function HandTotal({ side, value, partial }: HandTotalProps) {
   );
 }
 
+/** Leitura de um lance já executado. */
+function moveLabel(move: TableMove): string {
+  if (move.bust) return 'ESTOUROU';
+  if (move.timedOut) return 'TEMPO — PAROU';
+  return move.action === 'hit' ? 'PEDIU CARTA' : 'PAROU';
+}
+
 /**
- * O anúncio do lance na faixa livre: quem jogou e o que fez. Entra pelo
- * lado de quem jogou — o olho já sabe de onde veio antes de ler.
+ * A revelação da vez na faixa livre: os DOIS lances de uma vez, um por
+ * linha. É o momento de tensão do duelo — ninguém sabia o que o outro
+ * tinha escolhido até esta caixa abrir.
  */
-function MoveCall({
-  announcement,
+function TurnCall({
+  reveal,
   opponentName,
   instant,
 }: {
-  announcement: TableAnnouncement;
+  reveal: TurnReveal;
   opponentName: string;
   instant: boolean;
 }) {
-  const mine = announcement.by === 'player';
-  const what = announcement.bust
-    ? 'ESTOUROU'
-    : announcement.action === 'hit'
-      ? 'PEDIU CARTA'
-      : 'PAROU';
-  const from = mine ? 26 : -26;
+  const rows: { who: string; move: TableMove; side: Duelist }[] = [];
+  if (reveal.player) rows.push({ who: 'Você', move: reveal.player, side: 'player' });
+  if (reveal.opponent) rows.push({ who: opponentName, move: reveal.opponent, side: 'opponent' });
+
   return (
     <motion.div
-      key={announcement.id}
-      className={`move-call move-call--${announcement.by} ${announcement.bust ? 'is-bust' : ''}`}
-      data-testid="move-call"
+      key={reveal.id}
+      className="turn-call"
+      data-testid="turn-call"
       role="status"
-      initial={instant ? false : { opacity: 0, y: from, scale: 0.94 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={instant ? { opacity: 0 } : { opacity: 0, y: -from * 0.4, scale: 0.96 }}
-      transition={instant ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 26 }}
+      initial={instant ? false : { opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={instant ? { opacity: 0 } : { opacity: 0, scale: 0.94 }}
+      transition={instant ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 26 }}
     >
-      <span className="move-call__who">{mine ? 'Você' : opponentName}</span>
-      <span className="move-call__what">{what}</span>
+      {rows.map(({ who, move, side }, index) => (
+        <motion.div
+          key={side}
+          className={`turn-call__row turn-call__row--${side} ${move.bust ? 'is-bust' : ''}`}
+          initial={instant ? false : { opacity: 0, x: side === 'player' ? 14 : -14 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={instant ? { duration: 0 } : { delay: 0.06 + index * 0.09, duration: 0.28 }}
+        >
+          <span className="turn-call__who">{who}</span>
+          <span className="turn-call__what">{moveLabel(move)}</span>
+        </motion.div>
+      ))}
     </motion.div>
+  );
+}
+
+/**
+ * O botão da dobra e, depois do pedido, o PLACAR dela — é o mesmo lugar
+ * na tela porque é a mesma conversa:
+ *
+ * - `idle`: o convite, aceso e clicável;
+ * - `pending`: o martelo está com o rival, e o botão espera apagado;
+ * - `declined`: recusa. O botão morre ali, sem vida, dizendo o que
+ *   aconteceu — some o convite, fica o placar;
+ * - `accepted`: a mesa dobrou. O botão PEGA FOGO nas bordas e não apaga
+ *   mais até o fim da mão: o valor em jogo virou outro, e a mesa não
+ *   deixa ninguém esquecer disso.
+ */
+function DoubleCta({
+  bet,
+  enabled,
+  onRequest,
+}: {
+  bet: DoubleBetState | null | undefined;
+  enabled: boolean;
+  onRequest: () => void;
+}) {
+  const status = bet?.status ?? 'idle';
+  const label =
+    status === 'accepted'
+      ? `APOSTA DOBRADA · ${formatCredits(bet?.amount ?? 0)}`
+      : status === 'declined'
+        ? 'DOBRA RECUSADA'
+        : status === 'pending'
+          ? 'AGUARDANDO RIVAL…'
+          : 'DOBRAR APOSTA';
+
+  return (
+    <div className={`double-cta double-cta--${status}`} data-double-status={status}>
+      <Button
+        variant="ghost"
+        onClick={onRequest}
+        disabled={status !== 'idle' || !enabled}
+        size="md"
+        fullWidth
+        data-testid="action-double"
+      >
+        <Icon name={status === 'accepted' ? 'flame' : 'chip'} /> {label}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * O relógio da vez: os 20 s que os dois têm para escolher. A barra
+ * esvazia e, nos últimos segundos, tudo vira brasa — é o aviso de que a
+ * mesa vai parar a sua mão por você se ninguém bater o martelo.
+ */
+function TurnClockBar({ seconds }: { seconds: number }) {
+  const urgent = seconds <= 5;
+  return (
+    <div
+      className={`turn-clock ${urgent ? 'is-urgent' : ''}`}
+      data-testid="turn-clock"
+      role="timer"
+      aria-label={`${seconds} segundos para escolher`}
+    >
+      <span className="turn-clock__track">
+        <span
+          className="turn-clock__fill"
+          style={{ width: `${Math.max(0, Math.min(1, seconds / TURN_SECONDS)) * 100}%` }}
+        />
+      </span>
+      <span className="turn-clock__value">{seconds}s</span>
+    </div>
   );
 }
 
@@ -343,21 +439,28 @@ export function HandsArena({
   onRequestDouble,
   doubleBet,
   canRequestDouble = false,
-  announcement,
+  reveal,
+  turn,
 }: HandsArenaProps) {
   const reducedMotion = useReducedMotion() ?? false;
   const scenery = useGameStore((state) => state.settings.scenery);
 
   const dealing = phase === 'dealing';
-  const playerTurn = phase === 'playerTurn';
-  const opponentTurn = phase === 'opponentTurn';
-  // Com uma dobra no ar a mesa inteira espera a resposta do rival: pedir
-  // carta agora resolveria a mão por um valor ainda em discussão.
+  const choosing = phase === 'turn';
+  // Com uma dobra no ar a mesa inteira espera a resposta do rival:
+  // escolher agora fecharia a vez por um valor ainda em discussão.
   const doublePending = doubleBet?.status === 'pending';
   // Só há o que decidir enquanto a engine oferecer ações: a mão que já
-  // fechou trava os botões mesmo com a fase ainda em `playerTurn`.
+  // fechou (ou a escolha já travada) esvazia `legalActions`.
   const canAct =
-    playerTurn && !actionPending && !doublePending && (round?.legalActions.length ?? 0) > 0;
+    choosing && !actionPending && !doublePending && (round?.legalActions.length ?? 0) > 0;
+  /* Quem ainda tem de bater o martelo nesta vez. A placa de nome acende
+     por isso: enquanto os dois pensam, as duas acendem. */
+  const playerThinking = choosing && !round?.playerClosed && round?.playerChoice === undefined;
+  const opponentThinking = choosing && !round?.opponentClosed && !(turn?.opponentReady ?? false);
+  /* Você já escolheu e a mesa aguarda o outro lado — o único momento em
+     que o rodapé fica sem botões com a rodada viva. */
+  const waitingOpponent = choosing && !playerThinking && opponentThinking;
   // Showdown: só aqui as ocultas viram e os totais fecham.
   const revealed = phase === 'settle' || phase === 'completed';
 
@@ -470,8 +573,14 @@ export function HandsArena({
         <Nameplate
           side="opponent"
           name={match.opponent.name}
-          active={opponentTurn}
-          verdict={revealed ? opponentVerdict : null}
+          active={opponentThinking}
+          status={
+            revealed
+              ? opponentVerdict
+              : choosing && !round?.opponentClosed
+                ? { label: opponentThinking ? 'ESCOLHENDO…' : 'PRONTO', tone: 'ready' }
+                : null
+          }
         />
         <HandRow
           cards={opponentCards}
@@ -499,12 +608,8 @@ export function HandsArena({
           )}
         </AnimatePresence>
         <AnimatePresence mode="wait">
-          {announcement && (
-            <MoveCall
-              announcement={announcement}
-              opponentName={match.opponent.name}
-              instant={reducedMotion}
-            />
+          {reveal && (
+            <TurnCall reveal={reveal} opponentName={match.opponent.name} instant={reducedMotion} />
           )}
         </AnimatePresence>
       </div>
@@ -525,22 +630,25 @@ export function HandsArena({
         <Nameplate
           side="player"
           name="Você"
-          active={playerTurn}
-          verdict={revealed ? playerVerdict : null}
+          active={playerThinking}
+          status={
+            revealed
+              ? playerVerdict
+              : choosing && !round?.playerClosed
+                ? { label: playerThinking ? 'ESCOLHENDO…' : 'PRONTO', tone: 'ready' }
+                : null
+          }
         />
       </section>
 
-      {/* ---- Barra de ações da sua vez ----
+      {/* ---- Rodapé da vez ----
           O slot tem altura reservada em TODAS as fases: a barra entra e
           sai sem que as mãos subam e desçam junto — e é o pé do espelho,
           a contrapartida da faixa que sobra acima do rival.
-          Os botões seguem em cena durante o beat em que a última carta
-          assenta, mas TRAVADOS: a mão já fechou (legalActions vazio) e
-          um segundo toque só produziria uma ação ilegal. */}
+          Enquanto você tem escolha a fazer, o relógio corre em cima dos
+          botões; depois do seu martelo, o slot vira a espera pelo rival. */}
       <div className="arena-actions">
-        {/* Fora da sua vez a barra sai e o slot fica com o aviso de quem
-            está jogando — o rodapé nunca fica mudo. */}
-        {opponentTurn && (
+        {waitingOpponent && (
           <motion.p
             className="turn-wait"
             data-testid="turn-wait"
@@ -549,16 +657,17 @@ export function HandsArena({
             transition={reducedMotion ? { duration: 0 } : { duration: 0.3 }}
           >
             <span className="turn-wait__dot" aria-hidden="true" />
-            Vez de {match.opponent.name}
+            Aguardando {match.opponent.name}
           </motion.p>
         )}
-        {playerTurn && (
+        {playerThinking && (
           <motion.div
             className="action-stack"
             initial={reducedMotion ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={reducedMotion ? { duration: 0 } : { duration: 0.3, ease: 'easeOut' }}
           >
+            <TurnClockBar seconds={turn?.seconds ?? TURN_SECONDS} />
             <div className="flex w-full gap-3">
               <Button
                 onClick={onHit}
@@ -581,18 +690,16 @@ export function HandsArena({
               </Button>
             </div>
             {/* A dobra é do 1v1: no torneio o valor da mesa é a taxa de
-                entrada do chaveamento e não se negocia no meio da mão. */}
+                entrada do chaveamento e não se negocia no meio da mão.
+                Depois do pedido o botão deixa de ser botão e vira o
+                PLACAR da negociação — apagado na recusa, em brasa no
+                aceite. */}
             {onRequestDouble && (
-              <Button
-                variant="ghost"
-                onClick={onRequestDouble}
-                disabled={!canAct || !canRequestDouble}
-                size="md"
-                fullWidth
-                data-testid="action-double"
-              >
-                <Icon name="chip" /> DOBRAR APOSTA
-              </Button>
+              <DoubleCta
+                bet={doubleBet}
+                enabled={canAct && canRequestDouble}
+                onRequest={onRequestDouble}
+              />
             )}
           </motion.div>
         )}

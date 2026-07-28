@@ -29,8 +29,7 @@ describe('resolveDealerReaction', () => {
       negotiate: 'present',
       countdown: 'anticipate',
       dealing: 'shake',
-      playerTurn: 'present',
-      opponentTurn: 'present',
+      turn: 'present',
       settle: 'reveal',
       completed: 'idle',
       error: 'apologize',
@@ -55,8 +54,7 @@ describe('resolveDealerReaction', () => {
   it('fora do veredito, o resultado residual é ignorado', () => {
     expect(resolveDealerReaction('negotiate', 'win')).toBe('present');
     expect(resolveDealerReaction('dealing', 'tie')).toBe('shake');
-    expect(resolveDealerReaction('playerTurn', 'win')).toBe('present');
-    expect(resolveDealerReaction('opponentTurn', 'lose')).toBe('present');
+    expect(resolveDealerReaction('turn', 'win')).toBe('present');
   });
 });
 

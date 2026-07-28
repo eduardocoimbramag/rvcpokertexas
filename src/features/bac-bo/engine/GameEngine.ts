@@ -6,10 +6,11 @@ import type { BlackjackRoundState, Match, PlayerAction, RoundOutcome } from './t
  * `ApiBlackjackGameEngine` sem nenhuma mudança na camada visual.
  *
  * Todos os métodos são assíncronos de propósito: o contrato já nasce
- * compatível com uma implementação remota. A rodada é INTERATIVA:
- * `beginRound` distribui as cartas e `act` avança a mão do jogador até a
- * rodada se resolver sozinha (o bot adversário joga dentro da engine no
- * fechamento, e é lá que a última carta de cada um vira).
+ * compatível com uma implementação remota. A rodada é INTERATIVA e a vez
+ * é SIMULTÂNEA: `beginRound` distribui as cartas, `commit` trava a
+ * escolha do jogador sem mexer na mesa e `resolveTurn` executa os dois
+ * lances de uma vez. Nenhum dos dois lados vê a escolha do outro antes
+ * disso — e a última carta de cada um só vira no showdown.
  */
 export interface GameEngine {
   /**
@@ -38,23 +39,23 @@ export interface GameEngine {
   beginRound(params: BeginRoundParams): Promise<BlackjackRoundState>;
 
   /**
-   * Joga UM lance do jogador na vez dele. A vez passa em seguida para o
-   * rival (se ele ainda tiver mão viva) — nunca para o próprio jogador
-   * duas vezes seguidas enquanto o outro puder jogar.
+   * TRAVA a escolha do jogador para a vez corrente. Nada acontece na
+   * mesa aqui: a carta só sai — e o rival só mostra o que escolheu — no
+   * `resolveTurn`. É o que faz a vez ser simultânea de verdade.
    * @throws {GameEngineError} `match-not-found` se a partida não existir.
-   * @throws {GameEngineError} `illegal-action` se não for a vez do
-   *   jogador ou a rodada já estiver resolvida.
+   * @throws {GameEngineError} `illegal-action` se a mão do jogador já
+   *   fechou, se ele já travou uma escolha ou se a rodada acabou.
    */
-  act(params: ActParams): Promise<BlackjackRoundState>;
+  commit(params: CommitParams): Promise<BlackjackRoundState>;
 
   /**
-   * Joga UM lance do rival na vez dele. É a UI que chama — assim cada
-   * lance do adversário tem o seu beat em cena e é anunciado na mesa,
-   * em vez de a mão inteira dele resolver num sopro invisível.
+   * Fecha a vez: executa os DOIS lances ao mesmo tempo e devolve o que
+   * cada lado fez (`lastTurn`). Quem não travou escolha a tempo tem a
+   * mão parada pela mesa — o desfecho seguro de um relógio que zerou.
    * @throws {GameEngineError} `match-not-found` se a partida não existir.
-   * @throws {GameEngineError} `illegal-action` se não for a vez do rival.
+   * @throws {GameEngineError} `illegal-action` se a rodada já acabou.
    */
-  advance(params: AdvanceParams): Promise<BlackjackRoundState>;
+  resolveTurn(params: ResolveTurnParams): Promise<BlackjackRoundState>;
 }
 
 export interface FindMatchParams {
@@ -84,21 +85,17 @@ export interface BeginRoundParams {
   forcedOutcome?: RoundOutcome;
 }
 
-export interface ActParams {
+export interface CommitParams {
   matchId: string;
   action: PlayerAction;
 }
 
-export interface AdvanceParams {
+export interface ResolveTurnParams {
   matchId: string;
 }
 
 export type GameEngineErrorCode =
-  | 'invalid-stake'
-  | 'match-not-found'
-  | 'illegal-action'
-  | 'aborted'
-  | 'internal';
+  'invalid-stake' | 'match-not-found' | 'illegal-action' | 'aborted' | 'internal';
 
 /** Erro tipado da engine, com código estável para a UI mapear mensagens. */
 export class GameEngineError extends Error {

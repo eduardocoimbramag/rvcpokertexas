@@ -20,9 +20,8 @@ const PHASE_TO_REACTION: Record<GamePhase, DealerReaction> = {
   countdown: 'anticipate',
   // Distribuindo as cartas: as mãos dela trabalham.
   dealing: 'shake',
-  // As vezes dos duelistas: ela apresenta a mesa e aguarda.
-  playerTurn: 'present',
-  opponentTurn: 'present',
+  // A vez dos duelistas: ela apresenta a mesa e aguarda os dois.
+  turn: 'present',
   // Showdown: é ela quem vira as cartas ocultas.
   settle: 'reveal',
   completed: 'idle',

@@ -68,8 +68,7 @@ export default function App() {
           {phase === 'found' && 'Oponente encontrado.'}
           {phase === 'negotiate' && 'Mesa de negociação aberta. Proponham o valor da aposta.'}
           {phase === 'dealing' && 'Distribuindo as cartas.'}
-          {phase === 'playerTurn' && 'Sua vez: peça carta ou pare.'}
-          {phase === 'opponentTurn' && 'Vez do oponente.'}
+          {phase === 'turn' && 'Vez aberta: escolha pedir carta ou parar antes do tempo acabar.'}
           {phase === 'settle' && 'Showdown: as cartas ocultas viram.'}
           {phase === 'completed' &&
             result &&
