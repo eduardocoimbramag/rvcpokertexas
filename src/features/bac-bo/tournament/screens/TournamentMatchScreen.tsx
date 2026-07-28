@@ -6,13 +6,11 @@ import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
 import { COUNTDOWN_START, TIMINGS } from '../../animations/timings';
-import { CoinFlipOverlay } from '../../components/CoinFlipOverlay';
 import { Confetti } from '../../components/Confetti';
 import { CountdownOverlay } from '../../components/CountdownOverlay';
 import { FoundSplash } from '../../components/FoundSplash';
 import { HandsArena } from '../../components/HandsArena';
 import { RoundEndBanner } from '../../components/RoundEndBanner';
-import { useCoinFlip } from '../../components/useCoinFlip';
 import { LocalBlackjackGameEngine } from '../../engine/LocalBlackjackGameEngine';
 import type { BlackjackRoundState, RoundResult } from '../../engine/types';
 import { audioManager } from '../../services/AudioManager';
@@ -20,28 +18,19 @@ import { TableScene } from '../../scene/TableScene';
 import type { SceneCamera } from '../../scene/TableScene';
 import type { DealerReaction } from '../../scene/dealer/DealerController';
 import type { GamePhase } from '../../store/gameStore';
-import { useGameStore } from '../../store/gameStore';
 import { useTournamentStore } from '../tournamentStore';
 
 type LocalPhase =
   | 'intro'
-  | 'coinflip'
   | 'countdown'
   | 'dealing'
   | 'playerTurn'
   | 'opponentTurn'
-  | 'dealerTurn'
   | 'settle'
   | 'completed';
 
 /** Fases em que a rodada está sobre o feltro (câmera vertical). */
-const TABLE_PHASES: readonly LocalPhase[] = [
-  'dealing',
-  'playerTurn',
-  'opponentTurn',
-  'dealerTurn',
-  'settle',
-];
+const TABLE_PHASES: readonly LocalPhase[] = ['dealing', 'playerTurn', 'opponentTurn', 'settle'];
 
 function cameraFor(phase: LocalPhase): SceneCamera {
   return TABLE_PHASES.includes(phase) ? 'overhead' : 'front';
@@ -64,25 +53,19 @@ const AUTO_RETURN_SECONDS = 10;
 const COUNTDOWN_LINE = 'mb-1.5 text-center text-xs font-extrabold';
 
 /**
- * Partida do torneio: a mesma mesa, cartas e ritmo do 1v1 — e agora de
- * VERDADE: a tela carrega um motor de blackjack próprio e a mão é
- * jogada interativamente (PEDIR/PARAR), não pré-decidida. Toda partida
- * abre com a MESMA apresentação de duelo do 1v1 (Você → VS →
- * adversário), passa pelo MESMO cara-ou-coroa (quem vence escolhe a cor
- * das cartas) e segue em countdown → distribuição → vez do jogador →
- * vez do rival → dealer → veredito. Empate re-distribui (mata-mata não
- * admite empate); ao terminar, grava o placar e oferece o retorno ao
- * chaveamento.
+ * Partida do torneio: a mesma mesa, cartas e ritmo do 1v1. A tela
+ * carrega um motor de duelo próprio e a mão é jogada de verdade
+ * (PEDIR/PARAR), não pré-decidida. Abre com a MESMA apresentação de
+ * duelo do 1v1 (Você → VS → adversário) e segue em countdown →
+ * distribuição → sua vez → vez do rival → showdown. Empate
+ * re-distribui (mata-mata não admite empate); ao terminar, grava o
+ * placar e oferece o retorno ao chaveamento.
  */
 export function TournamentMatchScreen() {
   const activeMatch = useTournamentStore((s) => s.activeMatch);
   const entryFee = useTournamentStore((s) => s.entryFee);
   const finishMyMatch = useTournamentStore((s) => s.finishMyMatch);
   const backToBracket = useTournamentStore((s) => s.backToBracket);
-  // A mesa é uma só: as cartas leem as cores do gameStore, então é lá
-  // que o sorteio desta partida grava o que decidiu.
-  const cardColors = useGameStore((s) => s.cardColors);
-  const setCardColors = useGameStore((s) => s.setCardColors);
   const reducedMotion = useReducedMotion() ?? false;
 
   const [phase, setPhase] = useState<LocalPhase>('intro');
@@ -108,29 +91,16 @@ export function TournamentMatchScreen() {
   }
   const engineMatchIdRef = useRef<string | null>(null);
 
-  const openCountdown = useCallback(() => setPhase('countdown'), []);
-  const { coinFlip, start: startCoinFlip, choose } = useCoinFlip({
-    onColors: setCardColors,
-    onSettled: openCountdown,
-  });
-
-  // Apresentação de duelo → cara-ou-coroa. O sorteio tem duração
-  // VARIÁVEL (o jogador pode escolher a cor a qualquer instante dos 10s),
-  // por isso o resto da coreografia não pode ser agendado aqui: quem
-  // solta o countdown é o fim do sorteio.
+  // Apresentação de duelo → countdown → distribuição, nos MESMOS tempos
+  // do 1v1. Cada fase agenda só o SEU sucessor: um único efeito que
+  // agendasse a corrente inteira teria os timers restantes cancelados
+  // pela própria troca de fase (o cleanup roda a cada mudança).
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setPhase('coinflip');
-      startCoinFlip();
-    }, TIMINGS.foundSplashMs);
-    return () => clearTimeout(timer);
-  }, [startCoinFlip]);
+    if (phase === 'intro') {
+      const timer = setTimeout(() => setPhase('countdown'), TIMINGS.foundSplashMs);
+      return () => clearTimeout(timer);
+    }
 
-  // Countdown → distribuição, nos MESMOS tempos do 1v1. Cada fase agenda
-  // só o SEU sucessor: um único efeito que agendasse a corrente inteira
-  // teria os timers restantes cancelados pela própria troca de fase (o
-  // cleanup roda a cada mudança).
-  useEffect(() => {
     if (phase === 'countdown') {
       const timers: ReturnType<typeof setTimeout>[] = [];
       let elapsed = 0;
@@ -142,13 +112,14 @@ export function TournamentMatchScreen() {
       timers.push(setTimeout(() => setPhase('dealing'), elapsed));
       return () => timers.forEach(clearTimeout);
     }
+
     return;
   }, [phase]);
 
-  // Distribuição: o motor tira as cartas do sapato (o mesmo sapato da
-  // partida — empates re-distribuem sem reembaralhar) e a mesa as
-  // apresenta nos beats canônicos. Com natural do jogador a rodada volta
-  // resolvida e a vez dele é pulada.
+  // Distribuição: o motor tira as cartas do baralho (o mesmo da partida
+  // — empates re-distribuem sem reembaralhar) e a mesa as apresenta nos
+  // beats canônicos. Com natural do jogador a rodada volta resolvida e a
+  // vez dele é pulada.
   useEffect(() => {
     if (phase !== 'dealing') return;
     const engine = engineRef.current;
@@ -182,23 +153,20 @@ export function TournamentMatchScreen() {
   }, [phase, backToBracket]);
 
   // Ação do jogador: cada toque vai ao motor e volta como estado novo.
-  const applyAction = useCallback(
-    async (action: 'hit' | 'stand') => {
-      const engine = engineRef.current;
-      const matchId = engineMatchIdRef.current;
-      if (!engine || !matchId) return;
-      setActionPending(true);
-      audioManager.playSfx('tap');
-      try {
-        const next = await engine.act({ matchId, action });
-        setRound(next);
-        setResult(next.result ?? null);
-      } finally {
-        setActionPending(false);
-      }
-    },
-    [],
-  );
+  const applyAction = useCallback(async (action: 'hit' | 'stand') => {
+    const engine = engineRef.current;
+    const matchId = engineMatchIdRef.current;
+    if (!engine || !matchId) return;
+    setActionPending(true);
+    audioManager.playSfx('tap');
+    try {
+      const next = await engine.act({ matchId, action });
+      setRound(next);
+      setResult(next.result ?? null);
+    } finally {
+      setActionPending(false);
+    }
+  }, []);
   const hit = useCallback(() => void applyAction('hit'), [applyAction]);
   const stand = useCallback(() => void applyAction('stand'), [applyAction]);
 
@@ -210,8 +178,8 @@ export function TournamentMatchScreen() {
     return () => clearTimeout(timer);
   }, [phase, round]);
 
-  // Vez do rival → dealer → veredito, com durações derivadas do número
-  // de cartas compradas — mesa e relógio nunca dessincronizam.
+  // Vez do rival → showdown, com duração derivada do número de cartas
+  // que ele pediu — mesa e relógio nunca dessincronizam.
   useEffect(() => {
     if (phase === 'opponentTurn' && result) {
       const extraCards = result.opponentHand.length - 2;
@@ -219,31 +187,27 @@ export function TournamentMatchScreen() {
         TIMINGS.opponentTurnMinMs,
         extraCards * TIMINGS.opponentHitMs + TIMINGS.actionResolveMs,
       );
-      const timer = setTimeout(() => setPhase('dealerTurn'), duration);
-      return () => clearTimeout(timer);
-    }
-
-    if (phase === 'dealerTurn' && result) {
-      const extraCards = result.dealerHand.length - 2;
-      const duration =
-        TIMINGS.holeFlipMs + extraCards * TIMINGS.dealerDrawMs + TIMINGS.dealerBreathMs;
       const timer = setTimeout(() => setPhase('settle'), duration);
       return () => clearTimeout(timer);
     }
 
     if (phase === 'settle' && result) {
-      const timer = setTimeout(() => {
-        if (result.outcome === 'tie') {
-          // Mata-mata não admite empate: aviso dado, nova mão do MESMO
-          // sapato — o mesmo contrato do melhor de 3 do 1v1.
-          audioManager.playSfx('tie');
-          setRound(null);
-          setResult(null);
-          setPhase('dealing');
-          return;
-        }
-        setPhase('completed');
-      }, TIMINGS.settleMs + (result.outcome === 'tie' ? TIMINGS.roundEndMs : 0));
+      const tie = result.outcome === 'tie';
+      const timer = setTimeout(
+        () => {
+          if (tie) {
+            // Mata-mata não admite empate: aviso dado, nova mão do MESMO
+            // baralho.
+            audioManager.playSfx('tie');
+            setRound(null);
+            setResult(null);
+            setPhase('dealing');
+            return;
+          }
+          setPhase('completed');
+        },
+        TIMINGS.revealMs + TIMINGS.settleMs + (tie ? TIMINGS.roundEndMs : 0),
+      );
       return () => clearTimeout(timer);
     }
 
@@ -314,23 +278,21 @@ export function TournamentMatchScreen() {
   const reaction: DealerReaction =
     phase === 'intro'
       ? 'greet'
-      : phase === 'coinflip' || phase === 'countdown'
+      : phase === 'countdown'
         ? 'anticipate'
         : phase === 'dealing'
           ? 'shake'
           : phase === 'playerTurn' || phase === 'opponentTurn'
             ? 'present'
-            : phase === 'dealerTurn'
-              ? 'reveal'
-              : phase === 'settle'
-                ? result?.outcome === 'tie'
-                  ? 'shrug'
-                  : youWin
-                    ? 'celebrate'
-                    : 'console'
+            : phase === 'settle'
+              ? result?.outcome === 'tie'
+                ? 'shrug'
                 : youWin
                   ? 'celebrate'
-                  : 'console';
+                  : 'console'
+              : youWin
+                ? 'celebrate'
+                : 'console';
 
   return (
     <main className="flex flex-1 flex-col px-6 py-4">
@@ -353,22 +315,6 @@ export function TournamentMatchScreen() {
               exit={{ opacity: 0 }}
             >
               <FoundSplash match={match} />
-            </motion.div>
-          ) : phase === 'coinflip' && coinFlip ? (
-            <motion.div
-              key="coinflip"
-              className="flex flex-1 flex-col"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              {/* A MESMA cena do 1v1 — só a origem dos beats muda. */}
-              <CoinFlipOverlay
-                coinFlip={coinFlip}
-                opponentName={match.opponent.name}
-                playerColor={cardColors.player}
-                onChoose={choose}
-              />
             </motion.div>
           ) : phase === 'countdown' ? (
             <motion.div

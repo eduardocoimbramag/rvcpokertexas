@@ -4,28 +4,27 @@ import { useGameStore } from '../../store/gameStore';
 import type { DealerReaction } from './DealerController';
 
 /**
- * Mapa fase → reação do dealer (docs/scenario.md §9.1).
- * No veredito (settle/roundEnd/completed), o resultado da rodada
- * sobrepõe a fase.
+ * Mapa fase → reação da crupiê (docs/scenario.md §9.1).
+ *
+ * A crupiê não joga: ela conduz a mesa. Distribui as cartas, acompanha
+ * as vezes dos dois duelistas e reage ao showdown — no veredito
+ * (settle/completed) o resultado da rodada sobrepõe a fase.
  */
 const PHASE_TO_REACTION: Record<GamePhase, DealerReaction> = {
   idle: 'idle',
   search: 'idle',
   found: 'greet',
   confirm: 'present',
-  // A dealer "apresenta a mesa" enquanto os jogadores negociam o valor.
+  // A crupiê "apresenta a mesa" enquanto os jogadores negociam o valor.
   negotiate: 'present',
-  coinflip: 'anticipate',
   countdown: 'anticipate',
-  // Distribuindo as cartas: as mãos da dealer trabalham.
+  // Distribuindo as cartas: as mãos dela trabalham.
   dealing: 'shake',
-  // As vezes dos jogadores: a dealer apresenta a mesa e aguarda.
+  // As vezes dos duelistas: ela apresenta a mesa e aguarda.
   playerTurn: 'present',
   opponentTurn: 'present',
-  // A virada da fechada e as compras até 17 são o show da própria dealer.
-  dealerTurn: 'reveal',
+  // Showdown: é ela quem vira as cartas ocultas.
   settle: 'reveal',
-  roundEnd: 'reveal',
   completed: 'idle',
   error: 'apologize',
 };
@@ -36,15 +35,12 @@ const OUTCOME_TO_REACTION: Record<RoundOutcome, DealerReaction> = {
   tie: 'shrug',
 };
 
-/** Resolve a reação do dealer para a fase/resultado atuais (função pura). */
+/** Resolve a reação da crupiê para a fase/resultado atuais (função pura). */
 export function resolveDealerReaction(
   phase: GamePhase,
   outcome: RoundOutcome | null,
 ): DealerReaction {
-  // No melhor de 3 a dealer também reage ao veredito PARCIAL da rodada
-  // (settle/roundEnd) — celebra, consola ou dá de ombros no empate
-  // re-distribuído.
-  if ((phase === 'completed' || phase === 'roundEnd' || phase === 'settle') && outcome) {
+  if ((phase === 'completed' || phase === 'settle') && outcome) {
     return OUTCOME_TO_REACTION[outcome];
   }
   return PHASE_TO_REACTION[phase];

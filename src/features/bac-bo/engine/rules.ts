@@ -43,10 +43,15 @@ export function naturalProfit(stake: number): number {
 export const DECK_COUNT = 1;
 /**
  * Cartas restantes abaixo das quais o baralho é reembaralhado ANTES de
- * uma nova rodada. Uma rodada consome no máximo ~12 cartas, então o
- * maço jamais seca no meio de uma mão.
+ * uma nova rodada.
+ *
+ * O piso não é o consumo TÍPICO (4 a 8 cartas), e sim o pior caso: uma
+ * mão de cartas baixas e Áses pode passar de dez cartas antes de fechar,
+ * e são duas mãos por rodada. Com 30 o maço nunca seca no meio de uma
+ * mão — `drawCard` lançaria RangeError com a rodada em andamento, e o
+ * jogador já teria a aposta debitada.
  */
-export const DECK_RESHUFFLE_THRESHOLD = 20;
+export const DECK_RESHUFFLE_THRESHOLD = 30;
 
 /**
  * Valor médio de uma carta do baralho (95/13 ≈ 7,3): é o que o bot usa

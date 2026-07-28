@@ -11,31 +11,21 @@ import {
 } from '../animations/cards';
 import type { Card, CardSuit } from '../engine/types';
 import { audioManager } from '../services/AudioManager';
-import type { CardColorId } from '../store/cardColors';
-import { CARD_COLORS } from '../store/cardColors';
-
-/**
- * Verso da casa: o vinho borgonha do clube com filete dourado — usado
- * pela carta fechada do dealer, que não pertence a nenhum duelista.
- */
-const HOUSE_BACK = { gradientA: '#5f1420', gradientB: '#2a0810' } as const;
 
 export interface Card3DProps {
   /**
-   * Carta a exibir; `null` para uma carta fechada cuja identidade a UI
-   * ainda não conhece (a fechada do dealer antes do settle).
+   * Carta a exibir; `null` para uma carta cuja identidade a UI ainda não
+   * conhece (a última do adversário, antes do showdown).
    */
   card: Card | null;
   /** Exibe o verso mesmo conhecendo a carta (a virada acontece quando
       isto vira `false` com a carta preenchida). */
   faceDown?: boolean;
-  /** Cor do verso: a do duelista, ou o vinho da casa (dealer). */
-  back?: CardColorId | 'house';
   /** Largura como comprimento CSS. Default: var(--card-w). */
   size?: string;
   /** Atraso do voo de entrada na coreografia da distribuição. */
   dealDelayMs?: number;
-  /** Carta de mostruário (escolha de cor): entra sem som nem voo. */
+  /** Carta de mostruário: entra sem som nem voo. */
   silent?: boolean;
   label: string;
 }
@@ -50,17 +40,19 @@ const SUIT_LABEL: Record<CardSuit, string> = {
 const RED_SUITS: readonly CardSuit[] = ['hearts', 'diamonds'];
 
 /**
- * Carta 3D da mesa: plano de duas faces em preserve-3d (irmã da moeda
- * do cara-ou-coroa). O voo de entrada sai do sapato (acima da mesa) com
- * stagger por carta; a virada gira o plano em rotateY. O som de cada
- * carta nasce AQUI, no instante em que ela assenta — não no store —
- * para a coreografia inteira ter um beat por carta, como os copos da
- * mesa antiga tinham.
+ * Carta 3D da mesa: plano de duas faces em preserve-3d. O baralho é um
+ * só, então o verso é um só — o vinho borgonha do clube com filete
+ * dourado, igual para os dois duelistas (quem é dono da mão se lê pela
+ * posição na mesa, não pela cor).
+ *
+ * O voo de entrada sai do baralho (acima da mesa) com stagger por carta;
+ * a virada gira o plano em rotateY. O som de cada carta nasce AQUI, no
+ * instante em que ela assenta — não no store — para a coreografia
+ * inteira ter um beat por carta.
  */
 export function Card3D({
   card,
   faceDown = false,
-  back = 'house',
   size,
   dealDelayMs = 0,
   silent = false,
@@ -76,7 +68,7 @@ export function Card3D({
     if (silent) return;
     const timer = setTimeout(() => {
       // Com movimento reduzido todas pousam juntas: só a primeira fala,
-      // para não empilhar seis sons no mesmo milissegundo.
+      // para não empilhar quatro sons no mesmo milissegundo.
       if (!reducedMotion || dealDelayMs === 0) audioManager.playSfx('cardFlip');
     }, delayMs);
     return () => clearTimeout(timer);
@@ -86,21 +78,16 @@ export function Card3D({
   const wasFaceDown = useRef(faceDown);
   useEffect(() => {
     if (wasFaceDown.current && !faceDown) {
-      // A virada da carta fechada — o momento clássico da mesa.
+      // A virada da carta oculta — o momento clássico do showdown.
       audioManager.playSfx('cardFlip');
     }
     wasFaceDown.current = faceDown;
   }, [faceDown]);
 
-  const palette = back === 'house' ? HOUSE_BACK : CARD_COLORS[back];
-  const sceneStyle = {
-    ...(size ? { '--card-size': size } : {}),
-    '--card-back-a': palette.gradientA,
-    '--card-back-b': palette.gradientB,
-  } as CSSProperties;
+  const sceneStyle = (size ? { '--card-size': size } : {}) as CSSProperties;
 
   const red = card ? RED_SUITS.includes(card.suit) : false;
-  const shownLabel = faceDown || !card ? 'carta fechada' : `${card.rank} de ${SUIT_LABEL[card.suit]}`;
+  const shownLabel = faceDown || !card ? 'carta oculta' : `${card.rank} de ${SUIT_LABEL[card.suit]}`;
 
   return (
     <motion.div
@@ -118,10 +105,9 @@ export function Card3D({
     >
       <motion.div
         className="card3d"
-        // A carta VOA DE VERSO (como sai de um sapato real) e vira ao
-        // assentar — é o momento em que a cor escolhida no sorteio
-        // aparece em jogo. A fechada do dealer simplesmente não vira
-        // (o alvo continua 180°) até o settle.
+        // A carta VOA DE VERSO (como sai de um baralho real) e vira ao
+        // assentar. A oculta simplesmente não vira (o alvo continua
+        // 180°) até o showdown.
         initial={reducedMotion || silent ? false : { rotateY: 180 }}
         animate={{ rotateY: faceDown || !card ? 180 : 0 }}
         transition={

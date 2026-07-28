@@ -54,7 +54,9 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
           <span className="font-normal text-lavender"> vs {entry.opponentName}</span>
         </p>
         <p className="text-xs text-lavender/70">
-          {formatTime(entry.completedAt)} · dealer fez {entry.dealerTotal}
+          {formatTime(entry.completedAt)}
+          {entry.playerBust ? ' · você estourou' : ''}
+          {entry.opponentBust ? ' · o rival estourou' : ''}
           {entry.playerNatural ? ' · blackjack!' : ''}
         </p>
       </div>

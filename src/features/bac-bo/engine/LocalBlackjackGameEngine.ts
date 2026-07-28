@@ -18,6 +18,7 @@ import {
   drawCard,
   forcedDealFor,
   handValue,
+  isBust,
   isNaturalBlackjack,
   netChangeFor,
   payoutFor,
@@ -130,6 +131,14 @@ export class LocalBlackjackGameEngine implements GameEngine {
       throw new GameEngineError('match-not-found', `Partida não encontrada: ${params.matchId}`);
     }
 
+    // Uma rodada por vez: distribuir por cima de uma mão em andamento
+    // abandonaria silenciosamente uma rodada que nunca produziria
+    // `result` — e a aposta dela já foi debitada.
+    const inFlight = this.activeRounds.get(match.id);
+    if (inFlight && !inFlight.settled) {
+      throw new GameEngineError('illegal-action', 'Já há uma rodada em andamento nesta partida.');
+    }
+
     await delay(this.dealDelayMs);
 
     // O reembaralho por limiar acontece SÓ aqui, entre rodadas — uma
@@ -143,10 +152,18 @@ export class LocalBlackjackGameEngine implements GameEngine {
     const forced = this.allowForcedOutcomes ? params.forcedOutcome : undefined;
     if (forced) {
       // Empilha as 4 cartas da distribuição no TOPO do baralho (drawCard
-      // tira do fim do array, então entram invertidas). As compras que
-      // vierem depois seguem do baralho normal — o desfecho já está
-      // garantido pelos naturais (ver forcedDealFor).
-      deck.push(...[...forcedDealFor(forced)].reverse());
+      // tira do fim do array, então entram invertidas). As cópias dessas
+      // cartas saem do maço antes: sem isso o baralho ficaria com dois
+      // Ases de espadas circulando nas rodadas seguintes, e o "baralho
+      // único" deixaria de ser verdade. As compras que vierem depois
+      // seguem do baralho normal — o desfecho já está garantido pelos
+      // naturais (ver forcedDealFor).
+      const stacked = forcedDealFor(forced);
+      const isStacked = (card: Card) =>
+        stacked.some((s) => s.rank === card.rank && s.suit === card.suit);
+      const rest = deck.filter((card) => !isStacked(card));
+      deck.length = 0;
+      deck.push(...rest, ...[...stacked].reverse());
     }
 
     const { playerHand, opponentHand } = dealInitialHands(deck);
@@ -206,7 +223,16 @@ export class LocalBlackjackGameEngine implements GameEngine {
    * comparadas. É aqui, e só aqui, que tudo vira para cima.
    */
   private settleRound(match: Match, round: ActiveRound, deck: Card[]): BlackjackRoundState {
-    const playerVisibleTotal = handValue(visibleCards(round.playerHand)).total;
+    // O que o bot enxerga da sua mão: tudo menos a última carta — SALVO
+    // quando você estoura. Estouro é público em qualquer mesa (a mão
+    // vira na hora), e esconder isso abriria uma brecha real: o bot
+    // seguiria pedindo contra um adversário que já perdeu, estouraria
+    // junto de vez em quando, e o empate devolveria a aposta de quem
+    // estourou primeiro.
+    const playerBusted = isBust(round.playerHand);
+    const playerVisibleTotal = playerBusted
+      ? handValue(round.playerHand).total
+      : handValue(visibleCards(round.playerHand)).total;
     const opponentHand = playBotHand(deck, round.opponentHand, playerVisibleTotal);
 
     const player = standingOf(round.playerHand);

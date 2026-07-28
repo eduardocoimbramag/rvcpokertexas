@@ -509,11 +509,11 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       const youWin = result.outcome === 'win';
       // Placar do chaveamento: o total da mão; estouro conta 0 (quem
       // estoura não tem mão). O chaveamento decide o vencedor comparando
-      // placares, então nos raros desfechos em que a CATEGORIA decide
-      // com totais iguais (natural × 21 em três cartas), o perdedor cede
-      // um ponto no registro — o placar tem de concordar com a mesa.
-      let youScore = result.playerCategory === 'bust' ? 0 : result.playerTotal;
-      let oppScore = result.opponentCategory === 'bust' ? 0 : result.opponentTotal;
+      // placares, então no desfecho em que o BLACKJACK decide com totais
+      // iguais (natural × 21 em três cartas), o perdedor cede um ponto
+      // no registro — o placar tem de concordar com a mesa.
+      let youScore = result.playerBust ? 0 : result.playerTotal;
+      let oppScore = result.opponentBust ? 0 : result.opponentTotal;
       if (youWin && youScore <= oppScore) oppScore = Math.max(0, youScore - 1);
       if (!youWin && oppScore <= youScore) youScore = Math.max(0, oppScore - 1);
       const youAreA = bm.a.id === YOU_ID;

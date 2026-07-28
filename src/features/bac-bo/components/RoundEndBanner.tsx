@@ -6,20 +6,19 @@ export interface RoundEndBannerProps {
   result: RoundResult;
 }
 
-/* As mesmas tintas gravadas do ResultBanner — o veredito parcial fala a
-   língua do final, só que em tom de "ainda não acabou". */
+/* As mesmas tintas gravadas do ResultBanner — o aviso fala a língua do
+   veredito final, só que em tom de "ainda não acabou". */
 const ROUND_COPY: Record<RoundOutcome, { title: string; className: string }> = {
-  win: { title: 'RODADA GANHA', className: 'text-[#7a4503]' },
-  lose: { title: 'RODADA PERDIDA', className: 'text-[#8f1616]' },
-  tie: { title: 'EMPATE', className: 'text-[#3d372f]' },
+  win: { title: 'MÃO GANHA', className: 'text-[#7a4503]' },
+  lose: { title: 'MÃO PERDIDA', className: 'text-[#8f1616]' },
+  tie: { title: 'EMPATE', className: 'text-[#26312a]' },
 };
 
 /**
- * Beat de fim de rodada do melhor de 3 (fase `roundEnd`): o veredito da
- * rodada e MAIS NADA. O placar da série vive na pílula do topo, que
- * acompanha o duelo inteiro — repeti-lo aqui, com legendas explicando o
- * que os círculos já mostram, só entulhava a mesa. Vive o
- * TIMINGS.roundEndMs; quem fecha a série não passa por aqui.
+ * Aviso de mão empatada no TORNEIO: o veredito e MAIS NADA. Existe só
+ * ali, porque o mata-mata não admite empate — a mesa avisa e distribui
+ * de novo. No 1v1 o empate encerra a partida (devolvendo a aposta) e
+ * quem fala é o ResultBanner. Vive o TIMINGS.roundEndMs.
  */
 export function RoundEndBanner({ result }: RoundEndBannerProps) {
   const reducedMotion = useReducedMotion() ?? false;

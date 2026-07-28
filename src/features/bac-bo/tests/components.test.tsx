@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 
 import { Card3D } from '../components/Card3D';
-import { CoinFlipOverlay } from '../components/CoinFlipOverlay';
 import { ConfirmPanel } from '../components/ConfirmPanel';
 import type { HandsArenaProps } from '../components/HandsArena';
 import { HandsArena } from '../components/HandsArena';
@@ -13,7 +12,6 @@ import { HistorySheet } from '../components/HistorySheet';
 import { NegotiationPanel } from '../components/NegotiationPanel';
 import { ResultBanner } from '../components/ResultBanner';
 import { RoundEndBanner } from '../components/RoundEndBanner';
-import { SeriesDots } from '../components/SeriesDots';
 import type {
   BlackjackRoundState,
   Card,
@@ -23,29 +21,26 @@ import type {
   Match,
   RoundResult,
 } from '../engine/types';
-import type { CardColorId } from '../store/cardColors';
-import { DEFAULT_CARD_COLORS } from '../store/cardColors';
-import type { CoinFlipState, NegotiationState, SeriesState } from '../store/gameStore';
+import type { NegotiationState } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
 
 const card = (rank: CardRank, suit: CardSuit): Card => ({ rank, suit });
 
 /**
- * Rodada resolvida pela engine: o jogador para em 19 e vence o dealer
- * (17); o oponente empata com a casa. Vitória comum de stake 50 →
- * payoutFor('win', 50) = 95 (o stake de volta + 90% do lance rival).
+ * Duelo resolvido pela engine: você para em 19 (10♠ 9♥) e bate o rival,
+ * que ficou em 17 (10♣ 7♦). Não há casa no meio — é mão contra mão.
+ * Vitória comum de stake 50 → payoutFor('win', 50) = 95 (o stake de volta
+ * + 90% do lance do rival).
  */
 const sampleResult: RoundResult = {
   id: 'r1',
   matchId: 'm1',
   playerHand: [card('10', 'spades'), card('9', 'hearts')],
   opponentHand: [card('10', 'clubs'), card('7', 'diamonds')],
-  dealerHand: [card('9', 'hearts'), card('8', 'diamonds')],
   playerTotal: 19,
   opponentTotal: 17,
-  dealerTotal: 17,
-  playerCategory: 'win',
-  opponentCategory: 'push',
+  playerBust: false,
+  opponentBust: false,
   playerNatural: false,
   opponentNatural: false,
   outcome: 'win',
@@ -55,14 +50,17 @@ const sampleResult: RoundResult = {
   completedAt: 1700000000000,
 };
 
-/** A mesma mesa ANTES do veredito: a vez do jogador aberta, o dealer só
- * com a carta de cima exposta. */
+/**
+ * A mesma mesa ANTES do showdown, do PONTO DE VISTA do jogador: a sua mão
+ * inteira, e do rival só a carta aberta — a última dele fica virada para
+ * baixo (a regra de POV da mesa) e nem sai da engine.
+ */
 const sampleRound: BlackjackRoundState = {
   matchId: 'm1',
   phase: 'playerTurn',
   playerHand: [card('10', 'spades'), card('9', 'hearts')],
-  opponentHand: [card('10', 'clubs'), card('7', 'diamonds')],
-  dealerUpCard: card('9', 'hearts'),
+  opponentVisible: [card('10', 'clubs')],
+  opponentHidden: 1,
   legalActions: ['hit', 'stand'],
 };
 
@@ -249,139 +247,30 @@ describe('ConfirmPanel — perfil do oponente', () => {
   });
 });
 
-describe('CoinFlipOverlay — cara-ou-coroa', () => {
-  const match: Match = {
-    id: 'm1',
-    stake: 25,
-    opponent: { id: 'o1', name: 'Luna', avatar: 'L', rating: 1420 },
-    createdAt: 1700000000000,
-  };
-
-  const baseCoin = {
-    playerSide: 'cara',
-    result: 'cara',
-    winner: 'player',
-    chosenColor: null,
-    pickSeconds: null,
-  } as const;
-
-  /**
-   * A cena é apresentacional: recebe o sorteio pronto por props (do
-   * gameStore no 1v1, do useCoinFlip no torneio) e só coreografa.
-   */
-  const renderCoin = (
-    coinFlip: CoinFlipState,
-    options: { playerColor?: CardColorId; onChoose?: (color: CardColorId) => void } = {},
-  ) =>
-    render(
-      <CoinFlipOverlay
-        coinFlip={coinFlip}
-        opponentName="Luna"
-        playerColor={options.playerColor ?? 'azul'}
-        onChoose={options.onChoose ?? (() => undefined)}
-      />,
-    );
-
-  it('anuncia a face sorteada quando a moeda pousa', () => {
-    renderCoin({ ...baseCoin, stage: 'result' });
-
-    expect(screen.getByTestId('coin-side')).toHaveTextContent('Seu lado · CARA');
-    expect(screen.getByTestId('coin-verdict')).toHaveTextContent('Deu CARA!');
-    // O veredito do sorteio tem cena própria: aqui ainda não aparece.
-    expect(screen.queryByTestId('coin-winner')).not.toBeInTheDocument();
-  });
-
-  it('o veredito do sorteio ocupa a tela sozinho antes da escolha', () => {
-    renderCoin({ ...baseCoin, stage: 'verdict' });
-
-    expect(screen.getByTestId('coin-winner')).toHaveTextContent('Você venceu o sorteio');
-    // Nada mais em cena: nem a moeda, nem os cartões de cor.
-    expect(screen.queryByTestId('coin-side')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('card-color-picker')).not.toBeInTheDocument();
-  });
-
-  it('perdendo o sorteio, o veredito nomeia o oponente', () => {
-    renderCoin({ ...baseCoin, result: 'coroa', winner: 'opponent', stage: 'verdict' });
-
-    expect(screen.getByTestId('coin-winner')).toHaveTextContent('Luna venceu o sorteio');
-  });
-
-  it('vencedor só confirma depois de escolher, e a escolha troca os lados', async () => {
-    const user = userEvent.setup();
-    // Ligada ao store do 1v1: o clique precisa chegar em chooseCardColor
-    // e trocar as cores dos dois lados de verdade.
-    useGameStore.setState({
-      phase: 'coinflip',
-      match,
-      coinFlip: { ...baseCoin, stage: 'pick', pickSeconds: 10 },
-    });
-    renderCoin({ ...baseCoin, stage: 'pick', pickSeconds: 10 }, {
-      onChoose: (color) => useGameStore.getState().chooseCardColor(color),
-    });
-
-    // A cena do lançamento saiu; ficaram os dois versos e o confirmar.
-    expect(screen.queryByTestId('coin-side')).not.toBeInTheDocument();
-    expect(screen.getByTestId('coin-headline')).toHaveTextContent('Escolha suas cartas');
-    // O veredito já teve a sua cena: não se repete aqui.
-    expect(screen.queryByTestId('coin-winner')).not.toBeInTheDocument();
-    expect(screen.getByTestId('pick-countdown')).toHaveTextContent('Escolha automática em 10s');
-    const confirm = screen.getByTestId('confirm-card-color');
-    expect(confirm).toBeDisabled();
-
-    await user.click(screen.getByTestId('card-color-vermelho'));
-    expect(screen.getByTestId('card-color-vermelho')).toHaveAttribute('aria-checked', 'true');
-    // Selecionar ainda não aplica: só o confirmar fecha a escolha.
-    expect(useGameStore.getState().coinFlip?.stage).toBe('pick');
-
-    await user.click(confirm);
-    expect(useGameStore.getState().cardColors).toEqual({
-      player: 'vermelho',
-      opponent: 'azul',
-    });
-    expect(useGameStore.getState().coinFlip?.stage).toBe('picked');
-  });
-
-  it('cartões de escolha anunciam as duas cores da mesa', () => {
-    renderCoin({ ...baseCoin, stage: 'pick', pickSeconds: 10 });
-
-    const picker = screen.getByTestId('card-color-picker');
-    expect(within(picker).getByTestId('card-color-azul')).toHaveTextContent('Azuis');
-    expect(within(picker).getByTestId('card-color-vermelho')).toHaveTextContent('Vermelhas');
-  });
-
-  it('após a escolha, o anúncio diz com quais cartas o jogador joga', () => {
-    renderCoin(
-      { ...baseCoin, stage: 'picked', chosenColor: 'vermelho' },
-      { playerColor: 'vermelho' },
-    );
-
-    expect(screen.getByTestId('coin-headline')).toHaveTextContent(
-      'Você joga com as cartas Vermelhas',
-    );
-    // A escolha já fechou: não há mais confirmar em cena.
-    expect(screen.queryByTestId('confirm-card-color')).not.toBeInTheDocument();
-  });
-
-  it('derrota no sorteio: o oponente anuncia a cor e não há confirmar', () => {
-    renderCoin({
-      ...baseCoin,
-      result: 'coroa',
-      winner: 'opponent',
-      stage: 'botPick',
-      chosenColor: 'azul',
-    });
-
-    expect(screen.getByTestId('coin-headline')).toHaveTextContent('Luna escolheu as cartas Azuis');
-    expect(screen.queryByTestId('confirm-card-color')).not.toBeInTheDocument();
-  });
-});
-
-describe('HandsArena — a mesa de blackjack', () => {
+describe('HandsArena — o duelo de 21 sobre o feltro', () => {
   const match: Match = {
     id: 'm1',
     stake: 50,
     opponent: { id: 'o1', name: 'Luna', avatar: 'L', rating: 1200 },
     createdAt: 1700000000000,
+  };
+
+  /** Showdown com o rival estourado (10♣ 7♦ K♠ = 27). */
+  const bustedOpponent: RoundResult = {
+    ...sampleResult,
+    opponentHand: [card('10', 'clubs'), card('7', 'diamonds'), card('K', 'spades')],
+    opponentTotal: 27,
+    opponentBust: true,
+  };
+
+  /** Showdown com blackjack natural na sua mão (A♠ K♦), que paga 3:2. */
+  const naturalPlayer: RoundResult = {
+    ...sampleResult,
+    playerHand: [card('A', 'spades'), card('K', 'diamonds')],
+    playerTotal: 21,
+    playerNatural: true,
+    payout: 125,
+    netChange: 75,
   };
 
   const renderArena = (overrides: Partial<HandsArenaProps> = {}) =>
@@ -398,16 +287,30 @@ describe('HandsArena — a mesa de blackjack', () => {
       />,
     );
 
-  it('na vez do jogador as três mãos estão na mesa e a fechada do dealer segue fechada', () => {
+  it('a mesa tem duas mãos e só duas: rival em cima, você embaixo', () => {
     renderArena();
 
-    expect(screen.getByTestId('hand-dealer')).toBeInTheDocument();
-    expect(screen.getByTestId('hand-player')).toBeInTheDocument();
     expect(screen.getByTestId('hand-opponent')).toBeInTheDocument();
-    // A segunda carta do dealer só vira na vez dele.
-    expect(
-      screen.getByRole('img', { name: 'Carta do dealer 2: carta fechada' }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('hand-player')).toBeInTheDocument();
+    // Sem casa para bater: não existe fileira de dealer nesta mesa.
+    expect(screen.queryByTestId('hand-dealer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('dealer-total')).not.toBeInTheDocument();
+
+    // Duas cartas de cada lado, com testid por posição no leque.
+    expect(screen.getByTestId('hand-player-cards-card-1')).toBeInTheDocument();
+    expect(screen.getByTestId('hand-player-cards-card-2')).toBeInTheDocument();
+    expect(screen.getByTestId('hand-opponent-cards-card-1')).toBeInTheDocument();
+    expect(screen.getByTestId('hand-opponent-cards-card-2')).toBeInTheDocument();
+  });
+
+  it('regra de POV: a sua mão é aberta e a última do rival fica oculta', () => {
+    renderArena();
+
+    expect(screen.getByRole('img', { name: 'Sua carta 1: 10 de espadas' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Sua carta 2: 9 de copas' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Carta de Luna 1: 10 de paus' })).toBeInTheDocument();
+    // A última do rival só abre no showdown.
+    expect(screen.getByRole('img', { name: 'Carta de Luna 2: carta oculta' })).toBeInTheDocument();
   });
 
   it('PEDIR CARTA e PARAR chamam as ações recebidas por props', async () => {
@@ -430,35 +333,59 @@ describe('HandsArena — a mesa de blackjack', () => {
     expect(screen.getByTestId('action-stand')).toBeDisabled();
   });
 
-  it('totais ao vivo: o dealer só conta a carta aberta antes do settle', () => {
+  it('a barra de ações só existe na sua vez', () => {
+    renderArena({ phase: 'opponentTurn', round: null, result: sampleResult });
+
+    expect(screen.queryByTestId('action-hit')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('action-stand')).not.toBeInTheDocument();
+  });
+
+  it('totais ao vivo: o do rival é parcial, com o "+?" da carta oculta', () => {
     renderArena();
 
     expect(screen.getByTestId('player-total')).toHaveTextContent('19');
-    expect(screen.getByTestId('opponent-total')).toHaveTextContent('17');
-    // 9♥ aberta + fechada: nada de somar o que ainda não virou.
-    expect(screen.getByTestId('dealer-total')).toHaveTextContent('9');
+    // 10♣ aberta + a oculta: nada de somar o que ainda não virou.
+    expect(screen.getByTestId('opponent-total')).toHaveTextContent('10 +?');
   });
 
-  it('na vez do oponente o total dele se esconde (as cartas entrando são o show)', () => {
-    renderArena({ phase: 'opponentTurn', round: null, result: sampleResult });
-
-    expect(screen.queryByTestId('opponent-total')).not.toBeInTheDocument();
-    expect(screen.getByTestId('player-total')).toHaveTextContent('19');
-  });
-
-  it('no settle as categorias contra o dealer abrem, com o total final da casa', () => {
+  it('no showdown as ocultas viram e o total do rival fecha de verdade', () => {
     renderArena({ phase: 'settle', round: null, result: sampleResult });
 
-    expect(screen.getByTestId('category-player')).toHaveTextContent('VENCEU O DEALER');
-    expect(screen.getByTestId('category-opponent')).toHaveTextContent('EMPATOU');
-    expect(screen.getByTestId('dealer-total')).toHaveTextContent('17');
+    expect(screen.getByTestId('opponent-total')).toHaveTextContent('17');
+    expect(screen.getByTestId('opponent-total').textContent).not.toContain('+?');
+    expect(screen.getByTestId('player-total')).toHaveTextContent('19');
+    expect(screen.getByRole('img', { name: 'Carta de Luna 2: 7 de ouros' })).toBeInTheDocument();
   });
 
-  it('em completed o placar flanqueia a dealer e coroa o vencedor', () => {
+  it('no settle cada mão ganha o seu selo de veredito', () => {
+    const { unmount } = renderArena({ phase: 'settle', round: null, result: sampleResult });
+    expect(screen.getByTestId('verdict-player')).toHaveTextContent('PAROU');
+    expect(screen.getByTestId('verdict-opponent')).toHaveTextContent('PAROU');
+    unmount();
+
+    const busted = renderArena({ phase: 'settle', round: null, result: bustedOpponent });
+    expect(screen.getByTestId('verdict-opponent')).toHaveTextContent('ESTOUROU');
+    expect(screen.getByTestId('opponent-total')).toHaveTextContent('27');
+    busted.unmount();
+
+    renderArena({ phase: 'settle', round: null, result: naturalPlayer });
+    expect(screen.getByTestId('verdict-player')).toHaveTextContent('BLACKJACK!');
+  });
+
+  it('antes do showdown não há selo de veredito nenhum', () => {
+    renderArena();
+
+    expect(screen.queryByTestId('verdict-player')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('verdict-opponent')).not.toBeInTheDocument();
+  });
+
+  it('em completed o placar flanqueia a crupiê e coroa o vencedor', () => {
     renderArena({ phase: 'completed', round: null, result: sampleResult });
 
     expect(screen.getByTestId('score-plate-player')).toHaveClass('score-plate--winner');
     expect(screen.getByTestId('score-plate-opponent')).not.toHaveClass('score-plate--winner');
+    expect(screen.getByTestId('player-total')).toHaveTextContent('19');
+    expect(screen.getByTestId('opponent-total')).toHaveTextContent('17');
   });
 
   it('com cenário desligado o placar permanece na faixa da mesa', () => {
@@ -473,45 +400,33 @@ describe('HandsArena — a mesa de blackjack', () => {
   });
 });
 
-describe('SeriesDots / RoundEndBanner — melhor de 3', () => {
-  const openSeries: SeriesState = {
-    playerWins: 1,
-    opponentWins: 0,
-    roundWinners: ['player'],
-    roundNumber: 2,
-    outcome: null,
-  };
-
-  it('preenche um círculo por rodada decidida, com o placar da série', () => {
-    render(<SeriesDots series={openSeries} cardColors={DEFAULT_CARD_COLORS} />);
-    const dots = screen.getByTestId('series-dots');
-    expect(dots).toHaveAttribute('data-score', '1-0');
-    expect(screen.getByTestId('series-dot-1')).toHaveAttribute('data-winner', 'player');
-    expect(screen.getByTestId('series-dot-2')).toHaveAttribute('data-winner', 'empty');
-    expect(screen.getByTestId('series-dot-3')).toHaveAttribute('data-winner', 'empty');
-  });
-
-  it('o beat de fim de rodada mostra o veredito e MAIS NADA', () => {
+describe('RoundEndBanner — aviso de mão do torneio', () => {
+  it('mostra o veredito da mão e MAIS NADA', () => {
     render(<RoundEndBanner result={sampleResult} />);
-    expect(screen.getByTestId('round-verdict')).toHaveTextContent('RODADA GANHA');
-    // O placar vive só na pílula do topo: o banner não repete círculos
-    // nem legendas explicando o que eles já mostram.
-    expect(screen.queryByTestId('series-dots')).not.toBeInTheDocument();
+    expect(screen.getByTestId('round-verdict')).toHaveTextContent('MÃO GANHA');
+    // O banner não repete placar nem legendas: só o veredito.
     expect(screen.queryByTestId('round-subtitle')).not.toBeInTheDocument();
   });
 
-  it('rodada perdida e empate têm o seu próprio veredito', () => {
+  it('mão perdida e empate têm o seu próprio veredito', () => {
     const { unmount } = render(
       <RoundEndBanner
-        result={{ ...sampleResult, outcome: 'lose', playerCategory: 'lose', playerTotal: 16 }}
+        result={{ ...sampleResult, outcome: 'lose', playerTotal: 16, payout: 0, netChange: -50 }}
       />,
     );
-    expect(screen.getByTestId('round-verdict')).toHaveTextContent('RODADA PERDIDA');
+    expect(screen.getByTestId('round-verdict')).toHaveTextContent('MÃO PERDIDA');
     unmount();
 
     render(
       <RoundEndBanner
-        result={{ ...sampleResult, outcome: 'tie', playerTotal: 17, opponentTotal: 17 }}
+        result={{
+          ...sampleResult,
+          outcome: 'tie',
+          playerTotal: 17,
+          opponentTotal: 17,
+          payout: 50,
+          netChange: 0,
+        }}
       />,
     );
     expect(screen.getByTestId('round-verdict')).toHaveTextContent('EMPATE');
@@ -520,28 +435,29 @@ describe('SeriesDots / RoundEndBanner — melhor de 3', () => {
 
 describe('Card3D', () => {
   it('anuncia a carta via aria-label quando aberta', () => {
-    render(<Card3D card={card('10', 'spades')} back="azul" label="Sua carta 1" />);
+    render(<Card3D card={card('10', 'spades')} label="Sua carta 1" />);
     expect(screen.getByRole('img', { name: 'Sua carta 1: 10 de espadas' })).toBeInTheDocument();
   });
 
-  it('anuncia "carta fechada" com a face para baixo, mesmo conhecendo a carta', () => {
-    render(<Card3D card={card('A', 'hearts')} faceDown back="house" label="Carta do dealer 2" />);
-    expect(
-      screen.getByRole('img', { name: 'Carta do dealer 2: carta fechada' }),
-    ).toBeInTheDocument();
+  it('anuncia "carta oculta" com a face para baixo, mesmo conhecendo a carta', () => {
+    render(<Card3D card={card('A', 'hearts')} faceDown label="Carta de Luna 2" />);
+    expect(screen.getByRole('img', { name: 'Carta de Luna 2: carta oculta' })).toBeInTheDocument();
   });
 
-  it('carta desconhecida (null) também fecha', () => {
-    render(<Card3D card={null} back="azul" silent label="Cartas Azuis" />);
-    expect(screen.getByRole('img', { name: 'Cartas Azuis: carta fechada' })).toBeInTheDocument();
+  it('carta desconhecida (null) também fica oculta', () => {
+    render(<Card3D card={null} silent label="Carta de Luna 2" />);
+    expect(screen.getByRole('img', { name: 'Carta de Luna 2: carta oculta' })).toBeInTheDocument();
   });
 
-  it('pinta o verso com a cor do cara-ou-coroa via variáveis CSS', () => {
-    // O jogador levou as vermelhas no sorteio: o verso segue a cor
-    // escolhida, não a tinta histórica do lado.
-    render(<Card3D card={null} back="vermelho" silent label="Cartas Vermelhas" />);
-    const scene = screen.getByRole('img', { name: 'Cartas Vermelhas: carta fechada' });
-    expect(scene.style.getPropertyValue('--card-back-a')).toBe('#f87171');
+  it('baralho único: o verso é o da casa, igual para os dois duelistas', () => {
+    // Sem escolha de cor na mesa — nenhuma prop pinta o verso, e o
+    // monograma do clube é o mesmo dos dois lados.
+    const { unmount } = render(<Card3D card={null} silent label="Carta de Luna 2" />);
+    expect(screen.getByText('RVC')).toBeInTheDocument();
+    unmount();
+
+    render(<Card3D card={card('9', 'hearts')} faceDown silent label="Sua carta 2" />);
+    expect(screen.getByText('RVC')).toBeInTheDocument();
   });
 });
 
@@ -558,7 +474,6 @@ describe('ResultBanner', () => {
         result={{
           ...sampleResult,
           outcome: 'lose',
-          playerCategory: 'lose',
           playerTotal: 16,
           payout: 0,
           netChange: -50,

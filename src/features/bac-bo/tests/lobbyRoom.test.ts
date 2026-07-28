@@ -176,10 +176,10 @@ function startedTournament(fee: number) {
 }
 
 /**
- * Desfecho de uma mão de blackjack, do jeito que a mesa do torneio o
- * entrega ao `finishMyMatch`: quem venceu fez 19 contra o dealer parado
- * em 17; quem perdeu empatou com a casa em 17 (push). Nada de estouro —
- * os totais gravados no chaveamento são os das próprias mãos.
+ * Desfecho de uma mão do duelo de 21, do jeito que a mesa do torneio o
+ * entrega ao `finishMyMatch`: quem venceu fez 19, quem perdeu fez 17.
+ * Nada de estouro — os totais gravados no chaveamento são os das
+ * próprias mãos.
  */
 function blackjackResult(outcome: 'win' | 'lose'): RoundResult {
   const winningHand = [
@@ -196,15 +196,10 @@ function blackjackResult(outcome: 'win' | 'lose'): RoundResult {
     matchId: 'bm-1',
     playerHand: [...(youWin ? winningHand : losingHand)],
     opponentHand: [...(youWin ? losingHand : winningHand)],
-    dealerHand: [
-      { rank: '10', suit: 'diamonds' },
-      { rank: '7', suit: 'spades' },
-    ],
     playerTotal: youWin ? 19 : 17,
     opponentTotal: youWin ? 17 : 19,
-    dealerTotal: 17,
-    playerCategory: youWin ? 'win' : 'push',
-    opponentCategory: youWin ? 'push' : 'win',
+    playerBust: false,
+    opponentBust: false,
     playerNatural: false,
     opponentNatural: false,
     outcome,

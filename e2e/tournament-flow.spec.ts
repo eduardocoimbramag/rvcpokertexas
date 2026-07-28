@@ -11,10 +11,9 @@ import { expect, test } from '@playwright/test';
 
 /**
  * O fluxo do torneio é longo por natureza: encher o lobby com bots + a
- * coreografia da mesa (apresentação 3,4s + cara-ou-coroa até ~19s, com
- * o relógio da escolha correndo inteiro quando ninguém toca + a mão de
- * blackjack interativa ~15–40s, com re-distribuição em empate) + a
- * contagem de retorno (10s) passam bem do padrão.
+ * coreografia da mesa (apresentação 3,4s + countdown 4,5s + a mão de 21
+ * interativa, com re-distribuição em empate) + a contagem de retorno
+ * (10s) passam bem do padrão.
  */
 test.describe.configure({ timeout: 180_000 });
 
@@ -59,10 +58,9 @@ async function playTournamentMatch(page: Page) {
 
   await page.getByTestId('play-tournament-match').click({ timeout: 20_000 });
 
-  // A partida do torneio passa pelo MESMO cara-ou-coroa do 1v1: a moeda
-  // entra em cena antes das cartas. Sem tocar em nada, o relógio da
-  // escolha (10s) corre inteiro e a mesa sorteia a cor pelo jogador.
-  await expect(page.getByTestId('coinflip-overlay')).toBeVisible({ timeout: 15_000 });
+  // A partida abre com a MESMA apresentação de duelo do 1v1 e segue
+  // direto para o countdown — sem sorteio nenhum no caminho.
+  await expect(page.getByTestId('table-scene')).toBeVisible({ timeout: 15_000 });
 
   // A mão é INTERATIVA: paramos na primeira oportunidade. Um blackjack
   // natural resolve sozinho (a vez do jogador nem abre) e um empate
@@ -71,11 +69,17 @@ async function playTournamentMatch(page: Page) {
   const title = page.getByTestId('tournament-result-title');
   const deadline = Date.now() + 120_000;
   while (!(await title.isVisible().catch(() => false)) && Date.now() < deadline) {
+    // Cada iteração precisa ser CURTA: a barra de ações só existe na sua
+    // vez, e as duas armadilhas do Playwright aqui esperam 30s calados —
+    // `isEnabled()` aguarda o elemento existir (e ele não existe fora da
+    // sua vez) e `click()` aguarda a atracabilidade (o botão fica
+    // visível porém travado no beat em que a última carta assenta).
+    // `isVisible()` responde na hora e o clique leva rédea curta.
     const stand = page.getByTestId('action-stand');
     if (await stand.isVisible().catch(() => false)) {
-      await stand.click().catch(() => undefined);
+      await stand.click({ timeout: 1_500 }).catch(() => undefined);
     }
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(300);
   }
   await expect(title).toBeVisible({ timeout: 5_000 });
 }

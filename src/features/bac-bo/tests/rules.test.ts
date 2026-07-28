@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { SeededRng } from '@/shared/lib/random';
 
 import {
+  AVERAGE_HIDDEN_VALUE,
+  DECK_COUNT,
+  DECK_RESHUFFLE_THRESHOLD,
   botAction,
-  buildShoe,
+  buildDeck,
   dealInitialHands,
   drawCard,
-  duelistCategory,
   forcedDealFor,
   handValue,
   isBust,
@@ -16,9 +18,10 @@ import {
   netChangeFor,
   payoutFor,
   playBotHand,
-  playDealerHand,
   rankValue,
   resolveOutcome,
+  standingOf,
+  visibleCards,
   winProfit,
 } from '../engine/rules';
 import type { Card, CardRank, RoundOutcome } from '../engine/types';
@@ -27,6 +30,22 @@ import type { Card, CardRank, RoundOutcome } from '../engine/types';
 function card(rank: CardRank, suit: Card['suit'] = 'spades'): Card {
   return { rank, suit };
 }
+
+/**
+ * Empilha cartas na ordem em que serão distribuídas. `drawCard` tira do
+ * FIM do array, então a pilha entra invertida — é assim que a engine faz.
+ */
+function stack(...cards: Card[]): Card[] {
+  return [...cards].reverse();
+}
+
+describe('constantes da mesa', () => {
+  it('duelo de baralho único, com limiar de reembaralho e carta média', () => {
+    expect(DECK_COUNT).toBe(1);
+    expect(DECK_RESHUFFLE_THRESHOLD).toBe(30);
+    expect(AVERAGE_HIDDEN_VALUE).toBe(7);
+  });
+});
 
 describe('rankValue', () => {
   it('Ás vale 11; figuras e 10 valem 10; números valem a face', () => {
@@ -57,10 +76,23 @@ describe('handValue', () => {
     expect(handValue([card('A'), card('K'), card('5')])).toEqual({ total: 16, soft: false });
   });
 
+  it('rebaixa um Ás de cada vez, nunca mais do que o necessário', () => {
+    // A+A+9 = 21 com um Ás alto; só o segundo Ás desce para 1.
+    expect(handValue([card('A'), card('A'), card('9')])).toEqual({ total: 21, soft: true });
+    // Com mais uma carta os dois Áses viram 1.
+    expect(handValue([card('A'), card('A'), card('9'), card('5')])).toEqual({
+      total: 16,
+      soft: false,
+    });
+  });
+});
+
+describe('isBust', () => {
   it('detecta estouro mesmo com todos os Áses rebaixados', () => {
     expect(isBust([card('K'), card('Q'), card('5')])).toBe(true);
     expect(isBust([card('A'), card('K'), card('Q'), card('A')])).toBe(true);
     expect(isBust([card('A'), card('K'), card('Q')])).toBe(false); // 21
+    expect(isBust([card('10'), card('7')])).toBe(false);
   });
 });
 
@@ -73,167 +105,190 @@ describe('isNaturalBlackjack', () => {
   });
 });
 
-describe('buildShoe / drawCard', () => {
-  it('monta 6 baralhos (312 cartas) com 24 Áses', () => {
-    const shoe = buildShoe(new SeededRng(1));
-    expect(shoe).toHaveLength(312);
-    expect(shoe.filter((c) => c.rank === 'A')).toHaveLength(24);
-    expect(shoe.filter((c) => c.suit === 'hearts')).toHaveLength(78);
+describe('buildDeck / drawCard', () => {
+  it('monta um baralho único de 52 cartas, com 4 Áses e 13 por naipe', () => {
+    const deck = buildDeck(new SeededRng(1));
+    expect(deck).toHaveLength(52);
+    expect(deck.filter((c) => c.rank === 'A')).toHaveLength(4);
+    for (const suit of ['spades', 'hearts', 'diamonds', 'clubs'] as const) {
+      expect(deck.filter((c) => c.suit === suit)).toHaveLength(13);
+    }
+    // Baralho honesto: 52 cartas distintas, nenhuma repetida.
+    expect(new Set(deck.map((c) => `${c.rank}-${c.suit}`)).size).toBe(52);
+  });
+
+  it('aceita mais de um baralho quando pedido explicitamente', () => {
+    expect(buildDeck(new SeededRng(1), 2)).toHaveLength(104);
   });
 
   it('o embaralhamento é determinístico por seed', () => {
-    const a = buildShoe(new SeededRng(42));
-    const b = buildShoe(new SeededRng(42));
+    const a = buildDeck(new SeededRng(42));
+    const b = buildDeck(new SeededRng(42));
     expect(a).toEqual(b);
+    expect(buildDeck(new SeededRng(43))).not.toEqual(a);
   });
 
-  it('drawCard consome o sapato e reclama quando ele seca', () => {
-    const shoe = [card('A'), card('K')];
-    expect(drawCard(shoe)).toEqual(card('K'));
-    expect(shoe).toHaveLength(1);
-    drawCard(shoe);
-    expect(() => drawCard(shoe)).toThrow(RangeError);
+  it('drawCard consome o baralho pelo topo e reclama quando ele seca', () => {
+    const deck = [card('A'), card('K')];
+    expect(drawCard(deck)).toEqual(card('K'));
+    expect(deck).toHaveLength(1);
+    expect(drawCard(deck)).toEqual(card('A'));
+    expect(() => drawCard(deck)).toThrow(RangeError);
   });
 });
 
 describe('dealInitialHands', () => {
-  it('distribui na ordem da mesa: jogador, oponente, jogador, oponente, dealer', () => {
-    // drawCard tira do FIM do array — a pilha entra invertida.
-    const ordered = [card('2'), card('3'), card('4'), card('5'), card('6'), card('7')];
-    const shoe = [...ordered].reverse();
-    const deal = dealInitialHands(shoe);
+  it('distribui na ordem da mesa: jogador, oponente, jogador, oponente', () => {
+    const deck = stack(card('2'), card('3'), card('4'), card('5'));
+    const deal = dealInitialHands(deck);
     expect(deal.playerHand).toEqual([card('2'), card('4')]);
     expect(deal.opponentHand).toEqual([card('3'), card('5')]);
-    expect(deal.dealerHand).toEqual([card('6'), card('7')]);
-    expect(shoe).toHaveLength(0);
+    expect(deck).toHaveLength(0);
+  });
+
+  it('consome exatamente 4 cartas de um baralho real', () => {
+    const deck = buildDeck(new SeededRng(9));
+    dealInitialHands(deck);
+    expect(deck).toHaveLength(48);
   });
 });
 
-describe('botAction (estratégia básica)', () => {
-  it('mãos duras: para em 17+, pede abaixo de 12', () => {
-    expect(botAction([card('10'), card('7')], card('A'))).toBe('stand');
-    expect(botAction([card('5'), card('6')], card('2'))).toBe('hit');
+describe('visibleCards (regra de POV)', () => {
+  it('esconde SEMPRE a última carta da mão', () => {
+    expect(visibleCards([card('A'), card('K')])).toEqual([card('A')]);
+    expect(visibleCards([card('5'), card('6'), card('7')])).toEqual([card('5'), card('6')]);
   });
 
-  it('12 a 16 seguram contra dealer fraco e pedem contra dealer forte', () => {
-    expect(botAction([card('10'), card('6')], card('6'))).toBe('stand');
-    expect(botAction([card('10'), card('6')], card('10'))).toBe('hit');
-    expect(botAction([card('10'), card('2')], card('4'))).toBe('stand');
-    expect(botAction([card('10'), card('2')], card('2'))).toBe('hit');
-  });
-
-  it('soft: pede até soft 17, decide soft 18 pela carta do dealer', () => {
-    expect(botAction([card('A'), card('6')], card('6'))).toBe('hit'); // soft 17
-    expect(botAction([card('A'), card('7')], card('6'))).toBe('stand'); // soft 18 vs fraco
-    expect(botAction([card('A'), card('7')], card('9'))).toBe('hit'); // soft 18 vs forte
-    expect(botAction([card('A'), card('8')], card('A'))).toBe('stand'); // soft 19
+  it('não mexe na mão original', () => {
+    const hand = [card('9'), card('4')];
+    visibleCards(hand);
+    expect(hand).toEqual([card('9'), card('4')]);
   });
 });
 
-describe('playDealerHand (S17)', () => {
-  it('para seco em 17 duro sem comprar', () => {
-    const shoe = [card('5')];
-    const hand = playDealerHand(shoe, [card('9'), card('8')]);
-    expect(hand).toHaveLength(2);
-    expect(shoe).toHaveLength(1);
+describe('botAction (estratégia do duelo)', () => {
+  it('para com 21 ou mais na própria mão, não importa o rival', () => {
+    expect(botAction([card('A'), card('K')], 5)).toBe('stand');
+    expect(botAction([card('K'), card('Q'), card('5')], 5)).toBe('stand');
   });
 
-  it('para em soft 17 (regra S17)', () => {
-    const shoe = [card('5')];
-    const hand = playDealerHand(shoe, [card('A'), card('6')]);
-    expect(hand).toHaveLength(2);
-    expect(handValue(hand)).toEqual({ total: 17, soft: true });
+  it('para quando o rival já estourou à vista (a vitória já está na mão)', () => {
+    expect(botAction([card('5'), card('6')], 22)).toBe('stand');
+    expect(botAction([card('2'), card('3')], 30)).toBe('stand');
   });
 
-  it('compra até alcançar pelo menos 17', () => {
-    const shoe = [card('2'), card('3')].reverse();
-    const hand = playDealerHand(shoe, [card('10'), card('4')]);
-    // 14 → +2 = 16 → +3 = 19: duas compras.
-    expect(hand).toHaveLength(4);
-    expect(handValue(hand).total).toBe(19);
+  it('mão soft pede até 17 (o Ás alto não estoura)', () => {
+    expect(botAction([card('A'), card('5')], 10)).toBe('hit'); // soft 16
+    expect(botAction([card('A'), card('6')], 10)).toBe('hit'); // soft 17
+    expect(botAction([card('A'), card('7')], 10)).toBe('stand'); // soft 18 vs alvo 17
+  });
+
+  it('pede abaixo de 17, como em qualquer mesa', () => {
+    expect(botAction([card('10'), card('6')], 10)).toBe('hit');
+    expect(botAction([card('5'), card('4')], 20)).toBe('hit');
+  });
+
+  it('17 ou 18 atrás do alvo estimado pede assim mesmo', () => {
+    expect(botAction([card('10'), card('7')], 12)).toBe('hit'); // alvo 19
+    expect(botAction([card('10'), card('8')], 14)).toBe('hit'); // alvo 21
+  });
+
+  it('o alvo é o visível do rival mais a carta média oculta', () => {
+    const hand17 = [card('10'), card('7')];
+    // Alvo exatamente 17: empatar não é ficar atrás, então para.
+    expect(botAction(hand17, 17 - AVERAGE_HIDDEN_VALUE)).toBe('stand');
+    // Um ponto a mais no visível já coloca o bot atrás: pede.
+    expect(botAction(hand17, 18 - AVERAGE_HIDDEN_VALUE)).toBe('hit');
+  });
+
+  it('19 ou mais para (o risco de estourar não compensa)', () => {
+    expect(botAction([card('10'), card('9')], 14)).toBe('stand');
+    expect(botAction([card('K'), card('Q')], 14)).toBe('stand');
+    expect(botAction([card('A'), card('8')], 14)).toBe('stand'); // soft 19
   });
 });
 
 describe('playBotHand', () => {
   it('joga a mão do bot até a estratégia mandar parar', () => {
-    const shoe = [card('9')];
-    const hand = playBotHand(shoe, [card('5'), card('6')], card('10'));
+    const deck = [card('9')];
+    const hand = playBotHand(deck, [card('5'), card('6')], 10);
     // 11 → +9 = 20: para.
     expect(handValue(hand).total).toBe(20);
-    expect(shoe).toHaveLength(0);
+    expect(hand).toHaveLength(3);
+    expect(deck).toHaveLength(0);
   });
 
-  it('não toca no sapato quando a mão inicial já segura', () => {
-    const shoe = [card('9')];
-    const hand = playBotHand(shoe, [card('10'), card('7')], card('A'));
+  it('não toca no baralho quando a mão inicial já segura', () => {
+    const deck = [card('9')];
+    const hand = playBotHand(deck, [card('10'), card('9')], 14);
     expect(hand).toHaveLength(2);
-    expect(shoe).toHaveLength(1);
+    expect(deck).toHaveLength(1);
+  });
+
+  it('para de comprar assim que estoura', () => {
+    const deck = [card('K')];
+    const hand = playBotHand(deck, [card('10'), card('6')], 10);
+    expect(handValue(hand).total).toBe(26);
+    expect(isBust(hand)).toBe(true);
+    expect(deck).toHaveLength(0);
+  });
+
+  it('não altera a mão recebida (devolve uma cópia jogada)', () => {
+    const deck = [card('9')];
+    const original = [card('5'), card('6')];
+    const played = playBotHand(deck, original, 10);
+    expect(original).toHaveLength(2);
+    expect(played).not.toBe(original);
   });
 });
 
-describe('duelistCategory', () => {
-  const dealer17 = [card('9'), card('8')];
-
-  it('estouro é estouro, não importa o dealer', () => {
-    expect(duelistCategory([card('K'), card('Q'), card('5')], dealer17)).toBe('bust');
-  });
-
-  it('natural vence tudo, menos o natural do dealer (empata)', () => {
-    expect(duelistCategory([card('A'), card('K')], dealer17)).toBe('blackjack');
-    expect(duelistCategory([card('A'), card('K')], [card('A'), card('Q')])).toBe('push');
-  });
-
-  it('21 em três cartas perde para o natural do dealer', () => {
-    expect(duelistCategory([card('7'), card('7'), card('7')], [card('A'), card('Q')])).toBe('lose');
-  });
-
-  it('dealer estourado dá vitória a qualquer mão viva', () => {
-    const dealerBust = [card('10'), card('6'), card('K')];
-    expect(duelistCategory([card('10'), card('3')], dealerBust)).toBe('win');
-  });
-
-  it('compara totais contra o dealer que parou', () => {
-    expect(duelistCategory([card('10'), card('8')], dealer17)).toBe('win');
-    expect(duelistCategory([card('10'), card('7')], dealer17)).toBe('push');
-    expect(duelistCategory([card('10'), card('6')], dealer17)).toBe('lose');
+describe('standingOf', () => {
+  it('lê a mão como uma situação de showdown', () => {
+    expect(standingOf([card('A'), card('K')])).toEqual({ total: 21, bust: false, natural: true });
+    expect(standingOf([card('7'), card('7'), card('7')])).toEqual({
+      total: 21,
+      bust: false,
+      natural: false,
+    });
+    expect(standingOf([card('K'), card('Q'), card('5')])).toEqual({
+      total: 25,
+      bust: true,
+      natural: false,
+    });
   });
 });
 
-describe('resolveOutcome', () => {
-  it('categoria melhor vence: blackjack > vitória > empate > derrota > estouro', () => {
-    expect(resolveOutcome({ category: 'blackjack', total: 21 }, { category: 'win', total: 20 })).toBe(
-      'win',
-    );
-    expect(resolveOutcome({ category: 'lose', total: 16 }, { category: 'bust', total: 22 })).toBe(
-      'win',
-    );
-    expect(resolveOutcome({ category: 'push', total: 17 }, { category: 'win', total: 18 })).toBe(
-      'lose',
-    );
+describe('resolveOutcome (showdown do duelo)', () => {
+  const natural = standingOf([card('A'), card('K')]);
+  const twentyOneInThree = standingOf([card('7'), card('7'), card('7')]);
+  const twenty = standingOf([card('K'), card('Q')]);
+  const seventeen = standingOf([card('10'), card('7')]);
+  const bust = standingOf([card('K'), card('Q'), card('5')]);
+  const bustHigher = standingOf([card('K'), card('Q'), card('K')]);
+
+  it('dois estourados empatam: ninguém tem mão para mostrar', () => {
+    expect(resolveOutcome(bust, bustHigher)).toBe('tie');
   });
 
-  it('na mesma categoria, o total mais alto desempata', () => {
-    expect(resolveOutcome({ category: 'win', total: 20 }, { category: 'win', total: 19 })).toBe(
-      'win',
-    );
-    expect(resolveOutcome({ category: 'lose', total: 13 }, { category: 'lose', total: 16 })).toBe(
-      'lose',
-    );
+  it('estourar perde para qualquer mão viva', () => {
+    expect(resolveOutcome(bust, seventeen)).toBe('lose');
+    expect(resolveOutcome(seventeen, bust)).toBe('win');
   });
 
-  it('estourados não se comparam: empatam e a rodada se repete', () => {
-    expect(resolveOutcome({ category: 'bust', total: 26 }, { category: 'bust', total: 22 })).toBe(
-      'tie',
-    );
+  it('o natural ganha de um 21 montado em três cartas', () => {
+    expect(resolveOutcome(natural, twentyOneInThree)).toBe('win');
+    expect(resolveOutcome(twentyOneInThree, natural)).toBe('lose');
   });
 
-  it('mesma categoria e mesmo total empatam', () => {
-    expect(resolveOutcome({ category: 'win', total: 19 }, { category: 'win', total: 19 })).toBe(
-      'tie',
-    );
-    expect(
-      resolveOutcome({ category: 'blackjack', total: 21 }, { category: 'blackjack', total: 21 }),
-    ).toBe('tie');
+  it('sem natural em jogo, o maior total leva a rodada', () => {
+    expect(resolveOutcome(twenty, seventeen)).toBe('win');
+    expect(resolveOutcome(seventeen, twenty)).toBe('lose');
+  });
+
+  it('totais iguais empatam — inclusive dois naturais', () => {
+    expect(resolveOutcome(seventeen, seventeen)).toBe('tie');
+    expect(resolveOutcome(natural, natural)).toBe('tie');
+    expect(resolveOutcome(twentyOneInThree, twentyOneInThree)).toBe('tie');
   });
 });
 
@@ -270,8 +325,9 @@ describe('payout e variação líquida', () => {
     expect(netChangeFor('tie', 50)).toBe(0);
   });
 
-  it('derrota perde o stake', () => {
+  it('derrota perde o stake, com ou sem natural', () => {
     expect(payoutFor('lose', 50)).toBe(0);
+    expect(payoutFor('lose', 50, true)).toBe(0);
     expect(netChangeFor('lose', 50)).toBe(-50);
   });
 });
@@ -279,29 +335,37 @@ describe('payout e variação líquida', () => {
 describe('forcedDealFor', () => {
   const outcomes: RoundOutcome[] = ['win', 'lose', 'tie'];
 
-  it.each(outcomes)('as cartas empilhadas garantem o resultado "%s"', (outcome) => {
-    // Reproduz o que a engine faz: pilha forçada no topo de um sapato real.
-    const shoe = buildShoe(new SeededRng(5));
-    shoe.push(...[...forcedDealFor(outcome)].reverse());
-
-    const deal = dealInitialHands(shoe);
-    const opponentHand = playBotHand(shoe, deal.opponentHand, deal.dealerHand[0]);
-    const dealerHand = playDealerHand(shoe, deal.dealerHand);
-
-    const resolved = resolveOutcome(
-      {
-        category: duelistCategory(deal.playerHand, dealerHand),
-        total: handValue(deal.playerHand).total,
-      },
-      { category: duelistCategory(opponentHand, dealerHand), total: handValue(opponentHand).total },
-    );
-    expect(resolved).toBe(outcome);
+  it.each(outcomes)('empilha as 4 cartas da distribuição para "%s"', (outcome) => {
+    expect(forcedDealFor(outcome)).toHaveLength(4);
   });
 
-  it('o dealer forçado recebe 17 seco e o desfecho independe do jogador', () => {
+  it.each(outcomes)('as cartas empilhadas garantem o resultado "%s"', (outcome) => {
+    // Reproduz o que a engine faz: pilha forçada no topo de um baralho real.
+    const deck = buildDeck(new SeededRng(5));
+    deck.push(...[...forcedDealFor(outcome)].reverse());
+
+    const { playerHand, opponentHand } = dealInitialHands(deck);
+    // O bot só enxerga as cartas ABERTAS do jogador, como na engine.
+    const playerVisibleTotal = handValue(visibleCards(playerHand)).total;
+    const played = playBotHand(deck, opponentHand, playerVisibleTotal);
+
+    expect(resolveOutcome(standingOf(playerHand), standingOf(played))).toBe(outcome);
+  });
+
+  it('todo desfecho forçado é selado por naturais — nenhuma decisão o alcança', () => {
+    const expected: Record<RoundOutcome, { player: boolean; opponent: boolean }> = {
+      win: { player: true, opponent: false },
+      lose: { player: false, opponent: true },
+      tie: { player: true, opponent: true },
+    };
+
     for (const outcome of outcomes) {
-      const dealerCards = forcedDealFor(outcome).slice(4);
-      expect(handValue(dealerCards)).toEqual({ total: 17, soft: false });
+      const deck = [...forcedDealFor(outcome)].reverse();
+      const { playerHand, opponentHand } = dealInitialHands(deck);
+      expect({
+        player: isNaturalBlackjack(playerHand),
+        opponent: isNaturalBlackjack(opponentHand),
+      }).toEqual(expected[outcome]);
     }
   });
 });

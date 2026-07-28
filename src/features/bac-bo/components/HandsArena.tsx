@@ -8,24 +8,17 @@ import { FAN_OVERLAP, FAN_STEP_DEG } from '../animations/cards';
 import { TIMINGS } from '../animations/timings';
 import type { HandValue } from '../engine/rules';
 import { handValue } from '../engine/rules';
-import type {
-  BlackjackRoundState,
-  Card,
-  DuelistCategory,
-  Match,
-  RoundResult,
-} from '../engine/types';
+import type { BlackjackRoundState, Card, Match, RoundResult } from '../engine/types';
 import type { GamePhase } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
-import type { CardColorId } from '../store/cardColors';
 import { Card3D } from './Card3D';
 
 export interface HandsArenaProps {
   phase: GamePhase;
   match: Match;
-  /** Rodada interativa corrente (mãos visíveis pré-veredito). */
+  /** Rodada interativa corrente (mãos visíveis pré-showdown). */
   round: BlackjackRoundState | null;
-  /** Resultado resolvido (mãos finais); `null` até a engine fechar. */
+  /** Resultado resolvido (mãos completas); `null` até a engine fechar. */
   result: RoundResult | null;
   /** Ações da vez do jogador. O 1v1 passa as do gameStore; o torneio,
       as do seu próprio motor de partida — a mesa é uma só. */
@@ -35,42 +28,41 @@ export interface HandsArenaProps {
 }
 
 /**
- * A mesa de blackjack em jogo: o dealer no alto (carta aberta + a
- * fechada aguardando a virada), o brasão respirando na faixa livre do
- * feltro e as duas mãos dos duelistas na base — a sua à esquerda com o
- * verso da sua cor, a do rival à direita. Cada fase da rodada é uma
- * cena:
+ * A mesa do duelo de 21: o rival do outro lado do feltro, você embaixo,
+ * e o brasão respirando na faixa livre entre as duas mãos. Não há casa
+ * para bater — é mão contra mão.
  *
- * - `dealing`: as seis cartas voam do sapato em fila (stagger por carta,
- *   som no assentamento de cada uma — Card3D cuida do próprio beat).
- * - `playerTurn`: a barra PEDIR/PARAR abre; cada carta pedida entra na
- *   hora, e o total da mão acompanha ao vivo (soft mostra as duas
- *   leituras, "7/17").
- * - `opponentTurn`: as cartas que o bot pediu entram uma a uma.
- * - `dealerTurn`: a fechada VIRA (o momento clássico) e as compras até
- *   17 entram em beats próprios.
- * - `settle`/`roundEnd`: totais finais + categoria de cada duelista
- *   contra o dealer (quem venceu a rodada é assunto dos banners).
- * - `completed` (câmera frontal, dealer de volta ao quadro): o placar
- *   migra para as placas que flanqueiam a dealer — mesmo padrão da mesa
- *   antiga; com cenário desligado, os totais ficam na própria faixa.
+ * A REGRA DE POV manda na cena: cada duelista vê a mão do outro menos a
+ * ÚLTIMA carta dela. Então o rival sempre tem uma carta virada para
+ * baixo, e cada carta nova que ele pede empurra a anterior para cima —
+ * a informação chega em conta-gotas, e a última só abre no showdown.
+ *
+ * Cada fase é uma cena:
+ * - `dealing`: as quatro cartas voam do baralho em fila (som no
+ *   assentamento de cada uma — o Card3D cuida do próprio beat).
+ * - `playerTurn`: a barra PEDIR/PARAR abre; o total da sua mão acompanha
+ *   ao vivo (soft mostra as duas leituras, "7/17") e o do rival mostra
+ *   só o que está aberto, com um "+?" lembrando o que falta.
+ * - `opponentTurn`: as cartas que o rival pediu entram uma a uma,
+ *   revelando as anteriores no caminho.
+ * - `settle`: showdown — as ocultas viram e os totais finais aparecem.
+ * - `completed` (câmera frontal): o placar migra para as placas que
+ *   flanqueiam a crupiê; com cenário desligado ele fica na faixa.
  */
 
-/** Posição de cada carta inicial na ordem da distribuição (jogador,
- * oponente, jogador, oponente, dealer aberta, dealer fechada). */
+/** Ordem de entrada das cartas na distribuição (jogador, rival, ...). */
 const DEAL_SLOT = {
   player: [0, 2],
   opponent: [1, 3],
 } as const;
 
-/** Rótulo da categoria de um duelista contra o dealer, no veredito. */
-const CATEGORY_COPY: Record<DuelistCategory, { label: string; className: string }> = {
-  blackjack: { label: 'BLACKJACK!', className: 'text-[#7a4503]' },
-  win: { label: 'VENCEU O DEALER', className: 'text-[#7a4503]' },
-  push: { label: 'EMPATOU', className: 'text-[#26312a]' },
-  lose: { label: 'PERDEU', className: 'text-[#8f1616]' },
-  bust: { label: 'ESTOUROU', className: 'text-[#8f1616]' },
-};
+/** Respiro antes da primeira carta que o rival pede na vez dele. */
+const OPPONENT_LEAD_MS = 300;
+
+/** Momento em que a carta `index` do rival pousa na vez dele. */
+function opponentEntryMs(index: number): number {
+  return index < 2 ? 0 : OPPONENT_LEAD_MS + (index - 2) * TIMINGS.opponentHitMs;
+}
 
 /** Leitura amigável de um total (soft mostra as duas contagens). */
 function totalLabel(value: HandValue): string {
@@ -79,9 +71,8 @@ function totalLabel(value: HandValue): string {
 
 interface HandFanProps {
   cards: readonly (Card | null)[];
-  back: CardColorId | 'house';
   testid: string;
-  /** Prefixo dos rótulos acessíveis ("Sua carta", "Carta do dealer"…). */
+  /** Prefixo dos rótulos acessíveis ("Sua carta", "Carta de Luna"…). */
   labelPrefix: string;
   faceDownAt?: (index: number) => boolean;
   delayFor?: (index: number) => number;
@@ -90,7 +81,7 @@ interface HandFanProps {
 /** Leque de uma mão: sobreposição + giro em torno do centro, como
  * cartas seguras sobre a mesa. As transformações são estáticas — quem
  * anima entrada e virada é o Card3D de cada carta. */
-function HandFan({ cards, back, testid, labelPrefix, faceDownAt, delayFor }: HandFanProps) {
+function HandFan({ cards, testid, labelPrefix, faceDownAt, delayFor }: HandFanProps) {
   const count = cards.length;
   return (
     <div className="flex items-center justify-center" data-testid={testid}>
@@ -112,7 +103,6 @@ function HandFan({ cards, back, testid, labelPrefix, faceDownAt, delayFor }: Han
             <Card3D
               card={card}
               faceDown={faceDownAt?.(index) ?? false}
-              back={back}
               dealDelayMs={delayFor?.(index) ?? 0}
               label={`${labelPrefix} ${index + 1}`}
             />
@@ -131,7 +121,7 @@ interface ScorePlateProps {
   instant: boolean;
 }
 
-/** Placa de placar ao lado da dealer: nome em cima, total embaixo. */
+/** Placa de placar ao lado da crupiê: nome em cima, total embaixo. */
 function ScorePlate({ side, name, total, winner, instant }: ScorePlateProps) {
   const player = side === 'player';
   return (
@@ -165,6 +155,13 @@ function ScorePlate({ side, name, total, winner, instant }: ScorePlateProps) {
   );
 }
 
+/** Selo de situação de uma mão no showdown. */
+function verdictOf(bust: boolean, natural: boolean): { label: string; className: string } {
+  if (bust) return { label: 'ESTOUROU', className: 'text-[#8f1616]' };
+  if (natural) return { label: 'BLACKJACK!', className: 'text-[#7a4503]' };
+  return { label: 'PAROU', className: 'text-[#26312a]' };
+}
+
 export function HandsArena({
   phase,
   match,
@@ -176,62 +173,67 @@ export function HandsArena({
 }: HandsArenaProps) {
   const reducedMotion = useReducedMotion() ?? false;
   const scenery = useGameStore((state) => state.settings.scenery);
-  // Cores do cara-ou-coroa: no 1v1 o vencedor do sorteio muda a sua; no
-  // torneio (mesmo store, sorteio próprio) valem as que ele fixou.
-  const cardColors = useGameStore((state) => state.cardColors);
 
   const dealing = phase === 'dealing';
-  // Antes do fim da vez do jogador, o rival e o dealer só mostram o que
-  // uma mesa real mostraria: as 2 iniciais dele e a aberta da casa — o
-  // `result` já existe no estado, mas não vaza para a mesa.
-  const preSettleView = dealing || phase === 'playerTurn';
-  const dealerRevealed =
-    phase === 'dealerTurn' || phase === 'settle' || phase === 'roundEnd' || phase === 'completed';
-  const showCategories = phase === 'settle' || phase === 'roundEnd' || phase === 'completed';
+  const playerTurn = phase === 'playerTurn';
+  const opponentTurn = phase === 'opponentTurn';
+  // Só há o que decidir enquanto a engine oferecer ações: a mão que já
+  // fechou trava os botões mesmo com a fase ainda em `playerTurn`.
+  const canAct = playerTurn && !actionPending && (round?.legalActions.length ?? 0) > 0;
+  // Showdown: só aqui as ocultas viram e os totais fecham.
+  const revealed = phase === 'settle' || phase === 'completed';
 
   const playerCards: readonly Card[] = round?.playerHand ?? result?.playerHand ?? [];
-  const opponentFull: readonly Card[] = result?.opponentHand ?? round?.opponentHand ?? [];
-  const opponentCards = preSettleView ? opponentFull.slice(0, 2) : opponentFull;
-  const dealerFull: readonly Card[] | null = result?.dealerHand ?? null;
-  const upCard = round?.dealerUpCard ?? dealerFull?.[0] ?? null;
-  const dealerCards: readonly (Card | null)[] =
-    dealerRevealed && dealerFull ? dealerFull : [upCard, null];
+  // Antes do showdown a mesa só conhece o que a engine deixou passar: as
+  // cartas ABERTAS do rival mais o buraco da que segue virada.
+  const opponentFull: readonly Card[] = result?.opponentHand ?? [];
+  const opponentVisible: readonly Card[] = round?.opponentVisible ?? [];
 
-  if (!upCard || playerCards.length === 0) return null;
+  /* A mão exibida do rival por fase:
+     - até o fim da SUA vez: exatamente as duas cartas da abertura — a
+       primeira aberta e a outra virada. É fixo em 2 de propósito: num
+       blackjack natural seu a engine já resolve a rodada na
+       distribuição, e o estado que volta traz a mão do rival INTEIRA
+       (ele já jogou). Ler `opponentVisible` aqui colocaria na mesa,
+       antes da hora, cartas que ele só compraria no showdown;
+     - da vez dele em diante: a mão inteira, com a ÚLTIMA carta ainda
+       virada até o showdown. */
+  const opponentCards: readonly (Card | null)[] =
+    opponentTurn || revealed ? opponentFull : [opponentVisible[0] ?? null, null];
+
+  if (playerCards.length === 0 || opponentCards.length === 0) return null;
 
   const playerValue = handValue(playerCards);
-  const opponentValue = handValue(opponentCards);
-  // O total do dealer só abre com a mão fechada: durante a virada e as
-  // compras, o show é das cartas — o número chega no veredito.
-  const dealerValue =
-    (phase === 'settle' || phase === 'roundEnd' || phase === 'completed') && dealerFull
-      ? handValue(dealerFull)
-      : handValue([upCard]);
-  // A vez do oponente é das cartas entrando; o total abre depois dela.
-  const showOpponentTotal = phase !== 'opponentTurn';
+  // O total do rival é o das cartas ABERTAS enquanto houver oculta — com
+  // o "+?" lembrando que falta carta para a conta fechar.
+  const opponentKnown = revealed
+    ? opponentFull
+    : opponentCards.slice(0, Math.max(0, opponentCards.length - 1)).filter((c): c is Card => c !== null);
+  const opponentValue = handValue(opponentKnown);
+  const opponentPartial = !revealed;
 
-  /* Atrasos de entrada por zona (só valem no instante da montagem —
-     cartas já assentadas não re-animam quando a fase muda). */
+  /* Atrasos de entrada e de virada por carta. Para uma carta já montada
+     o `dealDelayMs` só governa a VIRADA — é assim que cada carta nova do
+     rival revela a anterior no instante exato em que pousa. */
   const playerDelay = (index: number) =>
     dealing ? (DEAL_SLOT.player[index] ?? 0) * TIMINGS.dealCardMs : 0;
+
   const opponentDelay = (index: number) => {
     if (dealing) return (DEAL_SLOT.opponent[index] ?? 0) * TIMINGS.dealCardMs;
-    if (phase === 'opponentTurn' && index >= 2) return (index - 2) * TIMINGS.opponentHitMs;
-    return 0;
-  };
-  const dealerDelay = (index: number) => {
-    if (dealing) return (4 + Math.min(index, 1)) * TIMINGS.dealCardMs;
-    if (dealerRevealed && index >= 2)
-      return TIMINGS.holeFlipMs + (index - 2) * TIMINGS.dealerDrawMs;
-    return 0;
+    if (opponentTurn) {
+      const last = opponentCards.length - 1;
+      // A oculta entra no próprio beat; as demais viram quando a
+      // SUCESSORA pousa.
+      return index === last ? opponentEntryMs(index) : opponentEntryMs(index + 1);
+    }
+    return 0; // showdown: tudo vira junto, sem atraso
   };
 
-  /* Fase completed: a câmera volta ao frontal e a dealer entra no
+  /* Fase completed: a câmera volta ao frontal e a crupiê entra no
      quadro — o placar migra para as placas que a flanqueiam (padrão da
-     casa). Sem cenário não há dealer: os totais ficam na faixa. */
+     casa). Sem cenário não há crupiê: os totais ficam na faixa. */
   if (phase === 'completed' && result) {
-    const flank = scenery !== 'off';
-    if (flank) {
+    if (scenery !== 'off') {
       return (
         <>
           <ScorePlate
@@ -281,115 +283,90 @@ export function HandsArena({
 
   return (
     <div className="flex flex-1 flex-col items-center pt-1">
-      {/* ---- Dealer no alto da mesa ---- */}
+      {/* ---- O rival, do outro lado da mesa ---- */}
       <section
         className="flex flex-col items-center gap-1.5"
-        aria-label="Mão do dealer"
-        data-testid="hand-dealer"
+        aria-label={`Mão de ${match.opponent.name}`}
+        data-testid="hand-opponent"
       >
         <div className="flex items-baseline gap-2">
-          <span className="text-engraved text-xs font-black uppercase tracking-widest text-[#14291d]">
-            Dealer
+          <span className="text-engraved text-xs font-black uppercase tracking-widest text-[#7f1d1d]">
+            {match.opponent.name}
           </span>
           <span
-            className="text-engraved text-xl font-black tabular-nums text-[#14291d]"
-            data-testid="dealer-total"
+            className={`text-engraved text-2xl font-black tabular-nums ${opponentValue.total > 21 ? 'text-[#8f1616]' : 'text-[#7f1d1d]'}`}
+            data-testid="opponent-total"
           >
-            {totalLabel(dealerValue)}
+            {totalLabel(opponentValue)}
+            {/* A conta do rival é sempre parcial até o showdown: o "+?"
+                é a carta que ele guarda virada. */}
+            {opponentPartial && <span className="opacity-70"> +?</span>}
           </span>
         </div>
         <HandFan
-          cards={dealerCards}
-          back="house"
-          testid="hand-dealer-cards"
-          labelPrefix="Carta do dealer"
-          faceDownAt={(index) => index === 1 && !dealerRevealed}
-          delayFor={dealerDelay}
+          cards={opponentCards}
+          testid="hand-opponent-cards"
+          labelPrefix={`Carta de ${match.opponent.name}`}
+          faceDownAt={(index) => !revealed && index === opponentCards.length - 1}
+          delayFor={opponentDelay}
         />
+        {revealed && result && (
+          <motion.span
+            className={`text-engraved text-[0.65rem] font-black uppercase tracking-[0.18em] ${verdictOf(result.opponentBust, result.opponentNatural).className}`}
+            data-testid="verdict-opponent"
+            initial={reducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {verdictOf(result.opponentBust, result.opponentNatural).label}
+          </motion.span>
+        )}
       </section>
 
       {/* Faixa livre do feltro: é aqui que o brasão da casa respira. */}
       <div aria-hidden className="w-full grow" />
 
-      {/* ---- Duelistas na base ---- */}
-      <div className="grid w-full grid-cols-2 items-end gap-x-4">
-        <section
-          className="flex flex-col items-center gap-1.5"
-          aria-label="Sua mão"
-          data-testid="hand-player"
-        >
-          <HandFan
-            cards={playerCards}
-            back={cardColors.player}
-            testid="hand-player-cards"
-            labelPrefix="Sua carta"
-            delayFor={playerDelay}
-          />
-          <div className="flex items-baseline gap-2">
-            <span className="text-engraved text-xs font-black uppercase tracking-widest text-[#1e3a8a]">
-              Você
-            </span>
-            <span
-              className={`text-engraved text-2xl font-black tabular-nums ${playerValue.total > 21 ? 'text-[#8f1616]' : 'text-[#1e3a8a]'}`}
-              data-testid="player-total"
-            >
-              {totalLabel(playerValue)}
-            </span>
-          </div>
-          {showCategories && result && (
-            <motion.span
-              className={`text-engraved text-[0.65rem] font-black uppercase tracking-[0.18em] ${CATEGORY_COPY[result.playerCategory].className}`}
-              data-testid="category-player"
-              initial={reducedMotion ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              {CATEGORY_COPY[result.playerCategory].label}
-            </motion.span>
-          )}
-        </section>
+      {/* ---- A sua mão ---- */}
+      <section
+        className="flex flex-col items-center gap-1.5"
+        aria-label="Sua mão"
+        data-testid="hand-player"
+      >
+        {revealed && result && (
+          <motion.span
+            className={`text-engraved text-[0.65rem] font-black uppercase tracking-[0.18em] ${verdictOf(result.playerBust, result.playerNatural).className}`}
+            data-testid="verdict-player"
+            initial={reducedMotion ? false : { opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {verdictOf(result.playerBust, result.playerNatural).label}
+          </motion.span>
+        )}
+        <HandFan
+          cards={playerCards}
+          testid="hand-player-cards"
+          labelPrefix="Sua carta"
+          delayFor={playerDelay}
+        />
+        <div className="flex items-baseline gap-2">
+          <span className="text-engraved text-xs font-black uppercase tracking-widest text-[#1e3a8a]">
+            Você
+          </span>
+          <span
+            className={`text-engraved text-2xl font-black tabular-nums ${playerValue.total > 21 ? 'text-[#8f1616]' : 'text-[#1e3a8a]'}`}
+            data-testid="player-total"
+          >
+            {totalLabel(playerValue)}
+          </span>
+        </div>
+      </section>
 
-        <section
-          className="flex flex-col items-center gap-1.5"
-          aria-label={`Mão de ${match.opponent.name}`}
-          data-testid="hand-opponent"
-        >
-          <HandFan
-            cards={opponentCards}
-            back={cardColors.opponent}
-            testid="hand-opponent-cards"
-            labelPrefix={`Carta de ${match.opponent.name}`}
-            delayFor={opponentDelay}
-          />
-          <div className="flex items-baseline gap-2">
-            <span className="text-engraved text-xs font-black uppercase tracking-widest text-[#7f1d1d]">
-              {match.opponent.name}
-            </span>
-            {showOpponentTotal && (
-              <span
-                className={`text-engraved text-2xl font-black tabular-nums ${opponentValue.total > 21 ? 'text-[#8f1616]' : 'text-[#7f1d1d]'}`}
-                data-testid="opponent-total"
-              >
-                {totalLabel(opponentValue)}
-              </span>
-            )}
-          </div>
-          {showCategories && result && (
-            <motion.span
-              className={`text-engraved text-[0.65rem] font-black uppercase tracking-[0.18em] ${CATEGORY_COPY[result.opponentCategory].className}`}
-              data-testid="category-opponent"
-              initial={reducedMotion ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              {CATEGORY_COPY[result.opponentCategory].label}
-            </motion.span>
-          )}
-        </section>
-      </div>
-
-      {/* ---- Barra de ações da vez do jogador ---- */}
-      {phase === 'playerTurn' && (
+      {/* ---- Barra de ações da sua vez ----
+          Os botões seguem em cena durante o beat em que a última carta
+          assenta, mas TRAVADOS: a mão já fechou (legalActions vazio) e
+          um segundo toque só produziria uma ação ilegal. */}
+      {playerTurn && (
         <motion.div
           className="action-stack mt-3"
           initial={reducedMotion ? false : { opacity: 0, y: 16 }}
@@ -399,7 +376,7 @@ export function HandsArena({
           <div className="flex w-full gap-3">
             <Button
               onClick={onHit}
-              disabled={actionPending}
+              disabled={!canAct}
               size="md"
               fullWidth
               data-testid="action-hit"
@@ -409,7 +386,7 @@ export function HandsArena({
             <Button
               variant="secondary"
               onClick={onStand}
-              disabled={actionPending}
+              disabled={!canAct}
               size="md"
               fullWidth
               data-testid="action-stand"

@@ -4,7 +4,6 @@ import { appEnv } from '@/shared/config/env';
 import { createId } from '@/shared/lib/ids';
 
 import {
-  COIN_PICK_SECONDS,
   COUNTDOWN_START,
   HISTORY_LIMIT,
   PROPOSAL_COOLDOWN_SECONDS,
@@ -14,7 +13,6 @@ import type { GameEngine } from '../engine/GameEngine';
 import { GameEngineError } from '../engine/GameEngine';
 import { createGameEngine } from '../engine/createGameEngine';
 import { creditPayout, debitStake, isBroke, validateStake } from '../engine/credits';
-import { SERIES_TARGET_WINS } from '../engine/rules';
 import type {
   BlackjackRoundState,
   HistoryEntry,
@@ -30,8 +28,6 @@ import type {
   SceneQualitySetting,
 } from '../services/GameStorageService';
 import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageService';
-import type { CardColorId, CardColors } from './cardColors';
-import { DEFAULT_CARD_COLORS, assignColors, randomCardColor } from './cardColors';
 import type { NegotiationMessage, Negotiator, NegotiatorReply } from './negotiation';
 import { BOT_BEATS, NEGOTIATION_INTRO, createBotNegotiator } from './negotiation';
 
@@ -40,17 +36,15 @@ import { BOT_BEATS, NEGOTIATION_INTRO, createBotNegotiator } from './negotiation
  * Toda mudança de fase passa por `canTransition` — transições fora do
  * mapa são ignoradas, o que torna impossível a UI "pular" etapas.
  *
- * O 1v1 não tem mais seleção prévia de aposta: a busca começa direto da
- * Home e o valor nasce na mesa de negociação (fase `negotiate`), entre
- * a confirmação do duelo e o cara-ou-coroa.
+ * O 1v1 não tem seleção prévia de aposta: a busca começa direto da Home
+ * e o valor nasce na mesa de negociação (fase `negotiate`), entre a
+ * confirmação do duelo e o countdown.
  *
- * O duelo é uma SÉRIE melhor de 3 de blackjack contra o dealer da casa:
- * cada rodada percorre countdown → dealing (as cartas saem do sapato) →
+ * O duelo é uma RODADA ÚNICA de 21 contra o adversário — sem casa para
+ * bater e sem série: countdown → dealing (as cartas saem do baralho) →
  * playerTurn (pedir/parar) → opponentTurn (o rival joga a mão dele) →
- * dealerTurn (a fechada vira e o dealer compra até 17) → settle
- * (veredito) e desemboca em `roundEnd` enquanto ninguém tiver 2 vitórias
- * — a rodada decisiva vai de settle direto a `completed`. Rodada
- * empatada re-distribui sem contar para ninguém.
+ * settle (showdown: as ocultas viram e as mãos se comparam) → completed.
+ * Empate devolve a aposta e encerra a partida do mesmo jeito.
  */
 export type GamePhase =
   | 'idle'
@@ -58,14 +52,11 @@ export type GamePhase =
   | 'found'
   | 'confirm'
   | 'negotiate'
-  | 'coinflip'
   | 'countdown'
   | 'dealing'
   | 'playerTurn'
   | 'opponentTurn'
-  | 'dealerTurn'
   | 'settle'
-  | 'roundEnd'
   | 'completed'
   | 'error';
 
@@ -74,16 +65,13 @@ export const PHASE_TRANSITIONS: Record<GamePhase, readonly GamePhase[]> = {
   search: ['found', 'idle', 'error'],
   found: ['confirm'],
   confirm: ['negotiate', 'idle'],
-  negotiate: ['coinflip', 'idle', 'error'],
-  coinflip: ['countdown', 'error'],
+  negotiate: ['countdown', 'idle', 'error'],
   countdown: ['dealing', 'error'],
   // Um blackjack natural na distribuição pula a vez do jogador.
   dealing: ['playerTurn', 'opponentTurn', 'error'],
   playerTurn: ['opponentTurn', 'error'],
-  opponentTurn: ['dealerTurn', 'error'],
-  dealerTurn: ['settle', 'error'],
-  settle: ['roundEnd', 'completed'],
-  roundEnd: ['countdown', 'error'],
+  opponentTurn: ['settle', 'error'],
+  settle: ['completed'],
   completed: ['search', 'idle'],
   error: ['search', 'idle'],
 };
@@ -111,7 +99,7 @@ export interface NegotiationProposalRef {
  * Mesa de negociação (fase `negotiate`): os dois lados trocam lances no
  * chat até um aceitar o valor do outro. Só o acordo (`agreedStake`)
  * libera o "Iniciar partida"; o débito do stake continua acontecendo
- * apenas na virada para o cara-ou-coroa.
+ * apenas na virada para o countdown.
  */
 export interface NegotiationState {
   /** Linha do tempo do chat (avisos, falas, propostas e o aperto de mãos). */
@@ -126,52 +114,6 @@ export interface NegotiationState {
   opponentTyping: boolean;
   /** Beat de início em andamento — trava as ações da mesa. */
   starting: boolean;
-}
-
-/** Vencedor de uma rodada decidida da série (empate não preenche nada). */
-export type SeriesRoundWinner = 'player' | 'opponent';
-
-/**
- * Série melhor de 3 do duelo. Nasce no início do cara-ou-coroa e vive
- * até o fim da partida: `roundWinners` preenche os três círculos da UI
- * na ordem em que as rodadas foram DECIDIDAS (empate re-distribui e não
- * entra aqui), e `outcome` só sai de `null` quando um lado faz 2.
- */
-export interface SeriesState {
-  playerWins: number;
-  opponentWins: number;
-  /** Quem levou cada rodada decidida, na ordem — os círculos da UI. */
-  roundWinners: SeriesRoundWinner[];
-  /** Número da rodada corrente (1-based). Empate re-distribui sem subir. */
-  roundNumber: number;
-  /** Resultado da série ('win'/'lose'); `null` enquanto aberta. */
-  outcome: Extract<RoundOutcome, 'win' | 'lose'> | null;
-}
-
-/** Face da moeda do sorteio pré-partida. */
-export type CoinSide = 'cara' | 'coroa';
-
-/**
- * Beats do cara-ou-coroa, na ordem: `intro` apresenta o lado sorteado
- * para o jogador → `toss` (a moeda voa; o resultado já está decidido,
- * mas a UI só o revela no pouso) → `result` mostra a face sorteada →
- * `verdict` dá a tela inteira ao vencedor do sorteio → `pick` (jogador
- * escolhe a cor, sob relógio) OU `botPick` (oponente anuncia a sua) →
- * `picked` (respiro com a escolha aplicada) → countdown.
- */
-export type CoinFlipStage = 'intro' | 'toss' | 'result' | 'verdict' | 'pick' | 'botPick' | 'picked';
-
-export interface CoinFlipState {
-  /** Lado que a sorte deu ao jogador antes do lançamento. */
-  playerSide: CoinSide;
-  /** Face em que a moeda cai; decidida no início do voo. */
-  result: CoinSide | null;
-  winner: 'player' | 'opponent' | null;
-  stage: CoinFlipStage;
-  /** Cor escolhida pelo vencedor (para as placas de anúncio). */
-  chosenColor: CardColorId | null;
-  /** Segundos restantes da escolha do jogador; `null` fora de `pick`. */
-  pickSeconds: number | null;
 }
 
 /** Contagem falada da mesa, no inglês clássico de cassino. */
@@ -192,26 +134,18 @@ export interface GameStoreState {
   /** Ação do jogador em trânsito na engine — trava os botões da vez. */
   actionPending: boolean;
   result: RoundResult | null;
-  /** Série melhor de 3 do duelo corrente; `null` fora da partida. */
-  series: SeriesState | null;
   /** Estado da confirmação dupla — a negociação só nasce com os dois `true`. */
   confirmations: MatchConfirmations;
-  /** Mesa de negociação da rodada; `null` fora da fase negotiate. */
+  /** Mesa de negociação da partida; `null` fora da fase negotiate. */
   negotiation: NegotiationState | null;
-  /** Sorteio de cara-ou-coroa da rodada; `null` fora da fase coinflip. */
-  coinFlip: CoinFlipState | null;
-  /** Cor do verso das cartas de cada lado (o vencedor do sorteio muda a sua). */
-  cardColors: CardColors;
   history: HistoryEntry[];
   /** Valor corrente do countdown (COUNTDOWN_START → 1). */
   countdown: number;
   /** Mensagem de erro amigável quando phase === 'error'. */
   error: string | null;
   settings: GameSettings;
-  /** Resultado forçado para as rodadas da série (apenas DevTools). */
+  /** Resultado forçado para a rodada (apenas DevTools). */
   devForcedOutcome: RoundOutcome | null;
-  /** Vencedor forçado do cara-ou-coroa (apenas DevTools; e2e). */
-  devForcedCoinWinner: 'player' | 'opponent' | null;
   /** Oponente aceita qualquer proposta (apenas DevTools; e2e). */
   devNegotiationAutoAccept: boolean;
 
@@ -225,7 +159,7 @@ export interface GameStoreState {
   sendProposal: (amount: number) => void;
   /** Aceita a proposta viva do oponente (fecha o acordo). */
   acceptProposal: () => void;
-  /** Acordo fechado: fixa o stake na engine e abre o cara-ou-coroa. */
+  /** Acordo fechado: fixa o stake na engine e abre o countdown. */
   startDuel: () => void;
   /** Abandona a mesa de negociação e volta ao menu. */
   abandonNegotiation: () => void;
@@ -233,14 +167,6 @@ export interface GameStoreState {
   hit: () => void;
   /** Para com a mão atual (fase playerTurn). */
   stand: () => void;
-  /** Escolha de cor do vencedor do cara-ou-coroa (fase coinflip/pick). */
-  chooseCardColor: (color: CardColorId) => void;
-  /**
-   * Fixa as cores da mesa direto. Existe para o sorteio da partida do
-   * TORNEIO, que roda fora desta máquina de estados (useCoinFlip) mas
-   * pinta as mesmas cartas — a mesa é uma só.
-   */
-  setCardColors: (colors: CardColors) => void;
   playAgain: () => void;
   dismissError: () => void;
   /** Recarrega créditos quando o saldo não cobre o menor stake. */
@@ -253,7 +179,6 @@ export interface GameStoreState {
   setVibrationEnabled: (enabled: boolean) => void;
   setSceneryQuality: (scenery: SceneQualitySetting) => void;
   devSetForcedOutcome: (outcome: RoundOutcome | null) => void;
-  devSetForcedCoinWinner: (winner: 'player' | 'opponent' | null) => void;
   devSetNegotiationAutoAccept: (enabled: boolean) => void;
   devAddCredits: (amount: number) => void;
   devResetAll: () => void;
@@ -263,10 +188,10 @@ export interface GameStoreDeps {
   engine?: GameEngine;
   storage?: GameStorageService;
   initialBalance?: number;
-  /** Fonte de aleatoriedade do cara-ou-coroa (determinística nos testes). */
-  rng?: () => number;
   /** Fábrica da cabeça do oponente na negociação (stub nos testes). */
   createNegotiator?: () => Negotiator;
+  /** Fonte de aleatoriedade da negociação (determinística nos testes). */
+  rng?: () => number;
 }
 
 /**
@@ -337,15 +262,6 @@ export function createGameStore(deps: GameStoreDeps = {}) {
 
     /** Delay "humano" sorteado dentro de uma janela [min, max]. */
     const within = (min: number, max: number): number => min + Math.random() * (max - min);
-
-    /** Série melhor de 3 zerada — nasce quando o duelo realmente começa. */
-    const freshSeries = (): SeriesState => ({
-      playerWins: 0,
-      opponentWins: 0,
-      roundWinners: [],
-      roundNumber: 1,
-      outcome: null,
-    });
 
     /**
      * O oponente simulado confirma sozinho após um delay natural — antes
@@ -601,12 +517,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         round: null,
         actionPending: false,
         result: null,
-        series: null,
         error: null,
         confirmations: NO_CONFIRMATIONS,
         negotiation: null,
-        coinFlip: null,
-        cardColors: DEFAULT_CARD_COLORS,
       });
       audioManager.playSfx('tap');
       audioManager.startMusic();
@@ -631,8 +544,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     /** Volta segura ao menu: mata timers, busca e mesa em andamento. */
     const resetToIdle = (): void => {
       // A transição é validada ANTES de qualquer efeito: chamada fora de
-      // hora (ex.: no meio da série, quando idle é ilegal) precisa ser um
-      // no-op DE VERDADE — matar os timers que movem a fase adiante e
+      // hora (ex.: no meio da rodada, quando idle é ilegal) precisa ser
+      // um no-op DE VERDADE — matar os timers que movem a fase adiante e
       // depois falhar a transição deixaria o jogo preso para sempre.
       if (!transitionTo('idle')) return;
       clearTimers();
@@ -644,130 +557,10 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         round: null,
         actionPending: false,
         result: null,
-        series: null,
         error: null,
         confirmations: NO_CONFIRMATIONS,
         negotiation: null,
-        coinFlip: null,
-        cardColors: DEFAULT_CARD_COLORS,
       });
-    };
-
-    /** Ajusta o coinFlip corrente sem perder os campos já decididos. */
-    const patchCoinFlip = (patch: Partial<CoinFlipState>): void => {
-      const { coinFlip } = get();
-      if (!coinFlip) return;
-      set({ coinFlip: { ...coinFlip, ...patch } });
-    };
-
-    /** Sorteio concluído (cor aplicada): abre o countdown da rodada. */
-    const startCountdownAfterCoin = (): void => {
-      if (get().phase !== 'coinflip') return;
-      if (!transitionTo('countdown')) return;
-      runCountdown(COUNTDOWN_START);
-    };
-
-    /**
-     * Aplica a cor do jogador e fecha o sorteio. Vale para os dois
-     * caminhos — o toque no CONFIRMAR e o sorteio automático do relógio
-     * —, então a rodada segue idêntica tenha o jogador escolhido ou não.
-     */
-    const applyPlayerPick = (color: CardColorId): void => {
-      const { coinFlip } = get();
-      if (!coinFlip) return;
-      // Só há duas cores: pegar uma entrega a outra ao adversário.
-      set({
-        cardColors: assignColors('player', color),
-        coinFlip: { ...coinFlip, stage: 'picked', chosenColor: color, pickSeconds: null },
-      });
-      audioManager.playSfx('ready');
-      vibrate(30);
-      schedule(startCountdownAfterCoin, TIMINGS.coinPickedMs);
-    };
-
-    /**
-     * Relógio da escolha (10 → 1), no mesmo padrão anti-AFK do início
-     * automático do torneio. Zerado sem decisão, a mesa sorteia a cor
-     * pelo jogador — a rodada nunca fica parada esperando quem saiu.
-     */
-    const runPickCountdown = (value: number): void => {
-      const { phase, coinFlip } = get();
-      if (phase !== 'coinflip' || coinFlip?.stage !== 'pick') return;
-      if (value <= 0) {
-        applyPlayerPick(randomCardColor(rng));
-        return;
-      }
-      patchCoinFlip({ pickSeconds: value });
-      schedule(() => runPickCountdown(value - 1), 1000);
-    };
-
-    /**
-     * Cara-ou-coroa pré-partida: sorteia o lado do jogador, lança a
-     * moeda (o resultado é decidido no INÍCIO do voo — a animação
-     * precisa saber em que face pousar) e dá ao vencedor a escolha da
-     * cor das cartas. O jogador escolhe num painel (fase fica em `pick`
-     * até `chooseCardColor` ou o relógio zerar); o oponente simulado
-     * escolhe sozinho.
-     */
-    const runCoinFlip = (): void => {
-      const playerSide: CoinSide = rng() < 0.5 ? 'cara' : 'coroa';
-      set({
-        coinFlip: {
-          playerSide,
-          result: null,
-          winner: null,
-          stage: 'intro',
-          chosenColor: null,
-          pickSeconds: null,
-        },
-      });
-
-      schedule(() => {
-        if (get().phase !== 'coinflip') return;
-        const forced = get().devForcedCoinWinner;
-        const result: CoinSide = forced
-          ? forced === 'player'
-            ? playerSide
-            : playerSide === 'cara'
-              ? 'coroa'
-              : 'cara'
-          : rng() < 0.5
-            ? 'cara'
-            : 'coroa';
-        patchCoinFlip({ stage: 'toss', result });
-        audioManager.playSfx('coinToss');
-
-        schedule(() => {
-          if (get().phase !== 'coinflip') return;
-          const winner = result === playerSide ? 'player' : 'opponent';
-          patchCoinFlip({ stage: 'result', winner });
-          audioManager.playSfx('coinLand');
-          vibrate(40);
-
-          // O veredito toma a tela sozinho por um beat antes de a
-          // escolha entrar — o anúncio não divide espaço com as cartas.
-          schedule(() => {
-            if (get().phase !== 'coinflip') return;
-            patchCoinFlip({ stage: 'verdict' });
-
-            schedule(() => {
-              if (get().phase !== 'coinflip') return;
-              if (winner === 'player') {
-                // A vez do jogador: a fase espera o chooseCardColor —
-                // ou o relógio zerar e a mesa sortear por ele.
-                patchCoinFlip({ stage: 'pick' });
-                runPickCountdown(COIN_PICK_SECONDS);
-                return;
-              }
-              const color = randomCardColor(rng);
-              set({ cardColors: assignColors('opponent', color) });
-              patchCoinFlip({ stage: 'botPick', chosenColor: color });
-              audioManager.playSfx('stake');
-              schedule(startCountdownAfterCoin, TIMINGS.coinBotPickMs);
-            }, TIMINGS.coinVerdictMs);
-          }, TIMINGS.coinResultMs);
-        }, TIMINGS.coinTossMs);
-      }, TIMINGS.coinIntroMs);
     };
 
     /** Countdown recursivo e falado: 5 → 4 → 3 → 2 → 1 → distribuição. */
@@ -785,7 +578,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     /**
-     * Distribuição da rodada: a engine tira as cartas do sapato e a mesa
+     * Distribuição da rodada: a engine tira as cartas do baralho e a mesa
      * as apresenta em beats (o som de cada carta é do próprio Card3D, no
      * instante em que ela assenta — não daqui). Com blackjack natural do
      * jogador a rodada volta já resolvida e a vez dele é pulada.
@@ -793,7 +586,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     const dealRound = async (): Promise<void> => {
       const { match, devForcedOutcome } = get();
       if (!match) {
-        failWith('A partida foi perdida. Seu stake foi devolvido.');
+        // Sem partida não há stake conhecido para devolver — a mensagem
+        // não pode prometer um reembolso que ninguém tem como calcular.
+        failWith('A partida foi perdida antes da distribuição. Tente novamente.');
         return;
       }
       audioManager.playSfx('shuffle');
@@ -803,9 +598,6 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           forcedOutcome: devForcedOutcome ?? undefined,
         });
         if (get().phase !== 'dealing') return;
-        // O resultado forçado do DevTools NÃO é limpo aqui: ele vale a
-        // série inteira (senão só a 1ª rodada sairia determinística) e
-        // morre junto com ela, em completeSeries.
         set({ round, result: round.result ?? null });
         schedule(() => {
           if (get().phase !== 'dealing') return;
@@ -827,19 +619,29 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     /**
      * Ação do jogador na própria vez. Cada toque vai à engine e volta
      * como um estado novo; quando a mão termina (parou, estourou ou fez
-     * 21), o estado volta `settled` e a vez do oponente abre depois de um
+     * 21), o estado volta `settled` e a vez do rival abre depois de um
      * beat — a carta final precisa assentar antes de a mesa virar.
      */
     const applyAction = async (action: PlayerAction): Promise<void> => {
       const { phase, match, round, actionPending } = get();
       if (phase !== 'playerTurn' || !match || !round || actionPending) return;
+      // A mão pode já ter fechado (parou, estourou ou cravou 21) e a
+      // fase ainda estar em `playerTurn` durante o beat de acomodação da
+      // última carta. Mandar outra ação à engine ali seria `illegal-
+      // action` — tratada como falha de engine, com estorno e tela de
+      // erro numa rodada que na verdade terminou bem.
+      if (round.phase === 'settled' || round.legalActions.length === 0) return;
       set({ actionPending: true });
       audioManager.playSfx('tap');
       vibrate(20);
       try {
         const next = await engine.act({ matchId: match.id, action });
+        // A trava sai SEMPRE que a ação volta — inclusive quando a fase
+        // já mudou no meio do caminho. Deixá-la de pé num caminho de
+        // saída congelaria os botões da vez sem nada para destravá-los.
+        set({ actionPending: false });
         if (get().phase !== 'playerTurn') return;
-        set({ round: next, result: next.result ?? null, actionPending: false });
+        set({ round: next, result: next.result ?? null });
         if (next.phase === 'settled') {
           schedule(() => {
             if (transitionTo('opponentTurn')) runOpponentTurn();
@@ -847,116 +649,50 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         }
       } catch {
         // Falha na engine: devolve o stake debitado no início do duelo.
-        set({ balance: creditPayout(get().balance, match.stake) });
+        set({ actionPending: false, balance: creditPayout(get().balance, match.stake) });
         persist();
         failWith('Não foi possível concluir a rodada. Seu stake foi devolvido.');
       }
     };
 
     /**
-     * Vez do oponente: as cartas que o bot pediu já estão no `result` —
-     * a mesa as apresenta uma a uma (stagger do componente) e o store só
-     * espera o tempo total antes de virar para o dealer.
+     * Vez do rival: as cartas que ele pediu já estão no `result` — a mesa
+     * as apresenta uma a uma (stagger do componente), e cada carta nova
+     * empurra a anterior para o campo visível: a ÚLTIMA dele continua
+     * virada para baixo até o showdown.
      */
     const runOpponentTurn = (): void => {
-      const { result } = get();
-      if (!result) return;
+      const { match, result } = get();
+      if (!result) {
+        // Única transição do fluxo sem sucessor natural: sem resultado
+        // não há o que apresentar nem como seguir. Sair por erro (com o
+        // stake de volta) é melhor do que ficar preso na vez do rival.
+        if (match) {
+          set({ balance: creditPayout(get().balance, match.stake) });
+          persist();
+        }
+        failWith('Não foi possível concluir a rodada. Seu stake foi devolvido.');
+        return;
+      }
       const extraCards = result.opponentHand.length - 2;
       const duration = Math.max(
         TIMINGS.opponentTurnMinMs,
         extraCards * TIMINGS.opponentHitMs + TIMINGS.actionResolveMs,
       );
       schedule(() => {
-        if (transitionTo('dealerTurn')) runDealerTurn();
-      }, duration);
-    };
-
-    /**
-     * Vez do dealer: a carta fechada vira (o momento clássico) e cada
-     * compra até 17 é um beat próprio. O tempo total deriva do número de
-     * cartas compradas — store e animação nunca dessincronizam.
-     */
-    const runDealerTurn = (): void => {
-      const { result } = get();
-      if (!result) return;
-      const extraCards = result.dealerHand.length - 2;
-      const duration =
-        TIMINGS.holeFlipMs + extraCards * TIMINGS.dealerDrawMs + TIMINGS.dealerBreathMs;
-      schedule(() => {
         if (!transitionTo('settle')) return;
-        schedule(finishRound, TIMINGS.settleMs);
+        // Showdown: as duas ocultas viram juntas, o quadro respira e o
+        // veredito entra.
+        schedule(completeRound, TIMINGS.revealMs + TIMINGS.settleMs);
       }, duration);
     };
 
     /**
-     * Fim do veredito: apura a rodada dentro da SÉRIE melhor de 3.
-     * Empate re-distribui a rodada (nenhum círculo é preenchido);
-     * vitória ou derrota preenchem um círculo e, na segunda de um mesmo
-     * lado, fecham a série — só então há payout, histórico e celebração.
+     * Fim do showdown: credita o payout, grava o histórico e celebra. O
+     * payout/netChange vêm calculados pela engine (com o 3:2 de um
+     * blackjack natural incluso) — nada é recalculado aqui.
      */
-    const finishRound = (): void => {
-      const { result, series } = get();
-      if (!result) return;
-      if (!series) {
-        // Sem série (estado legado/impossível): fecha como rodada única.
-        completeSeries();
-        return;
-      }
-
-      if (result.outcome === 'tie') {
-        // Rodada empatada: ninguém pontua, a mesa avisa e distribui de novo.
-        if (!transitionTo('roundEnd')) return;
-        audioManager.playSfx('tie');
-        vibrate([60, 80, 60]);
-        schedule(startNextRound, TIMINGS.roundEndMs);
-        return;
-      }
-
-      const winner: SeriesRoundWinner = result.outcome === 'win' ? 'player' : 'opponent';
-      const playerWins = series.playerWins + (winner === 'player' ? 1 : 0);
-      const opponentWins = series.opponentWins + (winner === 'opponent' ? 1 : 0);
-      const roundWinners = [...series.roundWinners, winner];
-
-      if (playerWins < SERIES_TARGET_WINS && opponentWins < SERIES_TARGET_WINS) {
-        // Série aberta: preenche o círculo e chama a próxima rodada.
-        set({
-          series: {
-            ...series,
-            playerWins,
-            opponentWins,
-            roundWinners,
-            roundNumber: series.roundNumber + 1,
-          },
-        });
-        if (!transitionTo('roundEnd')) return;
-        audioManager.playSfx(winner === 'player' ? 'roundWin' : 'roundLose');
-        vibrate(winner === 'player' ? [30, 40, 60] : 120);
-        schedule(startNextRound, TIMINGS.roundEndMs);
-        return;
-      }
-
-      set({
-        series: { ...series, playerWins, opponentWins, roundWinners, outcome: result.outcome },
-      });
-      completeSeries();
-    };
-
-    /** Abre a próxima rodada da série: novo countdown sobre a mesma mesa. */
-    const startNextRound = (): void => {
-      if (get().phase !== 'roundEnd' || !transitionTo('countdown')) return;
-      // As cartas da rodada anterior saem da mesa junto com o placar.
-      set({ result: null, round: null });
-      runCountdown(COUNTDOWN_START);
-    };
-
-    /**
-     * Série decidida: credita o payout, grava o histórico e celebra. As
-     * rodadas intermediárias não movem crédito, então o payout/netChange
-     * da rodada DECISIVA (calculados pela engine, com o 3:2 de um
-     * blackjack natural incluso) são exatamente os da série — nada é
-     * recalculado aqui.
-     */
-    const completeSeries = (): void => {
+    const completeRound = (): void => {
       const { result, match, balance, history } = get();
       if (!result || !match || !transitionTo('completed')) return;
 
@@ -964,8 +700,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       set({
         balance: creditPayout(balance, result.payout),
         history: [entry, ...history].slice(0, HISTORY_LIMIT),
-        // O resultado forçado do DevTools vale a série inteira — e morre
-        // com ela.
+        // O resultado forçado do DevTools vale a rodada — e morre com ela.
         devForcedOutcome: null,
       });
       persist();
@@ -993,17 +728,13 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       round: null,
       actionPending: false,
       result: null,
-      series: null,
       confirmations: NO_CONFIRMATIONS,
       negotiation: null,
-      coinFlip: null,
-      cardColors: DEFAULT_CARD_COLORS,
       history: persisted?.history ?? [],
       countdown: COUNTDOWN_START,
       error: null,
       settings: persisted?.settings ?? DEFAULT_SETTINGS,
       devForcedOutcome: null,
-      devForcedCoinWinner: null,
       devNegotiationAutoAccept: false,
 
       startSearch: () => beginSearch(),
@@ -1116,11 +847,10 @@ export function createGameStore(deps: GameStoreDeps = {}) {
                 failWith('Saldo insuficiente para esta aposta.');
                 return;
               }
-              if (!transitionTo('coinflip')) return;
-              // A série melhor de 3 nasce aqui: o duelo de fato começou.
-              set({ balance: nextBalance, series: freshSeries() });
+              if (!transitionTo('countdown')) return;
+              set({ balance: nextBalance });
               persist();
-              runCoinFlip();
+              runCountdown(COUNTDOWN_START);
             }, TIMINGS.negotiationStartMs);
           } catch {
             failWith('Não foi possível iniciar a partida. Tente novamente.');
@@ -1143,16 +873,6 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         void applyAction('stand');
       },
 
-      chooseCardColor: (color) => {
-        const { phase, coinFlip } = get();
-        if (phase !== 'coinflip' || coinFlip?.stage !== 'pick') return;
-        applyPlayerPick(color);
-      },
-
-      setCardColors: (colors) => {
-        set({ cardColors: colors });
-      },
-
       playAgain: () => {
         if (get().phase !== 'completed') return;
         void beginSearch();
@@ -1166,11 +886,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           round: null,
           actionPending: false,
           result: null,
-          series: null,
           confirmations: NO_CONFIRMATIONS,
           negotiation: null,
-          coinFlip: null,
-          cardColors: DEFAULT_CARD_COLORS,
         });
         // Sem saldo mínimo a nova busca seria inútil: volta ao menu,
         // onde a recarga de créditos mora.
@@ -1220,11 +937,6 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         set({ devForcedOutcome: outcome });
       },
 
-      devSetForcedCoinWinner: (winner) => {
-        if (!appEnv.devToolsEnabled) return;
-        set({ devForcedCoinWinner: winner });
-      },
-
       devSetNegotiationAutoAccept: (enabled) => {
         if (!appEnv.devToolsEnabled) return;
         set({ devNegotiationAutoAccept: enabled });
@@ -1250,17 +962,13 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           round: null,
           actionPending: false,
           result: null,
-          series: null,
           confirmations: NO_CONFIRMATIONS,
           negotiation: null,
-          coinFlip: null,
-          cardColors: DEFAULT_CARD_COLORS,
           history: [],
           countdown: COUNTDOWN_START,
           error: null,
           settings: DEFAULT_SETTINGS,
           devForcedOutcome: null,
-          devForcedCoinWinner: null,
           devNegotiationAutoAccept: false,
         });
       },

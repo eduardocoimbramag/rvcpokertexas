@@ -6,11 +6,12 @@ Jogo de blackjack 1v1 mobile-first em React + TypeScript com **toda a lógica ro
 
 ## Regras do jogo
 
-- Duelo **1v1 em melhor de 3**: em cada rodada, você e o rival jogam a própria mão de blackjack **contra o MESMO dealer** (sapato de 6 baralhos, dealer para em qualquer 17 — S17).
+- **Duelo direto de 21**, em rodada única: você contra o adversário, **sem casa para bater**. Baralho único de 52 cartas.
 - Na sua vez: **PEDIR CARTA** ou **PARAR**, mirando 21 sem estourar.
-- Vence a rodada quem terminar na **melhor categoria contra a casa**: blackjack natural > vitória > empate > derrota > estouro; na mesma categoria, o total mais alto desempata. Empate total re-distribui a rodada.
-- Vitória da série paga **90% do stake do adversário** (10% é a comissão da casa); série decidida com **blackjack natural paga 3:2**, sem comissão.
-- **Empate devolve** os créditos; derrota perde o stake.
+- **Regra de POV**: cada duelista vê a mão do outro **menos a última carta dela** — a informação chega em conta-gotas e o resto só abre no showdown.
+- Vence quem chegar mais perto de 21: estourou, perdeu; os dois estourados empatam; **blackjack natural** (21 em duas cartas) ganha de um 21 montado em três.
+- Vitória paga **90% da aposta do adversário** (10% é a comissão da casa); vitória com **blackjack paga 3:2**, sem comissão.
+- **Empate devolve** os créditos; derrota perde a aposta.
 
 ## Como rodar
 

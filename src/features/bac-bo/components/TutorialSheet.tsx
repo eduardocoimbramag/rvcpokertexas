@@ -27,8 +27,8 @@ const STEPS: readonly { icon: IconName; title: string; text: string }[] = [
   },
   {
     icon: 'club',
-    title: 'Vença a mão de blackjack',
-    text: 'Você e o rival jogam contra o MESMO dealer: peça cartas ou pare mirando 21. Quem terminar melhor contra a casa leva a rodada — blackjack decisivo paga 3:2.',
+    title: 'Chegue mais perto de 21',
+    text: 'É você contra o rival, sem casa no meio: peça cartas ou pare. Quem estourar perde na hora, e a última carta de cada um só vira no showdown. Blackjack na mão paga 3:2.',
   },
 ];
 

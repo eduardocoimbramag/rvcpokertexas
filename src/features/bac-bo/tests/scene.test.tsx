@@ -18,20 +18,20 @@ afterEach(() => {
 
 describe('resolveDealerReaction', () => {
   it('mapeia cada fase para a reação da especificação (§9.1)', () => {
+    // A crupiê não joga: distribui, acompanha as vezes dos DOIS duelistas
+    // (nunca a própria mão — ela não tem uma) e vira as ocultas no
+    // showdown. O Record obriga o mapa a cobrir a união inteira.
     const expected: Record<GamePhase, string> = {
       idle: 'idle',
       search: 'idle',
       found: 'greet',
       confirm: 'present',
       negotiate: 'present',
-      coinflip: 'anticipate',
       countdown: 'anticipate',
       dealing: 'shake',
       playerTurn: 'present',
       opponentTurn: 'present',
-      dealerTurn: 'reveal',
       settle: 'reveal',
-      roundEnd: 'reveal',
       completed: 'idle',
       error: 'apologize',
     };
@@ -46,18 +46,17 @@ describe('resolveDealerReaction', () => {
     expect(resolveDealerReaction('completed', 'tie')).toBe('shrug');
   });
 
-  it('no veredito (settle e roundEnd), a dealer reage ao desfecho parcial', () => {
+  it('no showdown (settle), a crupiê já reage ao desfecho', () => {
     expect(resolveDealerReaction('settle', 'win')).toBe('celebrate');
     expect(resolveDealerReaction('settle', 'lose')).toBe('console');
-    expect(resolveDealerReaction('roundEnd', 'win')).toBe('celebrate');
-    expect(resolveDealerReaction('roundEnd', 'lose')).toBe('console');
-    expect(resolveDealerReaction('roundEnd', 'tie')).toBe('shrug');
+    expect(resolveDealerReaction('settle', 'tie')).toBe('shrug');
   });
 
   it('fora do veredito, o resultado residual é ignorado', () => {
     expect(resolveDealerReaction('negotiate', 'win')).toBe('present');
     expect(resolveDealerReaction('dealing', 'tie')).toBe('shake');
     expect(resolveDealerReaction('playerTurn', 'win')).toBe('present');
+    expect(resolveDealerReaction('opponentTurn', 'lose')).toBe('present');
   });
 });
 
