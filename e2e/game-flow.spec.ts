@@ -9,12 +9,13 @@ import { expect, test } from '@playwright/test';
  * valor da aposta nos fluxos de resultado.
  *
  * Como o forçar funciona no duelo de 21: a engine empilha o baralho com
- * blackjacks naturais, que decidem sozinhos.
- * - 'win': o jogador recebe o natural → a rodada resolve na
- *   distribuição, sem interação.
- * - 'lose': o rival recebe o natural e o jogador fica com 20 → é preciso
- *   PARAR (action-stand) para a rodada seguir.
- * - 'tie': os dois recebem naturais → resolve sozinho e devolve a aposta.
+ * blackjacks naturais, que decidem sozinhos — mas NÃO fecham a mão de
+ * ninguém (um natural que saísse do rodízio denunciaria o 21). Em todos
+ * os casos o jogador precisa PARAR (action-stand) uma vez para fechar a
+ * própria mão; o desfecho forçado vale para quem para.
+ * - 'win': o jogador recebe o natural e o rival, 20.
+ * - 'lose': o rival recebe o natural e o jogador fica com 20.
+ * - 'tie': os dois recebem naturais.
  */
 
 /** Estado persistido com tutorial já visto e sons desligados. */
@@ -71,7 +72,7 @@ async function negotiateStake(page: Page, stake: number) {
  * 'tie' (naturais) ela resolve sozinha; com 'lose' o jogador precisa
  * PARAR uma vez — `stands` cobre os dois casos.
  */
-async function playRound(page: Page, stake: number, stands = 0) {
+async function playRound(page: Page, stake: number, stands = 1) {
   await forceNegoAutoAccept(page);
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
   await negotiateStake(page, stake);
@@ -122,7 +123,12 @@ test('primeira jogada: tutorial, negociação e a vitória com blackjack', async
   await expect(page.getByTestId('nego-accepted')).toBeVisible({ timeout: 15_000 });
 
   await page.getByTestId('nego-start').click();
-  // Rodada única com blackjack natural: resolve sem nenhuma interação.
+
+  // O natural não fecha a mão: a vez abre normal, com relógio e botões —
+  // é isso que impede o 21 de denunciar a si mesmo.
+  await expect(page.getByTestId('turn-clock')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('action-stand').click();
+
   await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/, { timeout: 45_000 });
   // No desfecho o placar migra para as placas ao lado da crupiê: 21 na
   // sua (o natural) contra a mão do rival.

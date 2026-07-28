@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Icon } from '@/shared/components/Icon';
 import { appEnv } from '@/shared/config/env';
 
-import type { RoundOutcome } from '../engine/types';
+import type { ForcedDeal } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
 
 /**
@@ -13,8 +13,8 @@ import { useGameStore } from '../store/gameStore';
  */
 export function DevToolsPanel() {
   const [open, setOpen] = useState(false);
-  const forcedOutcome = useGameStore((state) => state.devForcedOutcome);
-  const devSetForcedOutcome = useGameStore((state) => state.devSetForcedOutcome);
+  const forcedDeal = useGameStore((state) => state.devForcedDeal);
+  const devSetForcedDeal = useGameStore((state) => state.devSetForcedDeal);
   const negoAutoAccept = useGameStore((state) => state.devNegotiationAutoAccept);
   const devSetNegotiationAutoAccept = useGameStore((state) => state.devSetNegotiationAutoAccept);
   const devAddCredits = useGameStore((state) => state.devAddCredits);
@@ -22,10 +22,14 @@ export function DevToolsPanel() {
 
   if (!appEnv.devToolsEnabled) return null;
 
-  const outcomes: readonly { value: RoundOutcome; label: string }[] = [
+  /* "Puxar blackjack" também é uma vitória garantida (natural ganha de
+     qualquer 21 montado), mas deixa o rival com mão VIVA: a mesa joga as
+     vezes dele e dá para ver a brasa das cartas com o duelo andando. */
+  const deals: readonly { value: ForcedDeal; label: string }[] = [
     { value: 'win', label: 'Vitória' },
     { value: 'lose', label: 'Derrota' },
     { value: 'tie', label: 'Empate' },
+    { value: 'blackjack', label: 'Puxar blackjack' },
   ];
 
   return (
@@ -33,22 +37,18 @@ export function DevToolsPanel() {
       {open && (
         <div className="flex flex-col gap-2 rounded-xl border border-arena-line bg-arena-900/95 p-3 shadow-xl">
           <p className="font-bold text-lavender">Forçar o resultado da rodada:</p>
-          <div className="flex gap-1">
-            {outcomes.map((outcome) => (
+          <div className="flex flex-wrap gap-1">
+            {deals.map((deal) => (
               <button
-                key={outcome.value}
+                key={deal.value}
                 type="button"
-                onClick={() =>
-                  devSetForcedOutcome(forcedOutcome === outcome.value ? null : outcome.value)
-                }
-                data-testid={`force-${outcome.value}`}
+                onClick={() => devSetForcedDeal(forcedDeal === deal.value ? null : deal.value)}
+                data-testid={`force-${deal.value}`}
                 className={`rounded-lg px-2 py-1 font-bold ${
-                  forcedOutcome === outcome.value
-                    ? 'bg-gold text-arena-950'
-                    : 'bg-arena-700 text-ivory'
+                  forcedDeal === deal.value ? 'bg-gold text-arena-950' : 'bg-arena-700 text-ivory'
                 }`}
               >
-                {outcome.label}
+                {deal.label}
               </button>
             ))}
           </div>

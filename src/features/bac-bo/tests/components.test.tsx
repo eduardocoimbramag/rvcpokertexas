@@ -472,6 +472,62 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     expect(call).toHaveTextContent('PAROU');
   });
 
+  it('o estouro do RIVAL não é anunciado: só o showdown pode contar', () => {
+    renderArena({
+      reveal: {
+        id: 'r3',
+        opponent: { by: 'opponent', action: 'hit', closed: true, bust: true, timedOut: false },
+      },
+    });
+
+    const call = screen.getByTestId('turn-call');
+    // O gesto público dele aparece; o que a carta virada fez, não.
+    expect(call).toHaveTextContent('PEDIU CARTA');
+    expect(call).not.toHaveTextContent('ESTOUROU');
+    expect(call.querySelector('.is-bust')).toBeNull();
+  });
+
+  it('o SEU estouro é anunciado: as suas cartas estão todas abertas', () => {
+    renderArena({
+      reveal: {
+        id: 'r4',
+        player: { by: 'player', action: 'hit', closed: true, bust: true, timedOut: false },
+      },
+    });
+
+    expect(screen.getByTestId('turn-call')).toHaveTextContent('ESTOUROU');
+  });
+
+  it('a brasa do blackjack é SÓ SUA — a mão do rival nunca acende aqui', () => {
+    const natural: RoundResult = {
+      ...sampleResult,
+      playerHand: [card('A', 'hearts'), card('K', 'spades')],
+      playerTotal: 21,
+      playerNatural: true,
+      opponentNatural: true,
+    };
+    const naturalRound: BlackjackRoundState = {
+      ...sampleRound,
+      playerHand: [card('A', 'hearts'), card('K', 'spades')],
+    };
+
+    const ablaze = (root: HTMLElement, hand: string) =>
+      root.querySelectorAll(`[data-testid^="${hand}-cards-card"] .card-scene--ablaze`).length;
+
+    // A sua queima assim que as cartas assentam: elas estão abertas na
+    // sua frente e você já sabe o que tirou.
+    const live = renderArena({ round: naturalRound });
+    expect(ablaze(live.container, 'hand-player')).toBe(2);
+    expect(ablaze(live.container, 'hand-opponent')).toBe(0);
+    live.unmount();
+
+    // E a dele não acende NEM no showdown: o efeito é de quem joga, não
+    // da mesa — o blackjack do rival queima na tela dele.
+    const showdown = renderArena({ phase: 'settle', round: null, result: natural });
+    expect(ablaze(showdown.container, 'hand-opponent')).toBe(0);
+    expect(screen.getByTestId('verdict-opponent')).toHaveTextContent('BLACKJACK');
+  });
+
   it('o lance perdido no relógio é anunciado como tempo esgotado', () => {
     renderArena({
       reveal: {

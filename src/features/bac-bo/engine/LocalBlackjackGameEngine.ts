@@ -21,7 +21,6 @@ import {
   forcedDealFor,
   handValue,
   isBust,
-  isNaturalBlackjack,
   netChangeFor,
   payoutFor,
   resolveOutcome,
@@ -84,7 +83,7 @@ export class LocalBlackjackGameEngine implements GameEngine {
   private readonly rng: Rng;
   private readonly matchmakingDelayMs: readonly [number, number];
   private readonly dealDelayMs: number;
-  private readonly allowForcedOutcomes: boolean;
+  private readonly allowForcedDeals: boolean;
   private readonly activeMatches = new Map<string, Match>();
   /** Baralho por partida: sobrevive às rodadas, como na mesa real. */
   private readonly decks = new Map<string, Card[]>();
@@ -94,7 +93,7 @@ export class LocalBlackjackGameEngine implements GameEngine {
     this.rng = options.rng ?? new CryptoRng();
     this.matchmakingDelayMs = options.matchmakingDelayMs ?? [1200, 2600];
     this.dealDelayMs = options.dealDelayMs ?? 350;
-    this.allowForcedOutcomes = options.allowForcedOutcomes ?? false;
+    this.allowForcedDeals = options.allowForcedDeals ?? false;
   }
 
   async findMatch(params: FindMatchParams): Promise<Match> {
@@ -167,7 +166,7 @@ export class LocalBlackjackGameEngine implements GameEngine {
       this.decks.set(match.id, deck);
     }
 
-    const forced = this.allowForcedOutcomes ? params.forcedOutcome : undefined;
+    const forced = this.allowForcedDeals ? params.forcedDeal : undefined;
     if (forced) {
       // Empilha as 4 cartas da distribuição no TOPO do baralho (drawCard
       // tira do fim do array, então entram invertidas). As cópias dessas
@@ -188,10 +187,15 @@ export class LocalBlackjackGameEngine implements GameEngine {
     const round: ActiveRound = {
       playerHand,
       opponentHand,
-      // Blackjack natural fecha a mão na distribuição: quem o recebe não
-      // tem mais nada a decidir nas vezes seguintes.
-      playerClosed: isNaturalBlackjack(playerHand),
-      opponentClosed: isNaturalBlackjack(opponentHand),
+      /* Um blackjack natural NÃO fecha a mão na distribuição. Fechá-la
+         seria o maior tell da mesa: quem tirasse 21 sairia do rodízio na
+         hora, sem relógio nem botões, e o outro lado descobriria a mão
+         perfeita antes de qualquer carta virar. Aqui quem tem o natural
+         joga a vez como todo mundo — pode parar (o normal), pode pedir
+         carta e jogar o 21 fora, pode propor dobrar. O blefe continua
+         possível dos dois lados. */
+      playerClosed: false,
+      opponentClosed: false,
       settled: false,
     };
     this.activeRounds.set(match.id, round);
@@ -380,8 +384,8 @@ export interface LocalEngineOptions {
   matchmakingDelayMs?: readonly [number, number];
   /** Delay simulado em ms para distribuir cartas e resolver ações. */
   dealDelayMs?: number;
-  /** Habilita `forcedOutcome` em beginRound (DevTools/testes). */
-  allowForcedOutcomes?: boolean;
+  /** Habilita `forcedDeal` em beginRound (DevTools/testes). */
+  allowForcedDeals?: boolean;
 }
 
 /** Espera `ms` milissegundos, rejeitando com `aborted` se o sinal disparar. */

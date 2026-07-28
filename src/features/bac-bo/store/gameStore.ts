@@ -19,6 +19,7 @@ import type {
   HistoryEntry,
   Match,
   PlayerAction,
+  ForcedDeal,
   RoundOutcome,
   RoundResult,
   TableTurn,
@@ -207,8 +208,8 @@ export interface GameStoreState {
   /** Mensagem de erro amigável quando phase === 'error'. */
   error: string | null;
   settings: GameSettings;
-  /** Resultado forçado para a rodada (apenas DevTools). */
-  devForcedOutcome: RoundOutcome | null;
+  /** Distribuição empilhada para a rodada (apenas DevTools). */
+  devForcedDeal: ForcedDeal | null;
   /** Oponente aceita qualquer proposta (apenas DevTools; e2e). */
   devNegotiationAutoAccept: boolean;
 
@@ -243,7 +244,7 @@ export interface GameStoreState {
   updateAudioSettings: (patch: Partial<AudioSettings>) => void;
   setVibrationEnabled: (enabled: boolean) => void;
   setSceneryQuality: (scenery: SceneQualitySetting) => void;
-  devSetForcedOutcome: (outcome: RoundOutcome | null) => void;
+  devSetForcedDeal: (deal: ForcedDeal | null) => void;
   devSetNegotiationAutoAccept: (enabled: boolean) => void;
   devAddCredits: (amount: number) => void;
   devResetAll: () => void;
@@ -267,7 +268,7 @@ export interface GameStoreDeps {
 export function createGameStore(deps: GameStoreDeps = {}) {
   const engine =
     deps.engine ??
-    createGameEngine({ mode: 'local', local: { allowForcedOutcomes: appEnv.devToolsEnabled } });
+    createGameEngine({ mode: 'local', local: { allowForcedDeals: appEnv.devToolsEnabled } });
   const storage = deps.storage ?? new GameStorageService();
   const initialBalance = deps.initialBalance ?? appEnv.initialBalance;
 
@@ -794,12 +795,12 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     /**
      * Distribuição da rodada: a engine tira as cartas do baralho e a mesa
      * as apresenta em beats (o som de cada carta é do próprio Card3D, no
-     * instante em que ela assenta — não daqui). Um blackjack natural já
-     * fecha a mão de quem o recebeu, e a primeira vez sai do estado que
-     * a engine devolve.
+     * instante em que ela assenta — não daqui). A primeira vez sai do
+     * estado que a engine devolve, e ninguém entra nela fechado: nem
+     * quem tirou um blackjack natural.
      */
     const dealRound = async (): Promise<void> => {
-      const { match, devForcedOutcome } = get();
+      const { match, devForcedDeal } = get();
       if (!match) {
         // Sem partida não há stake conhecido para devolver — a mensagem
         // não pode prometer um reembolso que ninguém tem como calcular.
@@ -810,7 +811,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       try {
         const round = await engine.beginRound({
           matchId: match.id,
-          forcedOutcome: devForcedOutcome ?? undefined,
+          forcedDeal: devForcedDeal ?? undefined,
         });
         if (get().phase !== 'dealing') return;
         set({ round, result: round.result ?? null });
@@ -943,8 +944,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       set({
         balance: creditPayout(balance, result.payout),
         history: [entry, ...history].slice(0, HISTORY_LIMIT),
-        // O resultado forçado do DevTools vale a rodada — e morre com ela.
-        devForcedOutcome: null,
+        // A distribuição forçada do DevTools vale a rodada — e morre com ela.
+        devForcedDeal: null,
       });
       persist();
 
@@ -980,7 +981,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       countdown: COUNTDOWN_START,
       error: null,
       settings: persisted?.settings ?? DEFAULT_SETTINGS,
-      devForcedOutcome: null,
+      devForcedDeal: null,
       devNegotiationAutoAccept: false,
 
       startSearch: () => beginSearch(),
@@ -1202,9 +1203,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         persist();
       },
 
-      devSetForcedOutcome: (outcome) => {
+      devSetForcedDeal: (deal) => {
         if (!appEnv.devToolsEnabled) return;
-        set({ devForcedOutcome: outcome });
+        set({ devForcedDeal: deal });
       },
 
       devSetNegotiationAutoAccept: (enabled) => {
@@ -1241,7 +1242,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           countdown: COUNTDOWN_START,
           error: null,
           settings: DEFAULT_SETTINGS,
-          devForcedOutcome: null,
+          devForcedDeal: null,
           devNegotiationAutoAccept: false,
         });
       },

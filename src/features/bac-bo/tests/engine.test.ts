@@ -10,12 +10,12 @@ import { handValue, isNaturalBlackjack, netChangeFor, payoutFor } from '../engin
 import type { BlackjackRoundState, RoundResult } from '../engine/types';
 
 /** Engine instantânea e determinística para os testes. */
-function createTestEngine(seed = 1, allowForcedOutcomes = false) {
+function createTestEngine(seed = 1, allowForcedDeals = false) {
   return new LocalBlackjackGameEngine({
     rng: new SeededRng(seed),
     matchmakingDelayMs: [0, 0],
     dealDelayMs: 0,
-    allowForcedOutcomes,
+    allowForcedDeals,
   });
 }
 
@@ -178,15 +178,24 @@ describe('LocalBlackjackGameEngine.beginRound', () => {
     expect(state.result).toBeUndefined();
   });
 
-  it('blackjack natural dos dois resolve a rodada na distribuição', async () => {
-    const { state } = await findDeal((s) => s.phase === 'settled');
+  it('blackjack natural NÃO fecha a mão: seria o maior tell da mesa', async () => {
+    const { state } = await findDeal((s) => isNaturalBlackjack(s.playerHand));
 
-    expect(state.playerHand).toHaveLength(2);
-    expect(isNaturalBlackjack(state.playerHand)).toBe(true);
-    expect(state.legalActions).toEqual([]);
-    expect(state.opponentHidden).toBe(0);
-    expect(state.result?.playerNatural).toBe(true);
-    expect(state.result?.playerTotal).toBe(21);
+    // Nada denuncia o 21: a vez abre igual à de qualquer outra mão, com
+    // as duas ações na mesa. Dá para parar (o normal), pedir carta e
+    // jogar o natural fora, ou propor dobrar — tudo como sempre.
+    expect(state.phase).toBe('choosing');
+    expect(state.legalActions).toEqual(['hit', 'stand']);
+    expect(state.playerClosed).toBe(false);
+    expect(state.result).toBeUndefined();
+  });
+
+  it('nenhuma mão sai do rodízio na distribuição, nem a do rival', async () => {
+    const engine = createTestEngine();
+    const match = await engine.findMatch({ stake: 50 });
+    const state = await engine.beginRound({ matchId: match.id });
+    expect(state.playerClosed).toBe(false);
+    expect(state.opponentClosed).toBe(false);
   });
 
   it('a mesma partida joga várias rodadas seguidas', async () => {
@@ -439,7 +448,7 @@ describe('resultados forçados (DevTools)', () => {
     for (const outcome of ['win', 'lose', 'tie'] as const) {
       const engine = createTestEngine(7, true);
       const match = await engine.findMatch({ stake: 50 });
-      const state = await engine.beginRound({ matchId: match.id, forcedOutcome: outcome });
+      const state = await engine.beginRound({ matchId: match.id, forcedDeal: outcome });
       expect(await settleFrom(engine, match.id, state)).toMatchObject({ outcome });
     }
   });
@@ -447,11 +456,12 @@ describe('resultados forçados (DevTools)', () => {
   it('vitória forçada vem com blackjack natural', async () => {
     const engine = createTestEngine(7, true);
     const match = await engine.findMatch({ stake: 50 });
-    const state = await engine.beginRound({ matchId: match.id, forcedOutcome: 'win' });
-    // O natural já fecha a sua mão na distribuição: não sobra decisão
-    // nenhuma para você — só o rival ainda tem lance a dar.
-    expect(state.playerClosed).toBe(true);
-    expect(state.legalActions).toEqual([]);
+    const state = await engine.beginRound({ matchId: match.id, forcedDeal: 'win' });
+    // O natural está na mão, mas a vez é normal: nada na mesa entrega
+    // que você tirou 21.
+    expect(isNaturalBlackjack(state.playerHand)).toBe(true);
+    expect(state.playerClosed).toBe(false);
+    expect(state.legalActions).toEqual(['hit', 'stand']);
 
     const result = await settleFrom(engine, match.id, state);
     expect(result.playerNatural).toBe(true);
@@ -462,10 +472,11 @@ describe('resultados forçados (DevTools)', () => {
   it('derrota forçada dá o natural ao rival e o jogador não escapa', async () => {
     const engine = createTestEngine(7, true);
     const match = await engine.findMatch({ stake: 50 });
-    const state = await engine.beginRound({ matchId: match.id, forcedOutcome: 'lose' });
+    const state = await engine.beginRound({ matchId: match.id, forcedDeal: 'lose' });
     expect(state.legalActions).toEqual(['hit', 'stand']);
-    // O natural do rival fechou a mão dele: só você ainda escolhe.
-    expect(state.opponentClosed).toBe(true);
+    // O natural do rival também não fecha a mão dele: nada na mesa
+    // denuncia o 21 antes do showdown.
+    expect(state.opponentClosed).toBe(false);
 
     await engine.commit({ matchId: match.id, action: 'stand' });
     const settled = await engine.resolveTurn({ matchId: match.id });
@@ -475,7 +486,7 @@ describe('resultados forçados (DevTools)', () => {
   });
 
   it('ignora o resultado forçado quando desabilitado (produção)', async () => {
-    // Mesma seed com e sem forcedOutcome: as cartas devem ser idênticas,
+    // Mesma seed com e sem forcedDeal: as cartas devem ser idênticas,
     // provando que o pedido de forçar foi ignorado.
     const engineForced = createTestEngine(42, false);
     const engineNatural = createTestEngine(42, false);
@@ -483,7 +494,7 @@ describe('resultados forçados (DevTools)', () => {
     const matchA = await engineForced.findMatch({ stake: 50 });
     const matchB = await engineNatural.findMatch({ stake: 50 });
 
-    const stateA = await engineForced.beginRound({ matchId: matchA.id, forcedOutcome: 'tie' });
+    const stateA = await engineForced.beginRound({ matchId: matchA.id, forcedDeal: 'tie' });
     const stateB = await engineNatural.beginRound({ matchId: matchB.id });
 
     expect(stateA.playerHand).toEqual(stateB.playerHand);

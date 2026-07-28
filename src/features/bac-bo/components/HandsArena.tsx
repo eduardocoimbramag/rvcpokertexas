@@ -8,7 +8,7 @@ import { formatCredits } from '@/shared/lib/format';
 import { handStep } from '../animations/cards';
 import { TIMINGS } from '../animations/timings';
 import type { HandValue } from '../engine/rules';
-import { handValue } from '../engine/rules';
+import { handValue, isNaturalBlackjack } from '../engine/rules';
 import type {
   BlackjackRoundState,
   Card,
@@ -92,13 +92,15 @@ interface HandRowProps {
   labelPrefix: string;
   faceDownAt?: (index: number) => boolean;
   delayFor?: (index: number) => number;
+  /** A mão é um blackjack: as cartas ganham o contorno em brasa. */
+  ablaze?: boolean;
 }
 
 /** Uma mão deitada na mesa: cartas retas, uma ao lado da outra, todas
  * inteiramente visíveis. Só uma mão longa demais para o feltro volta a
  * se sobrepor, e apenas o necessário (ver `handStep`). O deslocamento é
  * estático — quem anima entrada e virada é o Card3D de cada carta. */
-function HandRow({ cards, testid, labelPrefix, faceDownAt, delayFor }: HandRowProps) {
+function HandRow({ cards, testid, labelPrefix, faceDownAt, delayFor, ablaze }: HandRowProps) {
   const step = handStep(cards.length);
   return (
     <div className="flex items-center justify-center" data-testid={testid}>
@@ -118,6 +120,7 @@ function HandRow({ cards, testid, labelPrefix, faceDownAt, delayFor }: HandRowPr
             card={card}
             faceDown={faceDownAt?.(index) ?? false}
             dealDelayMs={delayFor?.(index) ?? 0}
+            ablaze={ablaze}
             label={`${labelPrefix} ${index + 1}`}
           />
         </div>
@@ -252,9 +255,21 @@ function HandTotal({ side, value, partial }: HandTotalProps) {
   );
 }
 
-/** Leitura de um lance já executado. */
+/**
+ * Leitura de um lance já executado.
+ *
+ * O estouro do RIVAL não se anuncia: a mão dele tem uma carta virada, e
+ * dizer que ele passou de 21 entregaria de graça o que só o showdown
+ * pode contar — o duelo acabaria ali, com você sabendo que basta não
+ * estourar. O que a mesa anuncia dele é o gesto público (pediu carta ou
+ * parou); o resto vira no fim da rodada, com as cartas.
+ *
+ * O seu estouro é outra história: as suas cartas estão todas abertas na
+ * sua frente, e esconder de você o que você já pode contar seria só
+ * ruído.
+ */
 function moveLabel(move: TableMove): string {
-  if (move.bust) return 'ESTOUROU';
+  if (move.by === 'player' && move.bust) return 'ESTOUROU';
   if (move.timedOut) return 'TEMPO — PAROU';
   return move.action === 'hit' ? 'PEDIU CARTA' : 'PAROU';
 }
@@ -291,7 +306,11 @@ function TurnCall({
       {rows.map(({ who, move, side }, index) => (
         <motion.div
           key={side}
-          className={`turn-call__row turn-call__row--${side} ${move.bust ? 'is-bust' : ''}`}
+          // A tinta vermelha do estouro segue a mesma regra do rótulo:
+          // só a SUA mão a acende (ver `moveLabel`).
+          className={`turn-call__row turn-call__row--${side} ${
+            side === 'player' && move.bust ? 'is-bust' : ''
+          }`}
           initial={instant ? false : { opacity: 0, x: side === 'player' ? 14 : -14 }}
           animate={{ opacity: 1, x: 0 }}
           transition={instant ? { duration: 0 } : { delay: 0.06 + index * 0.09, duration: 0.28 }}
@@ -485,6 +504,14 @@ export function HandsArena({
   if (playerCards.length === 0 || opponentCards.length === 0) return null;
 
   const playerValue = handValue(playerCards);
+  /* Blackjack na mesa: o contorno das cartas pega fogo — e a brasa é
+     SÓ SUA. Ela mora na sua tela, para você saber o que tem na mão; a
+     mão do rival nunca acende aqui, nem no showdown, porque o efeito é
+     de quem joga, não da mesa. Do outro lado é igual: o blackjack dele
+     queima na tela dele, não na sua.
+     Acende na hora, sem esperar o showdown: as suas duas cartas estão
+     abertas na sua frente e você já sabe o que tirou. */
+  const playerAblaze = isNaturalBlackjack(playerCards);
   // O total do rival é o das cartas ABERTAS enquanto houver oculta — com
   // o "+?" lembrando que falta carta para a conta fechar.
   const opponentValue = handValue(revealed ? opponentFull : opponentKnown);
@@ -626,6 +653,7 @@ export function HandsArena({
           testid="hand-player-cards"
           labelPrefix="Sua carta"
           delayFor={playerDelay}
+          ablaze={playerAblaze}
         />
         <Nameplate
           side="player"

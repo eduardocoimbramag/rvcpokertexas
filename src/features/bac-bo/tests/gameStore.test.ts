@@ -548,14 +548,14 @@ describe('fluxo completo do duelo', () => {
     await agreeAndStart(store, 50);
     // Injetado direto no estado: o setter público é gateado pelo
     // devToolsEnabled, que fica desligado sob teste.
-    store.setState({ devForcedOutcome: 'win' });
+    store.setState({ devForcedDeal: 'win' });
 
     await passDealing(store);
-    expect(store.getState().devForcedOutcome).toBe('win');
+    expect(store.getState().devForcedDeal).toBe('win');
 
     await standAndSettle(store);
     expect(store.getState().phase).toBe('completed');
-    expect(store.getState().devForcedOutcome).toBeNull();
+    expect(store.getState().devForcedDeal).toBeNull();
   });
 
   it('jogar de novo limpa a rodada e abre uma nova busca mantendo o saldo', async () => {

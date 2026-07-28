@@ -47,6 +47,14 @@ export type PlayerAction = z.infer<typeof playerActionSchema>;
 export const roundOutcomeSchema = z.enum(['win', 'lose', 'tie']);
 export type RoundOutcome = z.infer<typeof roundOutcomeSchema>;
 
+/**
+ * Distribuição empilhada pelo DevTools. Além dos três desfechos, o
+ * `blackjack` põe um natural na SUA mão sob demanda — é o que acende a
+ * brasa nas cartas sem depender da sorte do baralho.
+ */
+export const forcedDealSchema = z.enum(['win', 'lose', 'tie', 'blackjack']);
+export type ForcedDeal = z.infer<typeof forcedDealSchema>;
+
 /** Oponente simulado retornado pelo matchmaking. */
 export const opponentSchema = z.object({
   id: z.string().min(1),

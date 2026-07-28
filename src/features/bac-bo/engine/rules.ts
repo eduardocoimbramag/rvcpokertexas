@@ -2,7 +2,7 @@ import type { Rng } from '@/shared/lib/random';
 import { randomInt } from '@/shared/lib/random';
 
 import { afterHouseEdge } from './credits';
-import type { Card, CardRank, PlayerAction, RoundOutcome } from './types';
+import type { Card, CardRank, ForcedDeal, PlayerAction, RoundOutcome } from './types';
 import { cardRankSchema, cardSuitSchema } from './types';
 
 /**
@@ -265,13 +265,19 @@ export function netChangeFor(outcome: RoundOutcome, stake: number): number {
  * jogador, oponente.
  *
  * O truque: naturais decidem sozinhos. Um blackjack natural é a melhor
- * mão possível e NENHUMA decisão posterior a alcança — 'win' dá o
- * natural ao jogador (a rodada resolve na distribuição), 'lose' dá ao
- * oponente (o jogador até joga, mas nem um 21 de três cartas empata), e
- * 'tie' dá aos dois.
+ * mão possível e NENHUMA mão alcança — 'win' dá o natural ao jogador,
+ * 'lose' dá ao oponente (nem um 21 de três cartas empata com ele) e
+ * 'tie' dá aos dois. 'blackjack' também põe o natural na sua mão, mas
+ * deixa o rival com uma mão VIVA (17), para a mesa continuar jogando as
+ * vezes dele enquanto a sua brasa arde.
+ *
+ * A ressalva: o natural decide a rodada de quem o MANTÉM. Como ninguém
+ * mais sai do rodízio na distribuição (ver `beginRound`), quem recebe a
+ * mão perfeita ainda pode pedir carta e jogá-la fora — o desfecho é
+ * garantido para quem para, que é o que os testes fazem.
  */
-export function forcedDealFor(outcome: RoundOutcome): Card[] {
-  const deals: Record<RoundOutcome, Card[]> = {
+export function forcedDealFor(deal: ForcedDeal): Card[] {
+  const deals: Record<ForcedDeal, Card[]> = {
     win: [
       { rank: 'A', suit: 'spades' },
       { rank: 'K', suit: 'clubs' },
@@ -290,6 +296,12 @@ export function forcedDealFor(outcome: RoundOutcome): Card[] {
       { rank: 'K', suit: 'hearts' },
       { rank: 'K', suit: 'clubs' },
     ],
+    blackjack: [
+      { rank: 'A', suit: 'hearts' },
+      { rank: '9', suit: 'clubs' },
+      { rank: 'K', suit: 'spades' },
+      { rank: '8', suit: 'diamonds' },
+    ],
   };
-  return deals[outcome];
+  return deals[deal];
 }

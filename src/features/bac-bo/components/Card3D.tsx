@@ -27,6 +27,8 @@ export interface Card3DProps {
   dealDelayMs?: number;
   /** Carta de mostruário: entra sem som nem voo. */
   silent?: boolean;
+  /** A mão desta carta é um blackjack: o contorno pega fogo. */
+  ablaze?: boolean;
   label: string;
 }
 
@@ -64,6 +66,7 @@ export function Card3D({
   size,
   dealDelayMs = 0,
   silent = false,
+  ablaze = false,
   label,
 }: Card3DProps) {
   const reducedMotion = useReducedMotion() ?? false;
@@ -99,7 +102,7 @@ export function Card3D({
 
   return (
     <motion.div
-      className="card-scene"
+      className={`card-scene ${ablaze ? 'card-scene--ablaze' : ''}`}
       style={sceneStyle}
       role="img"
       aria-label={`${label}: ${shownLabel}`}

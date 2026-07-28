@@ -315,6 +315,29 @@ describe('doubleAcceptChance — o rival diante do pedido de dobra', () => {
 });
 
 describe('forcedDealFor', () => {
+  it('"puxar blackjack" põe o natural na sua mão e deixa a dele viva', () => {
+    const { playerHand, opponentHand } = dealInitialHands(
+      [...forcedDealFor('blackjack')].reverse(),
+    );
+
+    expect(isNaturalBlackjack(playerHand)).toBe(true);
+    // A mão do rival continua ABERTA (17): a mesa ainda joga as vezes
+    // dele — é o que faz desta a distribuição certa para ver a brasa
+    // com o duelo andando.
+    expect(isNaturalBlackjack(opponentHand)).toBe(false);
+    expect(handValue(opponentHand).total).toBeLessThan(21);
+  });
+
+  it('a vitória do "puxar blackjack" é inescapável, jogue o rival o que jogar', () => {
+    const { playerHand } = dealInitialHands([...forcedDealFor('blackjack')].reverse());
+    // Nenhuma mão que o rival monte alcança um natural: nem um 21 de
+    // três cartas empata com ele.
+    for (const total of [17, 18, 19, 20, 21, 25]) {
+      const rival = { total, bust: total > 21, natural: false };
+      expect(resolveOutcome(standingOf(playerHand), rival)).toBe('win');
+    }
+  });
+
   const outcomes: RoundOutcome[] = ['win', 'lose', 'tie'];
 
   it.each(outcomes)('empilha as 4 cartas da distribuição para "%s"', (outcome) => {

@@ -1,4 +1,4 @@
-import type { BlackjackRoundState, Match, PlayerAction, RoundOutcome } from './types';
+import type { BlackjackRoundState, ForcedDeal, Match, PlayerAction } from './types';
 
 /**
  * Contrato da engine do jogo. A UI conversa apenas com esta interface —
@@ -30,10 +30,10 @@ export interface GameEngine {
   setStake(params: SetStakeParams): Promise<Match>;
 
   /**
-   * Distribui as cartas de uma nova rodada e abre a PRIMEIRA vez. Um
-   * blackjack natural do jogador fecha a mão dele na distribuição: a
-   * rodada volta na vez do rival (ou já `settled`, se ninguém tiver o
-   * que decidir).
+   * Distribui as cartas de uma nova rodada e abre a PRIMEIRA vez.
+   * Ninguém sai do rodízio na distribuição — nem quem tira um blackjack
+   * natural: uma mão que fechasse sozinha denunciaria o 21 antes de
+   * qualquer carta virar.
    * @throws {GameEngineError} `match-not-found` se a partida não existir.
    */
   beginRound(params: BeginRoundParams): Promise<BlackjackRoundState>;
@@ -78,11 +78,10 @@ export interface SetStakeParams {
 export interface BeginRoundParams {
   matchId: string;
   /**
-   * Resultado forçado via cartas empilhadas — aceito apenas quando a
-   * engine roda com `allowForcedOutcomes` (DevTools/testes). Ignorado em
-   * produção.
+   * Distribuição empilhada — aceita apenas quando a engine roda com
+   * `allowForcedDeals` (DevTools/testes). Ignorada em produção.
    */
-  forcedOutcome?: RoundOutcome;
+  forcedDeal?: ForcedDeal;
 }
 
 export interface CommitParams {
