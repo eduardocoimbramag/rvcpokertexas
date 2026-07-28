@@ -88,4 +88,19 @@ describe('BracketScreen — avanço de fase não trava o torneio', () => {
     });
     expect(screen.getByTestId('play-tournament-match')).toBeInTheDocument();
   });
+
+  it('as oitavas da sala de 16 usam a grade densa (8 cartas em 2 colunas)', () => {
+    useTournamentStore.setState({
+      stage: 'bracket',
+      bracket: createBracket([you(), ...makeBots(15)], 16),
+      simulating: false,
+      size: 16,
+      entryFee: 10,
+    });
+
+    const { container } = render(<TournamentApp onExit={() => undefined} />);
+    // 8 partidas não cabem empilhadas: a fase troca para a grade densa.
+    expect(container.querySelector('.active-round--dense')).not.toBeNull();
+    expect(screen.getAllByTestId('bracket-match')).toHaveLength(8);
+  });
 });

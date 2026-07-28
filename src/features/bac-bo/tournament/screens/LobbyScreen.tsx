@@ -198,9 +198,6 @@ function Seat({
 /** Lobby do torneio: assentos, chat, controles do anfitrião e início. */
 export function LobbyScreen() {
   const lobbyName = useTournamentStore((s) => s.lobbyName);
-  const lobbyCode = useTournamentStore((s) => s.lobbyCode);
-  const password = useTournamentStore((s) => s.password);
-  const visibility = useTournamentStore((s) => s.visibility);
   const size = useTournamentStore((s) => s.size);
   const entryFee = useTournamentStore((s) => s.entryFee);
   const members = useTournamentStore((s) => s.members);
@@ -250,7 +247,10 @@ export function LobbyScreen() {
   };
 
   return (
-    <main className="flex flex-1 flex-col px-6 py-4">
+    // min-h-0: a sala de 16 tem mais conteúdo mínimo que a tela — sem
+    // isto o lobby estoura o viewport (cortando o cabeçalho) em vez de
+    // encolher assentos e chat nas suas rolagens internas.
+    <main className="flex min-h-0 flex-1 flex-col px-6 py-4">
       <header className="mb-3 flex items-center justify-between gap-3">
         <button
           type="button"
@@ -260,21 +260,11 @@ export function LobbyScreen() {
         >
           <Icon name="chevron-left" />
         </button>
-        <div className="min-w-0 text-center">
+        {/* Só o nome da sala. Visibilidade, código e senha são ficha
+            técnica: moram atrás da engrenagem, onde já vivem a taxa e a
+            premiação — o cabeçalho não é lugar de ficha. */}
+        <div className="flex min-w-0 items-center">
           <h1 className="truncate text-xl font-bold tracking-wide">{lobbyName}</h1>
-          {/* Na sala privada o que interessa é a SENHA (é o que se
-              compartilha para convidar); na pública, o código da sala. */}
-          <p
-            className="flex items-center justify-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-copper"
-            data-testid="lobby-visibility"
-          >
-            <Icon name={visibility === 'public' ? 'globe' : 'lock'} size="1em" />
-            {visibility === 'public' ? (
-              <>Pública · Código {lobbyCode}</>
-            ) : (
-              <>Privada · Senha {password}</>
-            )}
-          </p>
         </div>
         {/* Visível para todos: a folha é a ficha da sala (taxa, prêmio,
             senha). Só o dono encontra lá algo para mexer. */}
@@ -308,8 +298,10 @@ export function LobbyScreen() {
         </span>
       </div>
 
-      {/* Assentos, cada um com o seu estado de prontidão. */}
-      <div className="lobby-seats">
+      {/* Assentos, cada um com o seu estado de prontidão. A sala de 16
+          usa a variante densa (compacta e rolável) para o chat
+          continuar respirando. */}
+      <div className={`lobby-seats ${size === 16 ? 'lobby-seats--dense' : ''}`} data-testid="lobby-seats">
         {seats.map((player, i) => (
           <Seat
             key={player?.id ?? `empty-${i}`}
@@ -324,8 +316,9 @@ export function LobbyScreen() {
         ))}
       </div>
 
-      {/* Chat */}
-      <div className="lobby-chat">
+      {/* Chat. Na sala de 16 ele ganha um piso de altura: os assentos é
+          que encolhem (com rolagem), nunca o chat inteiro. */}
+      <div className={`lobby-chat ${size === 16 ? 'lobby-chat--floor' : ''}`}>
         <div className="lobby-chat__log" data-testid="lobby-chat">
           <AnimatePresence initial={false}>
             {chat.map((m) => (

@@ -184,7 +184,10 @@ export function BracketScreen() {
   const steps = bracket.rounds.map((r) => roundLabel(r.length));
 
   return (
-    <main className="flex flex-1 flex-col px-6 py-4">
+    // min-h-0: com as 8 cartas das oitavas, a grade densa precisa poder
+    // encolher e rolar por dentro — sem isto ela empurraria o botão de
+    // jogar para fora do viewport fixo.
+    <main className="flex min-h-0 flex-1 flex-col px-6 py-4">
       <header className="mb-3 flex items-center justify-between gap-3">
         <button
           type="button"
@@ -221,8 +224,10 @@ export function BracketScreen() {
         </p>
       )}
 
-      {/* Só a fase atual — sem overflow lateral. */}
-      <div className="active-round">
+      {/* Só a fase atual — sem overflow lateral. As oitavas (8 partidas
+          da sala de 16) trocam a pilha por uma grade densa de duas
+          colunas para caber na tela. */}
+      <div className={`active-round ${round.length > 4 ? 'active-round--dense' : ''}`}>
         <AnimatePresence mode="popLayout">
           {round.map((match, i) => (
             <BracketCard
@@ -245,7 +250,7 @@ export function BracketScreen() {
               </p>
             )}
             <Button onClick={playMyMatch} size="md" fullWidth data-testid="play-tournament-match">
-              <Icon name="dice" /> JOGAR AGORA
+              <Icon name="club" /> JOGAR AGORA
             </Button>
           </div>
         ) : (

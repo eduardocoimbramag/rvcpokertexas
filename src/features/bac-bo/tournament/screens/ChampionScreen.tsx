@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion';
+import { useEffect } from 'react';
 
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
@@ -6,6 +7,7 @@ import { formatCredits } from '@/shared/lib/format';
 
 import { AvatarBadge } from '../../components/AvatarBadge';
 import { Confetti } from '../../components/Confetti';
+import { audioManager } from '../../services/AudioManager';
 import { placementOf } from '../bracket';
 import { PODIUM_METALS } from '../podium';
 import { prizeFor, tournamentSelectors, useTournamentStore } from '../tournamentStore';
@@ -23,8 +25,15 @@ export function ChampionScreen() {
   const leave = useTournamentStore((s) => s.leaveTournament);
   const reducedMotion = useReducedMotion() ?? false;
 
+  const youWon = !!champion && champion.id === tournamentSelectors.youId;
+
+  // A coroação do próprio jogador entra com a plateia de pé — uma vez
+  // só, na montagem da tela.
+  useEffect(() => {
+    if (youWon) audioManager.playSfx('applause');
+  }, [youWon]);
+
   if (!champion || !bracket) return null;
-  const youWon = champion.id === tournamentSelectors.youId;
 
   // Pódio na ordem: campeão, vice e bronze — cada um com o que levou.
   const podium: (TournamentPlayer | null)[] = [1, 2, 3].map(

@@ -57,7 +57,12 @@ class AudioManager {
   playSfx(name: SfxName): void {
     this.init();
     try {
-      this.sfx.get(name)?.play();
+      const howl = this.sfx.get(name);
+      // A ovação é longa (~3,4s) e pode ser pedida duas vezes em
+      // sequência (vitória da final + coroação logo atrás): a nova
+      // plateia SUBSTITUI a cauda da anterior em vez de dobrar por cima.
+      if (name === 'applause') howl?.stop();
+      howl?.play();
     } catch {
       // Ignorado: áudio é best-effort.
     }

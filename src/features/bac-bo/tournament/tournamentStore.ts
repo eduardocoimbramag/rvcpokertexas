@@ -5,7 +5,6 @@ import { createId } from '@/shared/lib/ids';
 import { TIMINGS } from '../animations/timings';
 import { MIN_STAKE, afterHouseEdge } from '../engine/credits';
 import { audioManager } from '../services/AudioManager';
-import { resolveOutcome, sumDicePair } from '../engine/rules';
 import type { Match, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
 import {
@@ -24,7 +23,6 @@ import {
   chatMessage,
   makeBots,
   makeLobbyListings,
-  rollPlayerMatch,
   shuffle,
   simulateBotMatch,
   systemMessage,
@@ -38,6 +36,7 @@ import type {
   TournamentPlayer,
   TournamentSize,
 } from './types';
+import { lobbyPasswordMatches } from './types';
 
 /**
  * Store do modo Torneio. Orquestra lobby (chat, membros, dono),
@@ -47,12 +46,15 @@ import type {
 
 export type TournamentStage = 'closed' | 'browse' | 'lobby' | 'bracket' | 'match' | 'champion';
 
-/** Dados prontos para o TournamentMatchScreen renderizar a mesa. */
+/**
+ * Dados prontos para o TournamentMatchScreen abrir a mesa. A partida
+ * NÃO nasce decidida: a tela joga a mão de blackjack de verdade (motor
+ * próprio, hit/stand interativos) e devolve o desfecho em
+ * `finishMyMatch(result)`.
+ */
 export interface ActiveMatch {
   bracketMatchId: string;
   match: Match;
-  result: RoundResult;
-  youWin: boolean;
   /** É a disputa do 3º lugar (muda o que está em jogo na tela). */
   thirdPlace: boolean;
 }
@@ -115,7 +117,6 @@ export interface TournamentState {
    * `false` (e não entra) quando o código não confere.
    */
   joinLobby: (lobby: LobbyListing, password?: string) => boolean;
-  setSize: (size: TournamentSize) => void;
   /** Confirma a sua presença no lobby (só para quem não é o dono). */
   confirmPresence: () => void;
   /** Desfaz a sua confirmação enquanto o torneio não começou. */
@@ -124,7 +125,8 @@ export interface TournamentState {
   sendChat: (text: string) => void;
   startTournament: () => void;
   playMyMatch: () => void;
-  finishMyMatch: () => void;
+  /** Grava no chaveamento o resultado que a mesa acabou de decidir. */
+  finishMyMatch: (result: RoundResult) => void;
   backToBracket: () => void;
   leaveTournament: () => void;
 }
@@ -360,10 +362,11 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     },
 
     joinLobby: (lobby, password = '') => {
-      // A porta da sala privada: sem o código do anfitrião não se entra,
-      // e a checagem mora aqui (não na tela) para nenhum caminho de UI
-      // conseguir pular a senha.
-      if (lobby.visibility === 'private' && password.trim() !== lobby.password) return false;
+      // A porta da sala privada: sem o código do anfitrião não se entra.
+      // A regra é a mesma que a folha da senha usa (lobbyPasswordMatches),
+      // e passar por aqui é obrigatório — nenhum caminho de UI entra numa
+      // sala privada sem ela.
+      if (!lobbyPasswordMatches(lobby, password)) return false;
       clearTimers();
       const host: TournamentPlayer = {
         id: createId(),
@@ -398,22 +401,6 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       for (const member of others) scheduleBotReady(member.id);
       scheduleFill();
       return true;
-    },
-
-    setSize: (size) => {
-      const s = get();
-      if (!isOwner(s) || s.stage !== 'lobby') return;
-      let members = s.members;
-      if (members.length > size) {
-        // Mantém você e corta os últimos bots para caber no novo tamanho.
-        const youMember = members.find((m) => m.isYou);
-        const bots = members.filter((m) => !m.isYou).slice(0, size - 1);
-        members = youMember ? [youMember, ...bots] : bots;
-      }
-      // Confirmação é de quem está sentado: quem saiu leva a sua junto.
-      const seated = new Set(members.map((m) => m.id));
-      set({ size, members, readyIds: s.readyIds.filter((id) => seated.has(id)) });
-      scheduleFill();
     },
 
     confirmPresence: () => {
@@ -490,43 +477,26 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       const bm = yourPendingMatch(b, YOU_ID);
       if (!bm || !bm.a || !bm.b) return;
       const opponent = bm.a.id === YOU_ID ? bm.b : bm.a;
-      const { playerDice, opponentDice } = rollPlayerMatch();
-      const playerTotal = sumDicePair(playerDice);
-      const opponentTotal = sumDicePair(opponentDice);
-      const outcome = resolveOutcome(playerTotal, opponentTotal);
+      // Nada é decidido aqui: a tela da partida abre a mesa e joga a
+      // mão de blackjack de verdade contra o dealer da casa.
       const match: Match = {
         id: bm.id,
         opponent: { id: opponent.id, name: opponent.name, avatar: opponent.avatar, rating: 1000 },
         stake: 0,
         createdAt: Date.now(),
       };
-      const result: RoundResult = {
-        id: createId(),
-        matchId: bm.id,
-        playerDice,
-        opponentDice,
-        playerTotal,
-        opponentTotal,
-        outcome,
-        stake: 0,
-        payout: 0,
-        netChange: 0,
-        completedAt: Date.now(),
-      };
       set({
         stage: 'match',
         activeMatch: {
           bracketMatchId: bm.id,
           match,
-          result,
-          youWin: outcome === 'win',
           thirdPlace: isThirdPlaceMatch(b, bm.id),
         },
       });
     },
 
-    /** Chamado quando a mesa do jogador termina de revelar (grava no chaveamento). */
-    finishMyMatch: () => {
+    /** Chamado quando a mesa do jogador fecha a mão (grava no chaveamento). */
+    finishMyMatch: (result) => {
       const s = get();
       const am = s.activeMatch;
       const b = s.bracket;
@@ -536,15 +506,23 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         (m) => m.id === am.bracketMatchId,
       );
       if (!bm || bm.played || !bm.a || !bm.b) return;
+      const youWin = result.outcome === 'win';
+      // Placar do chaveamento: o total da mão; estouro conta 0 (quem
+      // estoura não tem mão). O chaveamento decide o vencedor comparando
+      // placares, então nos raros desfechos em que a CATEGORIA decide
+      // com totais iguais (natural × 21 em três cartas), o perdedor cede
+      // um ponto no registro — o placar tem de concordar com a mesa.
+      let youScore = result.playerCategory === 'bust' ? 0 : result.playerTotal;
+      let oppScore = result.opponentCategory === 'bust' ? 0 : result.opponentTotal;
+      if (youWin && youScore <= oppScore) oppScore = Math.max(0, youScore - 1);
+      if (!youWin && oppScore <= youScore) youScore = Math.max(0, oppScore - 1);
       const youAreA = bm.a.id === YOU_ID;
-      const youScore = am.result.playerTotal;
-      const oppScore = am.result.opponentTotal;
       const scoreA = youAreA ? youScore : oppScore;
       const scoreB = youAreA ? oppScore : youScore;
       set({ bracket: recordMatchResult(b, bm.id, scoreA, scoreB) });
       // Perdeu = está eliminado: é ESTE o instante em que a taxa sai do
       // saldo. Ganhando, ele segue no torneio sem pagar nada.
-      if (!am.youWin) chargeEntryFee();
+      if (!youWin) chargeEntryFee();
     },
 
     backToBracket: () => {

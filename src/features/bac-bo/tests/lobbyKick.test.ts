@@ -51,12 +51,14 @@ describe('makeBots — elenco sem repetição', () => {
   });
 
   it('não repete nomes dentro da mesma leva', () => {
-    const names = makeBots(12).map((b) => b.name);
+    const names = makeBots(15).map((b) => b.name);
     expect(new Set(names).size).toBe(names.length);
   });
 
   it('devolve menos que o pedido quando o elenco acaba', () => {
-    const all = makeBots(12).map((b) => b.name);
+    // Pede além de qualquer elenco: o que voltar é o elenco inteiro.
+    const all = makeBots(999).map((b) => b.name);
+    expect(all.length).toBeGreaterThanOrEqual(15); // cobre a sala de 16
     expect(makeBots(3, all)).toHaveLength(0);
   });
 });

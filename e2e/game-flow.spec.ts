@@ -7,11 +7,18 @@ import { expect, test } from '@playwright/test';
  * resultados para tornar as verificações determinísticas — inclusive o
  * auto-aceite da negociação (o bot fecha qualquer proposta), que fixa o
  * valor da aposta nos fluxos de resultado.
+ *
+ * Como o forçar funciona no blackjack: a engine empilha o sapato.
+ * - 'win': o jogador recebe BLACKJACK NATURAL → a rodada resolve na
+ *   distribuição, sem interação, e a vitória decisiva paga 3:2.
+ * - 'lose': o rival recebe o natural e o jogador fica com 20 → é preciso
+ *   PARAR (action-stand) para a rodada seguir.
+ * - 'tie': os dois recebem naturais → resolve sozinho e re-distribui.
  */
 
 /** Estado persistido com tutorial já visto e sons desligados. */
 const SEEDED_STATE = {
-  version: 1,
+  version: 2,
   state: {
     balance: 1000,
     history: [],
@@ -41,8 +48,8 @@ async function forceOutcome(page: Page, outcome: string) {
 
 /**
  * Força o vencedor do cara-ou-coroa. Com o oponente vencendo, o sorteio
- * corre sozinho (ele escolhe a própria cor) e `playRound` atravessa a
- * fase sem interação — determinístico para os fluxos de resultado.
+ * corre sozinho (ele escolhe a própria cor) e a rodada atravessa a fase
+ * sem interação — determinístico para os fluxos de resultado.
  */
 async function forceCoinWinner(page: Page, winner: 'player' | 'opponent') {
   await page.getByTestId('devtools-toggle').click();
@@ -69,25 +76,40 @@ async function negotiateStake(page: Page, stake: number) {
   await page.getByTestId('nego-start').click({ timeout: 15_000 });
 }
 
-async function playRound(page: Page, stake: number) {
+/**
+ * Joga a SÉRIE inteira (melhor de 3) com o resultado forçado já ligado.
+ * Com 'win' (naturais do jogador) a série fecha sozinha em 2 rodadas;
+ * com 'lose' o jogador precisa PARAR uma vez por rodada — `stands`
+ * cobre os dois casos.
+ */
+async function playSeries(page: Page, stake: number, stands = 0) {
   await forceCoinWinner(page, 'opponent');
   await forceNegoAutoAccept(page);
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
   await negotiateStake(page, stake);
   // A moeda entra em cena com o lado sorteado do jogador.
   await expect(page.getByTestId('coinflip-overlay')).toBeVisible({ timeout: 10_000 });
-  // Câmera vertical: só a mesa em quadro enquanto os dados rolam
+  // Câmera vertical: só o feltro em quadro enquanto as cartas correm
   // (o timeout cobre sorteio ~10 s + countdown 4,5 s).
   await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'overhead', {
     timeout: 30_000,
   });
-  // Countdown + rolagem + revelação até o resultado.
-  await expect(page.getByTestId('result-title')).toBeVisible({ timeout: 20_000 });
+  // Nas rodadas interativas (derrota forçada), cada PARAR fecha uma mão.
+  for (let i = 0; i < stands; i += 1) {
+    const stand = page.getByTestId('action-stand');
+    await stand.click({ timeout: 45_000 });
+    // O botão segue em cena por um beat após a ação (a carta final
+    // assenta antes de a mesa virar): esperar ele SAIR garante que o
+    // próximo clique é da rodada seguinte, não um repique nesta.
+    await expect(stand).toBeHidden({ timeout: 15_000 });
+  }
+  // Duas rodadas (distribuição + vezes + veredito) + o beat entre elas.
+  await expect(page.getByTestId('result-title')).toBeVisible({ timeout: 90_000 });
   // No resultado a câmera volta para a dealer reagir.
   await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'front');
 }
 
-test('primeira jogada: tutorial, negociação e vitória leva 90% da aposta', async ({ page }) => {
+test('primeira jogada: tutorial, negociação e o natural decisivo paga 3:2', async ({ page }) => {
   await page.goto('/');
 
   // Home → Tutorial (primeira visita) → busca direta por oponente.
@@ -119,37 +141,58 @@ test('primeira jogada: tutorial, negociação e vitória leva 90% da aposta', as
 
   await page.getByTestId('nego-start').click();
   await expect(page.getByTestId('coinflip-overlay')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/, { timeout: 45_000 });
+  // Melhor de 3 com vitória forçada (naturais): a série fecha 2 a 0 na
+  // 2ª rodada, sem nenhuma interação.
+  await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/, { timeout: 90_000 });
+  await expect(page.getByTestId('series-dots')).toHaveAttribute('data-score', '2-0');
 
-  // A variação sobe para a pílula de saldo e o contador chega ao total.
-  await expect(page.getByTestId('balance')).toContainText('1.045');
+  // O natural decisivo paga 3:2: 50 de stake → +75 de ganho líquido.
+  await expect(page.getByTestId('balance')).toContainText('1.075');
   // ...e a dealer comemora a vitória do jogador.
   await expect(page.getByTestId('dealer')).toHaveAttribute('data-reaction', 'celebrate');
 });
 
-test('derrota: o stake negociado é perdido', async ({ page }) => {
+test('derrota: o jogador para com 20, o natural do rival leva, o stake se perde', async ({
+  page,
+}) => {
   await seedStorage(page);
   await page.goto('/');
 
   await page.getByTestId('play-button').click();
   await forceOutcome(page, 'lose');
-  await playRound(page, 25);
+  // Derrota forçada: o jogador recebe 20 e a vez dele abre — uma parada
+  // por rodada (a série fecha 0 a 2 em duas rodadas).
+  await playSeries(page, 25, 2);
 
   await expect(page.getByTestId('result-title')).toHaveText(/DERROTA/);
+  await expect(page.getByTestId('series-dots')).toHaveAttribute('data-score', '0-2');
   await expect(page.getByTestId('balance')).toContainText('975');
 });
 
-test('empate: os créditos são devolvidos', async ({ page }) => {
+test('empate re-distribui a rodada: nenhum círculo preenche e a série continua', async ({
+  page,
+}) => {
   await seedStorage(page);
   await page.goto('/');
 
   await page.getByTestId('play-button').click();
   await forceOutcome(page, 'tie');
-  await playRound(page, 25);
+  await forceCoinWinner(page, 'opponent');
+  await forceNegoAutoAccept(page);
+  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
+  await negotiateStake(page, 25);
 
-  await expect(page.getByTestId('result-title')).toHaveText(/EMPATE/);
-  await expect(page.getByTestId('result-delta')).toHaveText(/devolvida/i);
-  await expect(page.getByTestId('balance')).toContainText('1.000');
+  // A 1ª rodada empata (naturais dos dois lados): o beat de nova mão
+  // entra em cena e o placar da série segue zerado — empate não
+  // preenche círculo.
+  await expect(page.getByTestId('round-verdict')).toHaveText(/EMPATE/, { timeout: 60_000 });
+  await expect(page.getByTestId('series-dots')).toHaveAttribute('data-score', '0-0');
+
+  // Destravada a força para VITÓRIA, o jogador fecha a série 2 a 0 nas
+  // rodadas seguintes — e o natural decisivo paga 3:2 (25 → +37).
+  await forceOutcome(page, 'win');
+  await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/, { timeout: 120_000 });
+  await expect(page.getByTestId('balance')).toContainText('1.037');
 });
 
 test('persistência: saldo e histórico sobrevivem ao reload', async ({ page }) => {
@@ -158,16 +201,16 @@ test('persistência: saldo e histórico sobrevivem ao reload', async ({ page }) 
 
   await page.getByTestId('play-button').click();
   await forceOutcome(page, 'win');
-  await playRound(page, 50);
-  await expect(page.getByTestId('balance')).toContainText('1.045');
+  await playSeries(page, 50);
+  await expect(page.getByTestId('balance')).toContainText('1.075');
 
   await page.reload();
 
   // De volta à Home com o saldo persistido.
-  await expect(page.getByTestId('balance')).toContainText('1.045');
+  await expect(page.getByTestId('balance')).toContainText('1.075');
   await page.getByTestId('history-button').click();
   await expect(page.getByTestId('history-list').locator('li')).toHaveCount(1);
-  await expect(page.getByTestId('history-list')).toContainText('+45');
+  await expect(page.getByTestId('history-list')).toContainText('+75');
 });
 
 test('negociação: contraproposta do bot pode ser aceita; desistir volta ao menu', async ({
@@ -196,7 +239,7 @@ test('negociação: contraproposta do bot pode ser aceita; desistir volta ao men
   await expect(page.getByTestId('balance')).toContainText('1.000');
 });
 
-test('cara-ou-coroa: vencendo o sorteio, o jogador escolhe a cor dos dados', async ({ page }) => {
+test('cara-ou-coroa: vencendo o sorteio, o jogador escolhe a cor das cartas', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');
 
@@ -208,37 +251,36 @@ test('cara-ou-coroa: vencendo o sorteio, o jogador escolhe a cor dos dados', asy
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
   await negotiateStake(page, 50);
 
-  // Moeda no ar → veredito sozinho em cena → escolha dos dados
+  // Moeda no ar → veredito sozinho em cena → escolha das cartas
   // (intro + voo + resultado + veredito ≈ 7,7 s).
   await expect(page.getByTestId('coin-side')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('coin-winner')).toHaveText(/Você venceu o sorteio/, {
     timeout: 15_000,
   });
-  await expect(page.getByTestId('coin-headline')).toHaveText(/Escolha seus dados/, {
+  await expect(page.getByTestId('coin-headline')).toHaveText(/Escolha suas cartas/, {
     timeout: 15_000,
   });
 
   // A escolha corre sob relógio — zerado, a mesa sorteia a cor sozinha.
   await expect(page.getByTestId('pick-countdown')).toContainText(/Escolha automática em \d+s/);
 
-  // Confirmar só habilita depois de escolher um dos dois dados.
-  const confirm = page.getByTestId('confirm-dice-color');
+  // Confirmar só habilita depois de escolher um dos dois versos.
+  const confirm = page.getByTestId('confirm-card-color');
   await expect(confirm).toBeDisabled();
-  await page.getByTestId('dice-color-vermelho').click();
+  await page.getByTestId('card-color-vermelho').click();
   await confirm.click();
 
-  // A troca vale pela rodada inteira: o dado do jogador assume o
-  // vermelho (e o oponente fica com o azul). A asserção mira a cor
-  // aplicada — que dura toda a rodada — e não o rótulo do beat, que
-  // vive só 1,1 s antes de a fase virar countdown.
-  await expect(page.getByTestId('shaker-player-1').locator('.die-scene')).toHaveAttribute(
-    'style',
-    /#f87171/,
-    { timeout: 15_000 },
-  );
+  // A troca vale pela partida inteira: o círculo da série preenchido
+  // pela vitória do jogador usa o degradê VERMELHO escolhido — uma
+  // âncora estável (o círculo persiste), ao contrário do rótulo do
+  // beat, que vive só 1,1 s antes de a fase virar countdown.
+  await expect(page.getByTestId('series-dot-1')).toHaveAttribute('style', /#f87171/, {
+    timeout: 60_000,
+  });
 
-  // A rodada segue normalmente até o resultado com os dados escolhidos.
-  await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/, { timeout: 30_000 });
+  // A série segue normalmente até o resultado com as cartas escolhidas
+  // (duas rodadas com a vitória forçada).
+  await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/, { timeout: 90_000 });
 });
 
 test('cancelar a busca não debita créditos e volta ao menu', async ({ page }) => {

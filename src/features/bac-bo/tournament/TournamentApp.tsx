@@ -25,9 +25,13 @@ export function TournamentApp({ onExit }: TournamentAppProps) {
 
   return (
     <AnimatePresence mode="wait">
+      {/* min-h-0: o viewport é fixo (#root overflow hidden) — sem quebrar
+          o mínimo automático aqui, telas cheias (o lobby de 16, as
+          oitavas) EMPURRAM o conteúdo para fora da tela em vez de
+          engatar as rolagens internas de assentos/chat/chaveamento. */}
       <motion.div
         key={stage}
-        className="flex flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -10 }}

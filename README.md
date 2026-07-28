@@ -1,16 +1,16 @@
-# 🎲 Bac Bo Arena
+# 🃏 Blackjack Arena
 
-Jogo de dados mobile-first em React + TypeScript com **toda a lógica rodando localmente**: duelo contra um oponente simulado, créditos virtuais, animações 3D, áudio sintetizado e persistência versionada. Sem backend — mas com a arquitetura pronta para recebê-lo.
+Jogo de blackjack 1v1 mobile-first em React + TypeScript com **toda a lógica rodando localmente**: duelo contra um oponente simulado numa mesa de feltro verde, créditos virtuais, cartas 3D animadas, áudio sintetizado e persistência versionada. Sem backend — mas com a arquitetura pronta para recebê-lo.
 
-> Especificação de origem: [docs/BacBo_Arena_Master_Specification.md](docs/BacBo_Arena_Master_Specification.md)
+> Base histórica do projeto (era um Bac Bo de dados): [docs/BacBo_Arena_Master_Specification.md](docs/BacBo_Arena_Master_Specification.md)
 
 ## Regras do jogo
 
-- 4 dados por rodada: **2 azuis (você)** e **2 vermelhos (oponente)**.
-- A **maior soma vence**.
-- Vitória paga **1:1** (você recebe 2× o stake de volta).
-- **Empate devolve** os créditos apostados.
-- Derrota perde o stake.
+- Duelo **1v1 em melhor de 3**: em cada rodada, você e o rival jogam a própria mão de blackjack **contra o MESMO dealer** (sapato de 6 baralhos, dealer para em qualquer 17 — S17).
+- Na sua vez: **PEDIR CARTA** ou **PARAR**, mirando 21 sem estourar.
+- Vence a rodada quem terminar na **melhor categoria contra a casa**: blackjack natural > vitória > empate > derrota > estouro; na mesma categoria, o total mais alto desempata. Empate total re-distribui a rodada.
+- Vitória da série paga **90% do stake do adversário** (10% é a comissão da casa); série decidida com **blackjack natural paga 3:2**, sem comissão.
+- **Empate devolve** os créditos; derrota perde o stake.
 
 ## Como rodar
 

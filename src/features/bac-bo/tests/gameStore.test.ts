@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
 
+import { createId } from '@/shared/lib/ids';
 import { SeededRng } from '@/shared/lib/random';
 
 import {
@@ -10,33 +11,99 @@ import {
   TIMINGS,
 } from '../animations/timings';
 import type {
+  ActParams,
+  BeginRoundParams,
   FindMatchParams,
   GameEngine,
-  PlayRoundParams,
   SetStakeParams,
 } from '../engine/GameEngine';
-import { LocalBacBoGameEngine } from '../engine/LocalBacBoGameEngine';
-import { netChangeFor, payoutFor } from '../engine/rules';
-import type { DicePair, Match, RoundOutcome, RoundResult } from '../engine/types';
+import { LocalBlackjackGameEngine } from '../engine/LocalBlackjackGameEngine';
+import { handValue, netChangeFor, payoutFor } from '../engine/rules';
+import type {
+  BlackjackRoundState,
+  Card,
+  DuelistCategory,
+  Hand,
+  Match,
+  RoundOutcome,
+  RoundResult,
+} from '../engine/types';
+import { audioManager } from '../services/AudioManager';
 import type { PersistedState } from '../services/GameStorageService';
 import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageService';
 import { canTransition, createGameStore } from '../store/gameStore';
 import type { Negotiator } from '../store/negotiation';
 import { BOT_OPENING_MAX_MS, BOT_REPLY_MAX_MS } from '../store/negotiation';
 
-const DICE_FOR_OUTCOME: Record<RoundOutcome, { player: DicePair; opponent: DicePair }> = {
-  win: { player: [6, 5], opponent: [2, 3] },
-  lose: { player: [2, 3], opponent: [6, 5] },
-  tie: { player: [3, 4], opponent: [4, 3] },
+function card(rank: Card['rank'], suit: Card['suit'] = 'spades'): Card {
+  return { rank, suit };
+}
+
+/** Mãos roteirizadas por resultado, todas contra o dealer parado em 17.
+ * O dealer é uma TUPLA para o TS saber que a carta aberta sempre existe. */
+const CARDS_FOR_OUTCOME: Record<
+  RoundOutcome,
+  {
+    player: Hand;
+    opponent: Hand;
+    dealer: [Card, Card];
+    playerCategory: DuelistCategory;
+    opponentCategory: DuelistCategory;
+  }
+> = {
+  // Jogador 19 vence o dealer; oponente 17 empata com ele.
+  win: {
+    player: [card('10'), card('9', 'hearts')],
+    opponent: [card('10', 'clubs'), card('7', 'diamonds')],
+    dealer: [card('9', 'hearts'), card('8', 'diamonds')],
+    playerCategory: 'win',
+    opponentCategory: 'push',
+  },
+  // Espelho: o oponente 19 vence, o jogador 17 empata.
+  lose: {
+    player: [card('10'), card('7', 'hearts')],
+    opponent: [card('10', 'clubs'), card('9', 'diamonds')],
+    dealer: [card('9', 'hearts'), card('8', 'diamonds')],
+    playerCategory: 'push',
+    opponentCategory: 'win',
+  },
+  // Os dois com 19: mesma categoria, mesmo total — a rodada se repete.
+  tie: {
+    player: [card('10'), card('9', 'hearts')],
+    opponent: [card('10', 'clubs'), card('9', 'diamonds')],
+    dealer: [card('9', 'hearts'), card('8', 'diamonds')],
+    playerCategory: 'win',
+    opponentCategory: 'win',
+  },
 };
 
-/** Engine determinística instantânea que sempre produz o resultado dado. */
-class StubEngine implements GameEngine {
-  private outcome: RoundOutcome;
-  private lastStake = 0;
+/** Mão natural do roteiro de blackjack imediato (paga 3:2 se decidir). */
+const NATURAL_CARDS = {
+  player: [card('A'), card('K', 'hearts')] as Hand,
+  opponent: [card('10', 'clubs'), card('7', 'diamonds')] as Hand,
+  dealer: [card('9', 'hearts'), card('8', 'diamonds')] as [Card, Card],
+};
 
-  constructor(outcome: RoundOutcome) {
-    this.outcome = outcome;
+/**
+ * Engine determinística instantânea. Recebe um resultado fixo ou uma
+ * SEQUÊNCIA de resultados (um por rodada da série melhor de 3); o último
+ * da fila se repete se a série pedir mais rodadas. Por padrão cada
+ * rodada abre a vez do jogador e QUALQUER ação a fecha com o resultado
+ * roteirizado; com `natural: true` a rodada volta resolvida já na
+ * distribuição (blackjack do jogador), pulando a vez dele.
+ */
+class StubEngine implements GameEngine {
+  private queue: RoundOutcome[];
+  private lastStake = 0;
+  private currentOutcome: RoundOutcome | null = null;
+  private readonly natural: boolean;
+
+  constructor(
+    outcomes: RoundOutcome | readonly RoundOutcome[],
+    options: { natural?: boolean } = {},
+  ) {
+    this.queue = Array.isArray(outcomes) ? [...outcomes] : [outcomes as RoundOutcome];
+    this.natural = options.natural ?? false;
   }
 
   findMatch(params: FindMatchParams): Promise<Match> {
@@ -59,21 +126,68 @@ class StubEngine implements GameEngine {
     });
   }
 
-  playRound(params: PlayRoundParams): Promise<RoundResult> {
-    const dice = DICE_FOR_OUTCOME[this.outcome];
+  beginRound(params: BeginRoundParams): Promise<BlackjackRoundState> {
+    // Consome a fila rodada a rodada; o último resultado se repete.
+    const outcome = (this.queue.length > 1 ? this.queue.shift() : this.queue[0]) ?? 'win';
+    this.currentOutcome = outcome;
+
+    if (this.natural) {
+      return Promise.resolve(this.settledState(params.matchId, outcome, true));
+    }
+
+    const cards = CARDS_FOR_OUTCOME[outcome];
     return Promise.resolve({
-      id: 'round-1',
       matchId: params.matchId,
-      playerDice: dice.player,
-      opponentDice: dice.opponent,
-      playerTotal: dice.player[0] + dice.player[1],
-      opponentTotal: dice.opponent[0] + dice.opponent[1],
-      outcome: this.outcome,
-      stake: this.lastStake,
-      payout: payoutFor(this.outcome, this.lastStake),
-      netChange: netChangeFor(this.outcome, this.lastStake),
-      completedAt: 0,
+      phase: 'playerTurn',
+      playerHand: cards.player,
+      opponentHand: cards.opponent,
+      dealerUpCard: cards.dealer[0],
+      legalActions: ['hit', 'stand'],
     });
+  }
+
+  act(params: ActParams): Promise<BlackjackRoundState> {
+    // Qualquer ação fecha a rodada no roteiro do stub.
+    const outcome = this.currentOutcome ?? 'win';
+    return Promise.resolve(this.settledState(params.matchId, outcome, false));
+  }
+
+  private settledState(
+    matchId: string,
+    outcome: RoundOutcome,
+    natural: boolean,
+  ): BlackjackRoundState {
+    const cards = natural
+      ? { ...NATURAL_CARDS, playerCategory: 'blackjack' as const, opponentCategory: 'push' as const }
+      : CARDS_FOR_OUTCOME[outcome];
+    const result: RoundResult = {
+      id: createId(),
+      matchId,
+      playerHand: cards.player,
+      opponentHand: cards.opponent,
+      dealerHand: cards.dealer,
+      playerTotal: handValue(cards.player).total,
+      opponentTotal: handValue(cards.opponent).total,
+      dealerTotal: handValue(cards.dealer).total,
+      playerCategory: cards.playerCategory,
+      opponentCategory: cards.opponentCategory,
+      playerNatural: natural,
+      opponentNatural: false,
+      outcome,
+      stake: this.lastStake,
+      payout: payoutFor(outcome, this.lastStake, natural),
+      netChange: netChangeFor(outcome, this.lastStake, natural),
+      completedAt: 0,
+    };
+    return {
+      matchId,
+      phase: 'settled',
+      playerHand: cards.player,
+      opponentHand: cards.opponent,
+      dealerUpCard: cards.dealer[0],
+      legalActions: [],
+      result,
+    };
   }
 }
 
@@ -112,13 +226,13 @@ function createMemoryStorage(): Storage {
  * 'cara' e resultado 'cara' — o jogador vence o cara-ou-coroa.
  */
 function createTestStore(
-  outcome: RoundOutcome,
+  outcomes: RoundOutcome | readonly RoundOutcome[],
   storage = createMemoryStorage(),
   rng: () => number = () => 0.25,
   createNegotiator: () => Negotiator = acceptAllNegotiator,
 ) {
   return createGameStore({
-    engine: new StubEngine(outcome),
+    engine: new StubEngine(outcomes),
     storage: new GameStorageService(storage),
     initialBalance: 500,
     rng,
@@ -131,6 +245,11 @@ function seqRng(values: readonly number[]): () => number {
   let index = 0;
   return () => values[Math.min(index++, values.length - 1)] ?? 0;
 }
+
+/** Vez do oponente do stub (mão de 2 cartas): só o piso de "pensar". */
+const OPP_TURN_MS = TIMINGS.opponentTurnMinMs;
+/** Vez do dealer do stub (para seco em 17): virada + respiro. */
+const DEALER_TURN_MS = TIMINGS.holeFlipMs + TIMINGS.dealerBreathMs;
 
 /** Da Home até a mesa de negociação (busca + splash + confirmação dupla). */
 async function reachNegotiation(store: ReturnType<typeof createTestStore>) {
@@ -163,24 +282,61 @@ async function passCoinFlip(store: ReturnType<typeof createTestStore>) {
     TIMINGS.coinIntroMs + TIMINGS.coinTossMs + TIMINGS.coinResultMs + TIMINGS.coinVerdictMs,
   );
   expect(store.getState().coinFlip?.stage).toBe('pick');
-  store.getState().chooseDiceColor('vermelho');
+  store.getState().chooseCardColor('vermelho');
   await vi.advanceTimersByTimeAsync(TIMINGS.coinPickedMs);
   expect(store.getState().phase).toBe('countdown');
 }
 
-/** Percorre o fluxo completo (com negociação) até a fase informada. */
+/** Countdown → distribuição → vez do jogador aberta. */
+async function passDealing(store: ReturnType<typeof createTestStore>) {
+  await vi.advanceTimersByTimeAsync(TIMINGS.countdownTickMs * COUNTDOWN_START);
+  expect(store.getState().phase).toBe('dealing');
+  await vi.advanceTimersByTimeAsync(TIMINGS.dealMs);
+}
+
+/** Para na primeira oportunidade e atravessa oponente + dealer + veredito. */
+async function standAndSettle(store: ReturnType<typeof createTestStore>) {
+  expect(store.getState().phase).toBe('playerTurn');
+  store.getState().stand();
+  await vi.advanceTimersByTimeAsync(0); // engine.act resolve num microtask
+  await vi.advanceTimersByTimeAsync(TIMINGS.actionResolveMs);
+  expect(store.getState().phase).toBe('opponentTurn');
+
+  await vi.advanceTimersByTimeAsync(OPP_TURN_MS);
+  expect(store.getState().phase).toBe('dealerTurn');
+
+  await vi.advanceTimersByTimeAsync(DEALER_TURN_MS);
+  expect(store.getState().phase).toBe('settle');
+
+  await vi.advanceTimersByTimeAsync(TIMINGS.settleMs);
+}
+
+/** Atravessa UMA rodada da série pelo caminho interativo completo. */
+async function passRound(store: ReturnType<typeof createTestStore>) {
+  await passDealing(store);
+  await standAndSettle(store);
+}
+
+/** Do beat de fim de rodada até o countdown da rodada seguinte. */
+async function passRoundEnd(store: ReturnType<typeof createTestStore>) {
+  expect(store.getState().phase).toBe('roundEnd');
+  await vi.advanceTimersByTimeAsync(TIMINGS.roundEndMs);
+  expect(store.getState().phase).toBe('countdown');
+}
+
+/**
+ * Percorre o fluxo completo (com negociação) até o fim da série. Com
+ * resultados uniformes (win/win ou lose/lose), o melhor de 3 fecha na
+ * segunda rodada.
+ */
 async function playUntilCompleted(store: ReturnType<typeof createTestStore>, stake: number) {
   await reachNegotiation(store);
   await agreeAndStart(store, stake);
   await passCoinFlip(store);
 
-  await vi.advanceTimersByTimeAsync(TIMINGS.countdownTickMs * COUNTDOWN_START);
-  expect(store.getState().phase).toBe('rolling');
-
-  await vi.advanceTimersByTimeAsync(TIMINGS.rollingMs);
-  expect(store.getState().phase).toBe('reveal');
-
-  await vi.advanceTimersByTimeAsync(TIMINGS.revealMs);
+  await passRound(store); // rodada 1: abre o placar da série
+  await passRoundEnd(store);
+  await passRound(store); // rodada 2: fecha a série em 2 a 0
   expect(store.getState().phase).toBe('completed');
 }
 
@@ -195,15 +351,28 @@ afterEach(() => {
 describe('máquina de estados', () => {
   it('só permite transições declaradas', () => {
     expect(canTransition('idle', 'search')).toBe(true);
-    expect(canTransition('idle', 'rolling')).toBe(false);
+    expect(canTransition('idle', 'dealing')).toBe(false);
     expect(canTransition('confirm', 'negotiate')).toBe(true);
     expect(canTransition('confirm', 'coinflip')).toBe(false);
     expect(canTransition('negotiate', 'coinflip')).toBe(true);
     expect(canTransition('negotiate', 'idle')).toBe(true);
     expect(canTransition('negotiate', 'countdown')).toBe(false);
     expect(canTransition('coinflip', 'countdown')).toBe(true);
-    expect(canTransition('countdown', 'rolling')).toBe(true);
-    expect(canTransition('reveal', 'completed')).toBe(true);
+    expect(canTransition('countdown', 'dealing')).toBe(true);
+    // A rodada interativa: distribuição → vez do jogador → oponente →
+    // dealer → veredito; um natural pula a vez do jogador.
+    expect(canTransition('dealing', 'playerTurn')).toBe(true);
+    expect(canTransition('dealing', 'opponentTurn')).toBe(true);
+    expect(canTransition('playerTurn', 'opponentTurn')).toBe(true);
+    expect(canTransition('playerTurn', 'dealerTurn')).toBe(false);
+    expect(canTransition('opponentTurn', 'dealerTurn')).toBe(true);
+    expect(canTransition('dealerTurn', 'settle')).toBe(true);
+    // Melhor de 3: o veredito pode fechar a série ou abrir o beat de
+    // fim de rodada, que só desemboca no countdown seguinte.
+    expect(canTransition('settle', 'completed')).toBe(true);
+    expect(canTransition('settle', 'roundEnd')).toBe(true);
+    expect(canTransition('roundEnd', 'countdown')).toBe(true);
+    expect(canTransition('roundEnd', 'completed')).toBe(false);
     expect(canTransition('completed', 'search')).toBe(true);
     expect(canTransition('search', 'coinflip')).toBe(false);
   });
@@ -218,6 +387,11 @@ describe('máquina de estados', () => {
     store.getState().startDuel();
     expect(store.getState().phase).toBe('idle');
     expect(store.getState().negotiation).toBeNull();
+    // Pedir carta ou parar fora da vez do jogador não faz nada.
+    store.getState().hit();
+    store.getState().stand();
+    expect(store.getState().phase).toBe('idle');
+    expect(store.getState().round).toBeNull();
   });
 
   it('sem saldo mínimo, a busca não abre', () => {
@@ -231,32 +405,149 @@ describe('máquina de estados', () => {
   });
 });
 
-describe('fluxo completo da rodada', () => {
-  it('vitória: devolve o stake e credita 90% do ganho (a casa fica com 10%)', async () => {
+describe('fluxo completo da série (melhor de 3)', () => {
+  it('vitória 2 a 0: devolve o stake e credita 90% do ganho uma única vez', async () => {
     const store = createTestStore('win');
     await playUntilCompleted(store, 50);
 
     expect(store.getState().balance).toBe(545);
     expect(store.getState().result?.outcome).toBe('win');
+    expect(store.getState().series).toMatchObject({
+      playerWins: 2,
+      opponentWins: 0,
+      roundWinners: ['player', 'player'],
+      outcome: 'win',
+    });
+    // A série inteira vira UMA entrada no histórico, com o net final.
     expect(store.getState().history).toHaveLength(1);
     expect(store.getState().history[0]?.netChange).toBe(45);
     expect(store.getState().history[0]?.opponentName).toBe('Stub');
   });
 
-  it('derrota: o stake negociado é perdido', async () => {
+  it('derrota 0 a 2: o stake negociado é perdido uma única vez', async () => {
     const store = createTestStore('lose');
     await playUntilCompleted(store, 50);
 
     expect(store.getState().balance).toBe(450);
+    expect(store.getState().series?.roundWinners).toEqual(['opponent', 'opponent']);
+    expect(store.getState().history).toHaveLength(1);
     expect(store.getState().history[0]?.netChange).toBe(-50);
   });
 
-  it('empate: devolve os créditos (saldo inalterado)', async () => {
-    const store = createTestStore('tie');
-    await playUntilCompleted(store, 50);
+  it('a distribuição preenche a rodada e abre a vez do jogador', async () => {
+    const store = createTestStore('win');
+    await reachNegotiation(store);
+    await agreeAndStart(store, 50);
+    await passCoinFlip(store);
 
-    expect(store.getState().balance).toBe(500);
-    expect(store.getState().history[0]?.netChange).toBe(0);
+    await passDealing(store);
+    expect(store.getState().phase).toBe('playerTurn');
+    const round = store.getState().round;
+    expect(round?.playerHand).toHaveLength(2);
+    expect(round?.opponentHand).toHaveLength(2);
+    expect(round?.dealerUpCard).toBeTruthy();
+    expect(round?.legalActions).toEqual(['hit', 'stand']);
+    // Nada de resultado enquanto o jogador não age.
+    expect(store.getState().result).toBeNull();
+  });
+
+  it('rodada intermediária não credita nada: o payout é só do fim da série', async () => {
+    const store = createTestStore('win');
+    await reachNegotiation(store);
+    await agreeAndStart(store, 50);
+    await passCoinFlip(store);
+
+    await passRound(store); // rodada 1 vencida — série 1 a 0, aberta
+    expect(store.getState().phase).toBe('roundEnd');
+    expect(store.getState().series).toMatchObject({
+      playerWins: 1,
+      opponentWins: 0,
+      roundWinners: ['player'],
+      roundNumber: 2,
+      outcome: null,
+    });
+    // O stake segue na mesa: nada volta ao saldo entre rodadas.
+    expect(store.getState().balance).toBe(450);
+    expect(store.getState().history).toHaveLength(0);
+  });
+
+  it('empate re-distribui a rodada: nenhum círculo preenche e a série segue', async () => {
+    const store = createTestStore(['tie', 'win', 'win']);
+    await reachNegotiation(store);
+    await agreeAndStart(store, 50);
+    await passCoinFlip(store);
+
+    await passRound(store); // rodada 1 empatada → re-distribui
+    expect(store.getState().phase).toBe('roundEnd');
+    expect(store.getState().series).toMatchObject({
+      playerWins: 0,
+      opponentWins: 0,
+      roundWinners: [],
+      roundNumber: 1, // o empate não conta como rodada decidida
+      outcome: null,
+    });
+    expect(store.getState().balance).toBe(450);
+
+    await passRoundEnd(store);
+    await passRound(store); // re-distribuição vencida → 1 a 0
+    await passRoundEnd(store);
+    await passRound(store); // rodada 2 vencida → série fechada
+    expect(store.getState().phase).toBe('completed');
+    expect(store.getState().balance).toBe(545);
+    expect(store.getState().history).toHaveLength(1);
+  });
+
+  it('série de 2 a 1: o terceiro círculo decide o duelo', async () => {
+    const store = createTestStore(['win', 'lose', 'win']);
+    await reachNegotiation(store);
+    await agreeAndStart(store, 50);
+    await passCoinFlip(store);
+
+    await passRound(store);
+    await passRoundEnd(store);
+    await passRound(store);
+    expect(store.getState().series).toMatchObject({ playerWins: 1, opponentWins: 1 });
+    await passRoundEnd(store);
+    await passRound(store);
+
+    expect(store.getState().phase).toBe('completed');
+    expect(store.getState().series).toMatchObject({
+      playerWins: 2,
+      opponentWins: 1,
+      roundWinners: ['player', 'opponent', 'player'],
+      outcome: 'win',
+    });
+    expect(store.getState().balance).toBe(545);
+  });
+
+  it('blackjack natural pula a vez do jogador e paga 3:2 quando decide', async () => {
+    const store = createGameStore({
+      engine: new StubEngine('win', { natural: true }),
+      storage: new GameStorageService(createMemoryStorage()),
+      initialBalance: 500,
+      rng: () => 0.25,
+      createNegotiator: acceptAllNegotiator,
+    });
+    await reachNegotiation(store);
+    await agreeAndStart(store, 50);
+    await passCoinFlip(store);
+
+    // Rodada 1: o natural resolve na distribuição — sem vez do jogador.
+    await passDealing(store);
+    expect(store.getState().phase).toBe('opponentTurn');
+    await vi.advanceTimersByTimeAsync(OPP_TURN_MS);
+    await vi.advanceTimersByTimeAsync(DEALER_TURN_MS);
+    expect(store.getState().phase).toBe('settle');
+    await vi.advanceTimersByTimeAsync(TIMINGS.settleMs);
+    await passRoundEnd(store);
+
+    // Rodada 2 fecha a série; o payout decisivo é o do natural (3:2).
+    await passDealing(store);
+    await vi.advanceTimersByTimeAsync(OPP_TURN_MS + DEALER_TURN_MS + TIMINGS.settleMs);
+    expect(store.getState().phase).toBe('completed');
+    // 450 + payout(50 natural) = 450 + 50 + 75 = 575.
+    expect(store.getState().balance).toBe(575);
+    expect(store.getState().history[0]?.netChange).toBe(75);
   });
 
   it('o débito só acontece no início da partida, depois do acordo', async () => {
@@ -277,6 +568,68 @@ describe('fluxo completo da rodada', () => {
     expect(store.getState().balance).toBe(400);
   });
 
+  it('rodadas tocam cues curtos; a série fechada, fanfarra + aplauso', async () => {
+    const store = createTestStore('win');
+    const played: string[] = [];
+    const spy = vi.spyOn(audioManager, 'playSfx').mockImplementation((name) => {
+      played.push(name);
+    });
+
+    await playUntilCompleted(store, 50);
+    // A distribuição embaralha o sapato a cada rodada.
+    expect(played).toContain('shuffle');
+    // Rodada 1 (série aberta): só o cue curto, sem plateia.
+    expect(played).toContain('roundWin');
+    // Série fechada: fanfarra E a ovação, como efeitos separados.
+    expect(played).toContain('win');
+    expect(played).toContain('applause');
+    spy.mockRestore();
+  });
+
+  it('derrota fecha sem aplauso; empate toca o aviso próprio', async () => {
+    const store = createTestStore(['tie', 'lose', 'lose']);
+    const played: string[] = [];
+    const spy = vi.spyOn(audioManager, 'playSfx').mockImplementation((name) => {
+      played.push(name);
+    });
+
+    await reachNegotiation(store);
+    await agreeAndStart(store, 50);
+    await passCoinFlip(store);
+
+    await passRound(store); // rodada empatada → re-distribui
+    expect(played).toContain('tie');
+    await passRoundEnd(store);
+    await passRound(store); // rodada perdida → 0 a 1
+    expect(played).toContain('roundLose');
+    await passRoundEnd(store);
+    await passRound(store); // 0 a 2 fecha a série
+    expect(store.getState().phase).toBe('completed');
+    expect(played).toContain('lose');
+    expect(played).not.toContain('applause');
+    spy.mockRestore();
+  });
+
+  it('o resultado forçado do DevTools vale a série inteira e morre com ela', async () => {
+    const store = createTestStore('win');
+    await reachNegotiation(store);
+    await agreeAndStart(store, 50);
+    // Injetado direto no estado: o setter público é gateado pelo
+    // devToolsEnabled, que fica desligado sob teste.
+    store.setState({ devForcedOutcome: 'win' });
+    await passCoinFlip(store);
+
+    await passRound(store);
+    // Entre as rodadas a força segue de pé — é o que torna a série
+    // inteira determinística no DevTools/e2e.
+    expect(store.getState().devForcedOutcome).toBe('win');
+    await passRoundEnd(store);
+    await passRound(store);
+
+    expect(store.getState().phase).toBe('completed');
+    expect(store.getState().devForcedOutcome).toBeNull();
+  });
+
   it('jogar de novo inicia uma nova busca mantendo o saldo', async () => {
     const store = createTestStore('win');
     await playUntilCompleted(store, 50);
@@ -285,14 +638,69 @@ describe('fluxo completo da rodada', () => {
     expect(store.getState().phase).toBe('search');
     expect(store.getState().balance).toBe(545);
     expect(store.getState().result).toBeNull();
+    expect(store.getState().round).toBeNull();
+    expect(store.getState().series).toBeNull();
     expect(store.getState().negotiation).toBeNull();
+  });
+});
+
+describe('vez do jogador', () => {
+  async function reachPlayerTurn(store: ReturnType<typeof createTestStore>) {
+    await reachNegotiation(store);
+    await agreeAndStart(store, 50);
+    await passCoinFlip(store);
+    await passDealing(store);
+    expect(store.getState().phase).toBe('playerTurn');
+  }
+
+  it('parar fecha a mão e a mesa atravessa oponente → dealer → veredito', async () => {
+    const store = createTestStore('win');
+    await reachPlayerTurn(store);
+    await standAndSettle(store);
+    expect(store.getState().phase).toBe('roundEnd');
+    expect(store.getState().result?.outcome).toBe('win');
+  });
+
+  it('pedir carta também percorre a engine (o stub fecha a rodada)', async () => {
+    const store = createTestStore('win');
+    await reachPlayerTurn(store);
+
+    store.getState().hit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().round?.phase).toBe('settled');
+    await vi.advanceTimersByTimeAsync(TIMINGS.actionResolveMs);
+    expect(store.getState().phase).toBe('opponentTurn');
+  });
+
+  it('a ação em trânsito trava os botões (actionPending)', async () => {
+    const store = createTestStore('win');
+    await reachPlayerTurn(store);
+    expect(store.getState().actionPending).toBe(false);
+
+    store.getState().stand();
+    // Antes do microtask da engine, a trava está de pé.
+    expect(store.getState().actionPending).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().actionPending).toBe(false);
+  });
+
+  it('o resultado não vaza antes do veredito: settle é quem exibe', async () => {
+    const store = createTestStore('win');
+    await reachPlayerTurn(store);
+
+    store.getState().stand();
+    await vi.advanceTimersByTimeAsync(0);
+    // O resultado já existe no estado (a UI o esconde por fase), mas a
+    // fase ainda percorre os beats do oponente e do dealer.
+    expect(store.getState().result).not.toBeNull();
+    expect(store.getState().phase).toBe('playerTurn');
   });
 });
 
 describe('cancelamento e recusa', () => {
   it('cancelar a busca volta ao menu sem debitar', async () => {
     const store = createGameStore({
-      engine: new LocalBacBoGameEngine({
+      engine: new LocalBlackjackGameEngine({
         rng: new SeededRng(1),
         matchmakingDelayMs: [1000, 1000],
       }),
@@ -580,12 +988,12 @@ describe('cara-ou-coroa', () => {
     await vi.advanceTimersByTimeAsync((left - 1) * 1000);
     expect(store.getState().coinFlip?.stage).toBe('pick');
     expect(store.getState().coinFlip?.pickSeconds).toBe(1);
-    expect(store.getState().diceColors).toEqual({ player: 'azul', opponent: 'vermelho' });
+    expect(store.getState().cardColors).toEqual({ player: 'azul', opponent: 'vermelho' });
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(store.getState().coinFlip?.stage).toBe('picked');
     expect(store.getState().coinFlip?.pickSeconds).toBeNull();
-    expect(store.getState().diceColors).toEqual({ player: 'vermelho', opponent: 'azul' });
+    expect(store.getState().cardColors).toEqual({ player: 'vermelho', opponent: 'azul' });
 
     // Dali em diante a rodada segue igual à da escolha manual.
     await vi.advanceTimersByTimeAsync(TIMINGS.coinPickedMs);
@@ -597,12 +1005,12 @@ describe('cara-ou-coroa', () => {
     await reachCoinFlip(store);
     await vi.advanceTimersByTimeAsync(COIN_BEATS);
 
-    store.getState().chooseDiceColor('azul');
+    store.getState().chooseCardColor('azul');
     expect(store.getState().coinFlip?.pickSeconds).toBeNull();
 
     // Passado o prazo inteiro, a cor escolhida à mão continua de pé.
     await vi.advanceTimersByTimeAsync(COIN_PICK_SECONDS * 1000);
-    expect(store.getState().diceColors).toEqual({ player: 'azul', opponent: 'vermelho' });
+    expect(store.getState().cardColors).toEqual({ player: 'azul', opponent: 'vermelho' });
   });
 
   it('jogador vence o sorteio e a escolha troca as cores dos dois lados', async () => {
@@ -618,8 +1026,8 @@ describe('cara-ou-coroa', () => {
     expect(coin?.stage).toBe('pick');
 
     // Só há duas cores: pegar o vermelho entrega o azul ao oponente.
-    store.getState().chooseDiceColor('vermelho');
-    expect(store.getState().diceColors).toEqual({ player: 'vermelho', opponent: 'azul' });
+    store.getState().chooseCardColor('vermelho');
+    expect(store.getState().cardColors).toEqual({ player: 'vermelho', opponent: 'azul' });
     expect(store.getState().coinFlip?.stage).toBe('picked');
 
     await vi.advanceTimersByTimeAsync(TIMINGS.coinPickedMs);
@@ -631,8 +1039,8 @@ describe('cara-ou-coroa', () => {
     await reachCoinFlip(store);
     await vi.advanceTimersByTimeAsync(COIN_BEATS);
 
-    store.getState().chooseDiceColor('azul');
-    expect(store.getState().diceColors).toEqual({ player: 'azul', opponent: 'vermelho' });
+    store.getState().chooseCardColor('azul');
+    expect(store.getState().cardColors).toEqual({ player: 'azul', opponent: 'vermelho' });
     expect(store.getState().coinFlip?.stage).toBe('picked');
   });
 
@@ -647,7 +1055,7 @@ describe('cara-ou-coroa', () => {
     expect(state.coinFlip?.winner).toBe('opponent');
     expect(state.coinFlip?.stage).toBe('botPick');
     expect(state.coinFlip?.chosenColor).toBe('azul');
-    expect(state.diceColors).toEqual({ player: 'vermelho', opponent: 'azul' });
+    expect(state.cardColors).toEqual({ player: 'vermelho', opponent: 'azul' });
 
     await vi.advanceTimersByTimeAsync(TIMINGS.coinBotPickMs);
     expect(store.getState().phase).toBe('countdown');
@@ -658,30 +1066,30 @@ describe('cara-ou-coroa', () => {
     await reachCoinFlip(store);
 
     // Ainda na intro, antes de a moeda voar: a escolha não vale.
-    store.getState().chooseDiceColor('vermelho');
-    expect(store.getState().diceColors).toEqual({ player: 'azul', opponent: 'vermelho' });
+    store.getState().chooseCardColor('vermelho');
+    expect(store.getState().cardColors).toEqual({ player: 'azul', opponent: 'vermelho' });
     expect(store.getState().coinFlip?.stage).toBe('intro');
 
     // Depois de escolher, uma segunda escolha não reabre o beat.
     await vi.advanceTimersByTimeAsync(COIN_BEATS);
-    store.getState().chooseDiceColor('vermelho');
-    store.getState().chooseDiceColor('azul');
-    expect(store.getState().diceColors.player).toBe('vermelho');
+    store.getState().chooseCardColor('vermelho');
+    store.getState().chooseCardColor('azul');
+    expect(store.getState().cardColors.player).toBe('vermelho');
   });
 
   it('jogar de novo restaura as cores clássicas da mesa', async () => {
     const store = createTestStore('win');
     await playUntilCompleted(store, 50); // escolhe 'vermelho' no caminho
-    expect(store.getState().diceColors).toEqual({ player: 'vermelho', opponent: 'azul' });
+    expect(store.getState().cardColors).toEqual({ player: 'vermelho', opponent: 'azul' });
 
     store.getState().playAgain();
-    expect(store.getState().diceColors).toEqual({ player: 'azul', opponent: 'vermelho' });
+    expect(store.getState().cardColors).toEqual({ player: 'azul', opponent: 'vermelho' });
     expect(store.getState().coinFlip).toBeNull();
   });
 });
 
 describe('persistência', () => {
-  it('salva saldo e histórico após a rodada e hidrata um novo store', async () => {
+  it('salva saldo e histórico após a série e hidrata um novo store', async () => {
     const storage = createMemoryStorage();
     const store = createTestStore('win', storage);
     await playUntilCompleted(store, 50);
@@ -697,6 +1105,46 @@ describe('persistência', () => {
     const store = createTestStore('win', storage);
     expect(store.getState().balance).toBe(500);
     expect(store.getState().history).toHaveLength(0);
+  });
+
+  it('estado v1 (Bac Bo) migra preservando saldo e descartando o histórico de dados', () => {
+    const storage = createMemoryStorage();
+    storage.setItem(
+      'bacbo-arena:state',
+      JSON.stringify({
+        version: 1,
+        state: {
+          balance: 800,
+          history: [
+            {
+              id: 'r1',
+              matchId: 'm1',
+              playerDice: [6, 5],
+              opponentDice: [2, 3],
+              playerTotal: 11,
+              opponentTotal: 5,
+              outcome: 'win',
+              stake: 50,
+              payout: 95,
+              netChange: 45,
+              completedAt: 0,
+              opponentName: 'Luna',
+            },
+          ],
+          settings: {
+            audio: { muted: false, musicVolume: 0.4, sfxVolume: 0.8 },
+            vibrationEnabled: true,
+            tutorialSeen: true,
+          },
+        },
+      }),
+    );
+
+    const store = createTestStore('win', storage);
+    expect(store.getState().balance).toBe(800);
+    expect(store.getState().history).toHaveLength(0);
+    expect(store.getState().settings.tutorialSeen).toBe(true);
+    expect(store.getState().settings.scenery).toBe('high');
   });
 });
 
@@ -735,29 +1183,5 @@ describe('configurações', () => {
     expect(settings.audio.sfxVolume).toBe(0.2);
     expect(settings.vibrationEnabled).toBe(false);
     expect(settings.scenery).toBe('low');
-  });
-
-  it('estados persistidos anteriores ao cenário ganham o default "high"', () => {
-    const storage = createMemoryStorage();
-    // Envelope v1 sem a chave `scenery` (formato antigo).
-    storage.setItem(
-      'bacbo-arena:state',
-      JSON.stringify({
-        version: 1,
-        state: {
-          balance: 800,
-          history: [],
-          settings: {
-            audio: { muted: false, musicVolume: 0.4, sfxVolume: 0.8 },
-            vibrationEnabled: true,
-            tutorialSeen: true,
-          },
-        },
-      }),
-    );
-
-    const store = createTestStore('win', storage);
-    expect(store.getState().balance).toBe(800);
-    expect(store.getState().settings.scenery).toBe('high');
   });
 });

@@ -3,16 +3,14 @@
  * Store e animações leem daqui para permanecerem sincronizados.
  */
 
-/** Acomodação do dado após o copo parar (duration do Die3D: 0.9s). */
-const DIE_SETTLE_MS = 900;
-/** Respiro entre o último dado assentar e o banner de resultado. */
-const REVEAL_BREATH_MS = 700;
-/**
- * Intervalo entre a parada de cada copo na revelação. Longo de
- * propósito: cada dado é um "beat" dramático próprio, com tempo para o
- * jogador refazer a conta antes do próximo parar.
- */
-const REVEAL_STAGGER_MS = 1100;
+/** Intervalo entre cada carta que sai do baralho na distribuição. */
+const DEAL_CARD_STAGGER_MS = 430;
+/** Voo + acomodação de uma carta na mesa (duration do Card3D). */
+const CARD_SETTLE_MS = 550;
+/** Respiro entre a última carta assentar e a vez do jogador abrir. */
+const DEAL_BREATH_MS = 500;
+/** Cartas distribuídas na abertura: 2 para cada duelista. */
+const OPENING_CARDS = 4;
 
 export const TIMINGS = {
   /**
@@ -31,53 +29,50 @@ export const TIMINGS = {
   confirmLockInMs: 1600,
   /**
    * Beat entre o toque em "Iniciar partida" (acordo fechado) e o
-   * cara-ou-coroa: o selo de início respira antes do corte de cena.
+   * countdown: o selo de início respira antes do corte de cena.
    */
   negotiationStartMs: 1000,
-  /** Cara-ou-coroa: apresentação do lado sorteado para o jogador. */
-  coinIntroMs: 1600,
-  /** Voo completo da moeda: subida + giros + queda + quique. */
-  coinTossMs: 2600,
-  /** Face sorteada ("Deu CARA!") na tela antes do veredito. */
-  coinResultMs: 1700,
-  /**
-   * Veredito do sorteio sozinho em tela ("Você venceu o sorteio"): um
-   * beat só dele, antes de os cartões de cor entrarem — por isso a cena
-   * da escolha não repete a frase.
-   */
-  coinVerdictMs: 1800,
-  /** Oponente vencedor "pensando" e anunciando a cor escolhida. */
-  coinBotPickMs: 2200,
-  /** Respiro após a escolha (de qualquer lado) antes do countdown. */
-  coinPickedMs: 1100,
   /** Intervalo entre os ticks do countdown (5 → 1). */
   countdownTickMs: 900,
-  /** Duração do giro dos dados antes da revelação. */
-  rollingMs: 2000,
+  /** Intervalo entre cada carta da distribuição inicial. */
+  dealCardMs: DEAL_CARD_STAGGER_MS,
   /**
-   * Intervalo entre a parada de cada copo na revelação, na ordem
-   * dramática: azul de baixo → vermelho de baixo → vermelho de cima →
-   * azul de cima.
+   * Distribuição completa da rodada, derivada do stagger para nunca
+   * dessincronizar: 4 cartas em fila + acomodação da última (Card3D) +
+   * respiro antes de a vez do jogador abrir.
    */
-  revealStaggerMs: REVEAL_STAGGER_MS,
+  dealMs: OPENING_CARDS * DEAL_CARD_STAGGER_MS + CARD_SETTLE_MS + DEAL_BREATH_MS,
   /**
-   * Pausa entre a revelação e o resultado final, derivada do stagger
-   * para nunca dessincronizar: 3 × stagger (último copo a parar) +
-   * acomodação do dado (Die3D) + respiro antes do banner.
+   * Beat após a última decisão do jogador (a carta final assenta, o
+   * painel de ações recolhe) antes de a vez do rival começar.
    */
-  revealMs: 3 * REVEAL_STAGGER_MS + DIE_SETTLE_MS + REVEAL_BREATH_MS,
+  actionResolveMs: 700,
+  /** Cada carta que o rival pede na vez dele é um beat próprio. */
+  opponentHitMs: 950,
+  /**
+   * Piso da vez do rival: mesmo sem pedir carta, ele "pensa" por um
+   * instante — a vez dele nunca é um corte seco.
+   */
+  opponentTurnMinMs: 1200,
+  /**
+   * Showdown: as duas cartas ocultas viram ao mesmo tempo e o quadro
+   * respira antes do veredito. É o momento clássico da mesa.
+   */
+  revealMs: 1500,
+  /**
+   * Veredito da rodada em tela (totais e situação lado a lado) antes do
+   * desfecho da partida.
+   */
+  settleMs: 1800,
+  /**
+   * Beat do empate: no mata-mata do torneio ninguém pode empatar, então
+   * o aviso respira em tela antes de a mesa distribuir de novo.
+   */
+  roundEndMs: 2600,
 } as const;
 
-/** Valor inicial do countdown falado (5 → 1) antes da rolagem. */
+/** Valor inicial do countdown falado (5 → 1) antes da distribuição. */
 export const COUNTDOWN_START = 5;
-
-/**
- * Janela do vencedor do sorteio para escolher a cor dos dados, em
- * segundos — a mesma dos outros relógios anti-AFK da casa (início
- * automático da partida e retorno ao chaveamento). Zerada, a mesa
- * sorteia a cor por ele.
- */
-export const COIN_PICK_SECONDS = 10;
 
 /**
  * Intervalo mínimo entre propostas do jogador na mesa de negociação,
@@ -85,5 +80,5 @@ export const COIN_PICK_SECONDS = 10;
  */
 export const PROPOSAL_COOLDOWN_SECONDS = 10;
 
-/** Máximo de rodadas mantidas no histórico persistido. */
+/** Máximo de partidas mantidas no histórico persistido. */
 export const HISTORY_LIMIT = 50;

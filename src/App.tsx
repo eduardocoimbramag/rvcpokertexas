@@ -22,6 +22,7 @@ type OpenSheet = 'none' | 'tutorial' | 'history' | 'settings';
 export default function App() {
   const phase = useGameStore((state) => state.phase);
   const result = useGameStore((state) => state.result);
+  const series = useGameStore((state) => state.series);
   const tournamentStage = useTournamentStore((state) => state.stage);
   const openBrowse = useTournamentStore((state) => state.openBrowse);
   const leaveTournament = useTournamentStore((state) => state.leaveTournament);
@@ -67,6 +68,17 @@ export default function App() {
           {phase === 'search' && 'Procurando oponente.'}
           {phase === 'found' && 'Oponente encontrado.'}
           {phase === 'negotiate' && 'Mesa de negociação aberta. Proponham o valor da aposta.'}
+          {phase === 'dealing' && 'Distribuindo as cartas.'}
+          {phase === 'playerTurn' && 'Sua vez: peça carta ou pare.'}
+          {phase === 'opponentTurn' && 'Vez do oponente.'}
+          {phase === 'dealerTurn' && 'Vez do dealer.'}
+          {phase === 'settle' && 'Veredito da rodada.'}
+          {phase === 'roundEnd' &&
+            result &&
+            series &&
+            (result.outcome === 'tie'
+              ? 'Rodada empatada. Ela será jogada de novo.'
+              : `Você ${result.outcome === 'win' ? 'levou' : 'perdeu'} a rodada. Série ${series.playerWins} a ${series.opponentWins}.`)}
           {phase === 'completed' &&
             result &&
             (result.outcome === 'win'

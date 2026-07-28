@@ -9,7 +9,7 @@ import { historyEntrySchema } from '../engine/types';
  */
 
 const STORAGE_KEY = 'bacbo-arena:state';
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 export const audioSettingsSchema = z.object({
   muted: z.boolean(),
@@ -53,10 +53,19 @@ export const DEFAULT_SETTINGS: GameSettings = {
 
 /**
  * Migrações incrementais: a chave N transforma o estado da versão N
- * para a versão N+1. Hoje só existe a v1; o mecanismo já está pronto
- * para evoluções de schema.
+ * para a versão N+1.
  */
-const MIGRATIONS: Record<number, (state: unknown) => unknown> = {};
+const MIGRATIONS: Record<number, (state: unknown) => unknown> = {
+  // v1 (Bac Bo) → v2 (Blackjack): o histórico guardava rodadas de dados,
+  // incompatíveis com o schema de cartas — as entradas são descartadas,
+  // mas saldo e preferências do jogador atravessam a mudança de jogo.
+  1: (state) => {
+    if (typeof state === 'object' && state !== null) {
+      return { ...(state as Record<string, unknown>), history: [] };
+    }
+    return state;
+  },
+};
 
 export class GameStorageService {
   private readonly storage: Storage;

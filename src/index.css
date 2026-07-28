@@ -1,11 +1,13 @@
 @import 'tailwindcss';
 
-/* Tokens de design do Bac Bo Arena (Tailwind v4 theme-first).
+/* Tokens de design do Blackjack Arena (Tailwind v4 theme-first).
    Identidade Royal VIP Club (manual de marca): fundos preto-ameixa e
    vinho borgonha, dourado âmbar/champagne, terracota e texto marfim.
    Hexas oficiais: #140404 #4C0A15 #CB7349 #F5B76F #FFF4E8 #101010.
-   A mesa de couro permanece como material físico (Rota A), aquecida
-   para caramelo para harmonizar com o âmbar da marca. */
+   A mesa vira FELTRO VERDE de cassino (a superfície clássica do
+   blackjack): um verde-bilhar iluminado no miolo — claro o bastante
+   para as tintas gravadas continuarem legíveis — escurecendo até a
+   borda, com o trilho de mogno e a pinline dourada intactos. */
 @theme {
   --color-arena-950: #140404; /* fundo principal — preto ameixa */
   --color-arena-900: #2a0810; /* fundo secundário — vinho profundo (derivado) */
@@ -26,10 +28,11 @@
   /* Tipografia da marca: Oswald (display condensado) + Instrument Sans. */
   --font-display: 'Oswald', 'Instrument Sans', system-ui, sans-serif;
 
-  /* Cenário — mesa de couro Bac Bo (superfície contínua com os poços) */
-  --color-table-500: #d9bd90;
-  --color-table-700: #c09a62;
-  --color-table-900: #7a5230;
+  /* Cenário — mesa de blackjack em feltro verde (rampa clara → escura
+     do mesmo radial de 3 paradas da mesa original) */
+  --color-table-500: #61ad80;
+  --color-table-700: #3f8862;
+  --color-table-900: #1e4934;
   --color-rail-900: #38160e;
   --color-rail-700: #6a3420;
   --color-spot: #f5b76f;
@@ -61,14 +64,16 @@ h2 {
   letter-spacing: 0.01em;
 }
 
-/* Diâmetro dos poços de dados, limitado por largura E altura do viewport
-   (fallback só-largura em navegadores sem dvh): os 4 poços + rótulos
-   sempre cabem na área de jogo, de telas estreitas a paisagem baixa.
-   Vive na raiz porque a MESA também deriva geometria dele — o brasão da
-   câmera vertical centra na grade de poços a partir deste tamanho. */
+/* Largura de uma carta na mesa, limitada por largura E altura do
+   viewport (fallback só-largura em navegadores sem dvh): a fileira do
+   dealer + as duas mãos dos duelistas sempre cabem na área de jogo, de
+   telas estreitas a paisagem baixa. Vive na raiz porque a MESA também
+   deriva geometria dela — o brasão da câmera vertical centra na faixa
+   livre entre as mãos a partir deste tamanho. A altura da carta é
+   sempre --card-w × 7/5 (proporção de baralho). */
 :root {
-  --shaker-size: clamp(4.25rem, 19.5vw, 6rem);
-  --shaker-size: clamp(4.25rem, min(19.5vw, 11.5dvh), 6rem);
+  --card-w: clamp(3.25rem, 16.5vw, 4.5rem);
+  --card-w: clamp(3.25rem, min(16.5vw, 9.5dvh), 4.5rem);
 
   /* Largura da casca do app — fonte única da verdade: o cenário deriva
      dela para nunca sair de sincronia com o conteúdo. A MESA tem
@@ -556,9 +561,11 @@ h2 {
   mask-position: center;
 }
 
-/* Parede de cima do sulco: o couro afunda e não pega a luz do spot. */
+/* Parede de cima do sulco: o feltro afunda e não pega a luz do spot.
+   A tinta acompanhou a mesa: de marrom-couro para um verde-mata
+   profundo — o relevo continua tom-sobre-tom, agora no feltro. */
 .table-crest__shadow {
-  background: #3d2110;
+  background: #0e2f20;
   mix-blend-mode: multiply;
   translate: 0 -0.5%;
 }
@@ -609,19 +616,19 @@ h2 {
   display: block;
 }
 
-/* Na vista de cima a marca fica CENTRADA na grade de poços — o brasão
-   nasce por entre os quatro compartimentos, como a estampa central da
-   mesa em que os dados caem. O centro é derivado da mesma geometria que
-   posiciona a grade, não chutado em %:
+/* Na vista de cima a marca fica na FAIXA LIVRE do feltro — entre a
+   fileira do dealer (no alto) e as mãos dos duelistas (na base), como a
+   estampa central das mesas reais de blackjack. O centro é derivado da
+   mesma geometria que posiciona as mãos, não chutado em %:
      5rem            → o quanto o recorte da cena sobe nesta câmera
      --dealer-h×0,95 → o espaço da dealer (dealer-spacer)
-     0,25rem         → o pt-1 da DiceArena
-     --shaker-size   → meia altura das duas fileiras de poços (o resto do
-                       termo em rem acerta o gap e a escala 1.08 da grade)
+     --card-w×2,25   → a fileira do dealer (carta = 1,4×--card-w de
+                       altura + rótulo) mais meia faixa livre até o
+                       miolo do feltro
    Quase não deita: a câmera está sobre a mesa, olhando de frente para o
-   couro — só uma pitada de perspectiva para não parecer sobreposta. */
+   feltro — só uma pitada de perspectiva para não parecer sobreposta. */
 .table-crest--overhead .table-crest__stamp {
-  top: calc(5.41rem + var(--dealer-h) * 0.95 + var(--shaker-size));
+  top: calc(5.41rem + var(--dealer-h) * 0.95 + var(--card-w) * 2.25);
   width: 60%;
   max-width: 328px;
   translate: -50% -50%;
@@ -720,127 +727,164 @@ h2 {
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
 }
 
-/* ---------- Poços vibradores rebaixados na mesa (DiceShaker) ---------- */
+/* ---------- Carta 3D (CSS puro + Framer Motion no giro) ----------
 
-/* Faixa (bezel) plana e fosca, nivelada com o couro, com filete dourado
-   na borda externa — nenhuma sombra projetada: o poço é parte da mesa. */
-.shaker {
+   A carta é um plano de duas faces em preserve-3d, irmã da moeda do
+   cara-ou-coroa: frente de papel-marfim com índices e naipes, verso na
+   cor escolhida no sorteio. O giro (virada da carta fechada do dealer,
+   revelação) roda o contêiner .card3d em rotateY; backface-visibility
+   esconde a face de trás em cada metade do giro. */
+
+.card-scene {
   position: relative;
-  width: var(--shaker-size);
-  aspect-ratio: 1;
-  border-radius: 9999px;
-  background: linear-gradient(180deg, #a58d68 0%, #877152 100%);
-  box-shadow:
-    /* filete dourado externo, nivelado com o couro */
-    0 0 0 2px #f5b76f,
-    0 0 0 3px #a86a34,
-    /* oclusão do couro em volta do embutido (simétrica, sem offset) */ 0 0 10px 1px
-      rgba(0, 0, 0, 0.3),
-    /* a faixa afunda de leve em relação ao couro */ inset 0 3px 6px rgba(0, 0, 0, 0.35),
-    inset 0 -1px 2px rgba(255, 255, 255, 0.22);
-  display: grid;
-  place-items: center;
+  width: var(--card-size, var(--card-w));
+  /* Proporção de carta de pôquer (63,5 × 88,9 mm ≈ 5:7). */
+  aspect-ratio: 5 / 7;
+  perspective: calc(var(--card-size, var(--card-w)) * 12);
+  /* A sombra acompanha a SILHUETA da carta durante o giro — uma
+     box-shadow ficaria retangular e parada. */
+  filter: drop-shadow(0 5px 9px rgba(10, 24, 16, 0.38));
 }
 
-/* Poço fundo: camurça iluminada ao centro, parede superior na sombra
-   (iluminação de rebaixo — o oposto de um relevo). */
-.shaker__well {
-  position: relative;
-  width: 78%;
-  aspect-ratio: 1;
-  border-radius: 9999px;
-  background: radial-gradient(circle at 50% 40%, #cbb593 0%, #ad977d 50%, #63513c 100%);
-  box-shadow:
-    /* filete dourado interno + aro escuro do corte */
-    0 0 0 1.5px #f5b76f,
-    0 0 0 3px rgba(0, 0, 0, 0.55),
-    /* profundidade do poço */ inset 0 12px 22px rgba(0, 0, 0, 0.6),
-    inset 0 -3px 8px rgba(255, 255, 255, 0.1);
-  display: grid;
-  place-items: center;
-}
-
-/* Anel de brilho que pulsa quando o copo para e o dado assenta. */
-.shaker__flash {
-  position: absolute;
-  inset: -5px;
-  border-radius: 9999px;
-  border: 2px solid rgba(245, 183, 111, 0.95);
-  box-shadow:
-    0 0 16px rgba(245, 183, 111, 0.6),
-    inset 0 0 12px rgba(245, 183, 111, 0.35);
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* ---------- Dado 3D (CSS puro + Framer Motion na rotação) ---------- */
-
-.die-scene {
-  width: var(--die-size);
-  height: var(--die-size);
-  perspective: calc(var(--die-size) * 10);
-}
-
-.die-cube {
+.card3d {
   position: relative;
   width: 100%;
   height: 100%;
   transform-style: preserve-3d;
 }
 
-.die-face {
+.card3d__face {
   position: absolute;
   inset: 0;
-  border-radius: 20%;
+  border-radius: calc(var(--card-size, var(--card-w)) * 0.11);
+  overflow: hidden;
+  backface-visibility: hidden;
+  isolation: isolate;
+}
+
+/* Frente: papel-marfim encorpado com luz na quina superior esquerda e
+   um fio quente de borda — o mesmo papel em qualquer naipe; as tintas
+   dos índices são dos elementos internos. */
+.card3d__face--front {
+  background:
+    radial-gradient(120% 90% at 28% 18%, rgba(255, 255, 255, 0.9), transparent 62%),
+    linear-gradient(160deg, #fffdf6 0%, #f7eeda 55%, #ecdcc0 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(122, 82, 48, 0.3),
+    inset 0 0 calc(var(--card-size, var(--card-w)) * 0.12) rgba(122, 82, 48, 0.14);
+}
+
+/* Verso: a cor do duelista (degradê no MESMO eixo 145° dos dados
+   históricos, vinda de variáveis definidas pelo Card3D a partir de
+   store/cardColors.ts), com filete interno dourado e trama de losangos
+   — filigrana de baralho de cassino, não um retângulo chapado. */
+.card3d__face--back {
+  transform: rotateY(180deg);
+  background: linear-gradient(145deg, var(--card-back-a, #60a5fa) 0%, var(--card-back-b, #1d4ed8) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 0 0 1px rgba(20, 8, 8, 0.35);
+}
+
+/* Moldura interna do verso: o filete dourado clássico. */
+.card3d__face--back::before {
+  content: '';
+  position: absolute;
+  inset: 7%;
+  border-radius: calc(var(--card-size, var(--card-w)) * 0.06);
+  border: 1.5px solid rgba(252, 217, 160, 0.85);
+  box-shadow: 0 0 0 3px rgba(20, 8, 8, 0.18);
+  pointer-events: none;
+}
+
+/* Trama de losangos do verso, recortada dentro da moldura. */
+.card3d__face--back::after {
+  content: '';
+  position: absolute;
+  inset: 9%;
+  border-radius: calc(var(--card-size, var(--card-w)) * 0.05);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.16) 0,
+      rgba(255, 255, 255, 0.16) 1px,
+      transparent 1px,
+      transparent 6px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255, 255, 255, 0.16) 0,
+      rgba(255, 255, 255, 0.16) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+  pointer-events: none;
+}
+
+/* Monograma do clube no miolo do verso — a marca viaja com o baralho. */
+.card3d__monogram {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
   place-items: center;
-  padding: 14%;
-  background: linear-gradient(145deg, #ffffff 0%, #dbe2ee 100%);
-  box-shadow: inset 0 0 calc(var(--die-size) * 0.08) rgb(0 0 0 / 25%);
-}
-
-.die-face--player {
-  background: linear-gradient(145deg, #60a5fa 0%, #1d4ed8 100%);
-}
-
-.die-face--opponent {
-  background: linear-gradient(145deg, #f87171 0%, #b91c1c 100%);
-}
-
-.die-face-front {
-  transform: rotateY(0deg) translateZ(calc(var(--die-size) / 2));
-}
-.die-face-back {
-  transform: rotateY(180deg) translateZ(calc(var(--die-size) / 2));
-}
-.die-face-right {
-  transform: rotateY(90deg) translateZ(calc(var(--die-size) / 2));
-}
-.die-face-left {
-  transform: rotateY(-90deg) translateZ(calc(var(--die-size) / 2));
-}
-.die-face-top {
-  transform: rotateX(90deg) translateZ(calc(var(--die-size) / 2));
-}
-.die-face-bottom {
-  transform: rotateX(-90deg) translateZ(calc(var(--die-size) / 2));
-}
-
-.die-pip {
-  width: 55%;
+  width: 38%;
   aspect-ratio: 1;
   border-radius: 9999px;
-  background: #f8fafc;
-  box-shadow: inset 0 calc(var(--die-size) * -0.015) 0 rgb(0 0 0 / 30%);
+  background: rgba(20, 8, 8, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.7);
+  color: var(--color-gold-bright);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: calc(var(--card-size, var(--card-w)) * 0.17);
+  letter-spacing: 0.08em;
+  text-indent: 0.08em;
 }
 
-/* Cor escolhida no cara-ou-coroa: o degradê vem de variáveis definidas
-   pelo Die3D (paleta em store/diceColors.ts). Declarado DEPOIS de
-   --player/--opponent para vencer na mesma especificidade. */
-.die-face--custom {
-  background: linear-gradient(145deg, var(--die-color-a) 0%, var(--die-color-b) 100%);
+/* Índice de canto: valor em cima, naipe embaixo, como num baralho real.
+   O canto oposto é o mesmo elemento rotacionado 180°. */
+.card3d__corner {
+  position: absolute;
+  top: 4.5%;
+  left: 6.5%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--card-size, var(--card-w)) * 0.015);
+  line-height: 1;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: calc(var(--card-size, var(--card-w)) * 0.24);
+}
+
+.card3d__corner--bottom {
+  top: auto;
+  left: auto;
+  bottom: 4.5%;
+  right: 6.5%;
+  rotate: 180deg;
+}
+
+/* Naipe central grande — a assinatura visual da carta aberta. */
+.card3d__pip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: 46%;
+  display: grid;
+  place-items: center;
+}
+
+/* Tintas dos naipes sobre o papel-marfim: vinho para copas/ouros
+   (a família do borgonha da casa), grafite-azulado para espadas/paus. */
+.card3d--red {
+  color: #a11d2c;
+}
+
+.card3d--black {
+  color: #232a35;
 }
 
 /* ---------- Moeda do cara-ou-coroa (CSS 3D + Framer no giro) ----------
@@ -1031,16 +1075,16 @@ h2 {
   background: radial-gradient(ellipse, rgba(40, 18, 6, 0.55) 0%, rgba(40, 18, 6, 0) 72%);
 }
 
-/* ---------- Escolha da cor dos dados (pós-sorteio) ---------- */
+/* ---------- Escolha da cor das cartas (pós-sorteio) ---------- */
 
-/* Cartão do dado: o mesmo vinho do duelo, aqui como alvo de toque e em
-   VIDRO — um véu sobre o couro da mesa, não uma placa opaca colada nela.
-   O aro assume a cor do dado; selecionado, ganha o aro dourado e o halo
-   do vencedor (mesma linguagem do .score-plate--winner).
+/* Cartão da escolha: o mesmo vinho do duelo, aqui como alvo de toque e
+   em VIDRO — um véu sobre o feltro da mesa, não uma placa opaca colada
+   nela. O aro assume a cor do verso; selecionado, ganha o aro dourado e
+   o halo do vencedor (mesma linguagem do .score-plate--winner).
 
    A largura vem das colunas do contêiner (duas frações iguais), nunca
    do conteúdo: o cartão só precisa preencher a célula. */
-.dice-choice {
+.card-choice {
   position: relative;
   display: flex;
   width: 100%;
@@ -1054,7 +1098,7 @@ h2 {
   background: linear-gradient(180deg, rgba(95, 20, 32, 0.46) 0%, rgba(42, 8, 16, 0.62) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 0 0 2px var(--dice-choice-accent, rgba(203, 115, 73, 0.45)),
+    0 0 0 2px var(--card-choice-accent, rgba(203, 115, 73, 0.45)),
     0 10px 24px rgba(0, 0, 0, 0.28);
   transition:
     box-shadow 0.24s ease,
@@ -1063,7 +1107,7 @@ h2 {
 
 /* O vinho ficou translúcido: o rótulo passa a se apoiar na própria
    sombra para não depender do que estiver por trás dele. */
-.dice-choice__name {
+.card-choice__name {
   font-size: 0.7rem;
   font-weight: 900;
   letter-spacing: 0.16em;
@@ -1072,7 +1116,7 @@ h2 {
   text-shadow: 0 1px 3px rgba(20, 6, 2, 0.75);
 }
 
-.dice-choice--on {
+.card-choice--on {
   box-shadow:
     inset 0 1px 0 rgba(252, 217, 160, 0.3),
     0 0 0 2.5px #f5b76f,
@@ -1082,7 +1126,7 @@ h2 {
 
 /* Escolhido um lado, o outro recua: sem isto os dois aros coloridos
    competem e o cartão selecionado não se destaca. */
-.dice-choice--dim {
+.card-choice--dim {
   filter: brightness(0.82) saturate(0.8);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
@@ -1090,27 +1134,27 @@ h2 {
     0 6px 16px rgba(0, 0, 0, 0.25);
 }
 
-.dice-choice--on .dice-choice__name {
+.card-choice--on .card-choice__name {
   color: var(--color-gold-bright);
 }
 
 @media (hover: hover) {
-  .dice-choice:not(.dice-choice--on):hover {
+  .card-choice:not(.card-choice--on):hover {
     filter: brightness(1.12);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.14),
-      0 0 0 2px var(--dice-choice-accent, rgba(245, 183, 111, 0.6)),
+      0 0 0 2px var(--card-choice-accent, rgba(245, 183, 111, 0.6)),
       0 12px 26px rgba(0, 0, 0, 0.45);
   }
 }
 
-.dice-choice:focus-visible {
+.card-choice:focus-visible {
   outline: 2px solid #f5b76f;
   outline-offset: 3px;
 }
 
 /* Selo de conferido no cartão escolhido (coroa do vencedor do sorteio). */
-.dice-choice__seal {
+.card-choice__seal {
   position: absolute;
   top: -0.7rem;
   display: grid;
@@ -1131,7 +1175,7 @@ h2 {
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
-/* Título nobre das fases ("Escolha sua aposta", "Confirmar duelo?",
+/* Título nobre das fases ("Escolha sua aposta", "Confirmação de duelo",
    "Que vença o melhor!"): a MESMA placa do "Duelo encontrado" do
    FoundSplash — pastilha de vinho, letra dourada em caixa alta com
    entreletra larga —, aqui promovida a título com degradê e lustro.
@@ -1759,6 +1803,52 @@ h2 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+}
+
+/* Sala de 16: quatro fileiras de assentos COMPACTOS. O bloco pode
+   encolher (min-height 0 + overflow) e ganha rolagem própria quando a
+   tela é baixa — junto com o min-h-0 da cadeia (TournamentApp/main),
+   é o que impede a sala cheia de empurrar cabeçalho e botão para fora
+   do viewport fixo. */
+.lobby-seats--dense {
+  gap: 0.4rem;
+  min-height: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 2px;
+}
+
+.lobby-seats--dense .lobby-seat {
+  padding: 0.35rem 0.2rem;
+  border-radius: 0.7rem;
+}
+
+.lobby-seats--dense .lobby-seat__avatar {
+  font-size: 1.05rem;
+}
+
+.lobby-seats--dense .lobby-seat__name {
+  font-size: 0.58rem;
+}
+
+/* O botão de expulsar entra PARA DENTRO do assento: no grid denso o
+   vazamento de 6px seria clipado pelo scroll (e criaria sobreposição
+   entre fileiras apertadas). */
+.lobby-seats--dense .lobby-seat__kick {
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+}
+
+/* Piso do chat na sala de 16: com os assentos encolhendo por rolagem,
+   o chat não pode ser o primeiro a desaparecer — ele segura ao menos a
+   última mensagem e o campo de digitação. */
+.lobby-chat--floor {
+  min-height: 6rem;
 }
 
 .lobby-seat {
@@ -2431,6 +2521,50 @@ h2 {
 
 .active-round .bk-match__tag {
   font-size: 0.62rem;
+}
+
+/* Oitavas de final (sala de 16): 8 partidas não cabem empilhadas — a
+   fase vira uma grade densa de duas colunas, com cartas compactas e
+   rolagem própria caso a tela seja baixa. */
+.active-round--dense {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: safe center;
+  justify-items: stretch;
+  gap: 0.5rem;
+  overflow-y: auto;
+  /* O selo "Sua partida" flutua 9px ACIMA da carta: sem este respiro no
+     topo, a primeira fileira encostada na origem do scroll teria o selo
+     permanentemente clipado (a região acima da origem não rola). */
+  padding-block: 0.75rem 0.25rem;
+}
+
+.active-round--dense .bk-match {
+  width: 100%;
+  max-width: none;
+  padding: 0.45rem 0.6rem;
+}
+
+.active-round--dense .bk-seat {
+  gap: 0.35rem;
+  padding-block: 0;
+}
+
+.active-round--dense .bk-seat__avatar {
+  font-size: 1rem;
+}
+
+.active-round--dense .bk-seat__name {
+  font-size: 0.8rem;
+}
+
+.active-round--dense .bk-seat__score {
+  font-size: 0.95rem;
+  min-width: 1rem;
+}
+
+.active-round--dense .bk-match__tag {
+  font-size: 0.55rem;
 }
 
 .bk-match {
@@ -3291,6 +3425,44 @@ h2 {
     animation: none;
     box-shadow: 0 0 26px rgba(245, 183, 111, 0.55);
   }
+}
+
+/* ---------- Série melhor de 3 (1v1) ---------- */
+
+/* Pílula com os três círculos da série, flutuando no HUD da mesa.
+   line-height 0: os círculos são spans vazios — qualquer strut de linha
+   engordaria a pílula por baixo e os pontos pareceriam altos demais. */
+.series-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 9999px;
+  line-height: 0;
+  background: rgba(24, 4, 8, 0.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(203, 115, 73, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* Círculo vazio: um poço à espera do vencedor da rodada. */
+.series-dot {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(203, 115, 73, 0.45);
+}
+
+/* Preenchido com a cor dos dados de quem levou a rodada. */
+.series-dot--filled {
+  background: linear-gradient(145deg, var(--dot-a), var(--dot-b));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 8px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
 /* Conteúdo visível apenas para leitores de tela. */

@@ -12,11 +12,24 @@ import { BalancePill } from './BalancePill';
 import { CoinFlipOverlay } from './CoinFlipOverlay';
 import { ConfirmPanel } from './ConfirmPanel';
 import { CountdownOverlay } from './CountdownOverlay';
-import { DiceArena } from './DiceArena';
 import { FoundSplash } from './FoundSplash';
+import { HandsArena } from './HandsArena';
 import { MatchmakingOverlay } from './MatchmakingOverlay';
 import { NegotiationPanel } from './NegotiationPanel';
 import { ResultBanner } from './ResultBanner';
+import { RoundEndBanner } from './RoundEndBanner';
+import { SeriesDots } from './SeriesDots';
+
+/** Fases em que a rodada de blackjack está sobre a mesa (grupo arena). */
+const ARENA_PHASES: readonly GamePhase[] = [
+  'dealing',
+  'playerTurn',
+  'opponentTurn',
+  'dealerTurn',
+  'settle',
+  'roundEnd',
+  'completed',
+];
 
 /**
  * Tela de jogo: renderiza o conteúdo correspondente à fase atual da
@@ -27,19 +40,33 @@ export function GameScreen() {
   const phase = useGameStore((state) => state.phase);
   const balance = useGameStore((state) => state.balance);
   const match = useGameStore((state) => state.match);
+  const round = useGameStore((state) => state.round);
+  const actionPending = useGameStore((state) => state.actionPending);
   const result = useGameStore((state) => state.result);
+  const series = useGameStore((state) => state.series);
+  const cardColors = useGameStore((state) => state.cardColors);
+  const coinFlip = useGameStore((state) => state.coinFlip);
+  const chooseCardColor = useGameStore((state) => state.chooseCardColor);
+  const hit = useGameStore((state) => state.hit);
+  const stand = useGameStore((state) => state.stand);
   const countdown = useGameStore((state) => state.countdown);
   const error = useGameStore((state) => state.error);
   const dismissError = useGameStore((state) => state.dismissError);
   const dealerReaction = useDealerReaction();
 
-  // Saldo segurado: enquanto a rodada corre (stake já debitado no
-  // início do duelo), a pílula continua exibindo o saldo PRÉ-rodada — o
-  // débito fica invisível e só aparece na animação do resultado. No
-  // completed a pílula recebe o saldo final + o netChange para animar a
-  // variação.
+  // Saldo segurado: enquanto a SÉRIE corre (stake já debitado no início
+  // do duelo), a pílula continua exibindo o saldo PRÉ-duelo — o débito
+  // fica invisível e só aparece na animação do resultado. No completed a
+  // pílula recebe o saldo final + o netChange para animar a variação.
   const roundActive =
-    phase === 'coinflip' || phase === 'countdown' || phase === 'rolling' || phase === 'reveal';
+    phase === 'coinflip' ||
+    phase === 'countdown' ||
+    phase === 'dealing' ||
+    phase === 'playerTurn' ||
+    phase === 'opponentTurn' ||
+    phase === 'dealerTurn' ||
+    phase === 'settle' ||
+    phase === 'roundEnd';
   const displayBalance = roundActive && match ? balance + match.stake : balance;
   const balanceDelta = phase === 'completed' && result ? result.netChange : null;
 
@@ -48,9 +75,24 @@ export function GameScreen() {
     // negociação rola DENTRO do chat, nunca estica a página.
     <main className="flex min-h-0 flex-1 flex-col px-6 py-4">
       {/* relative z-20: na câmera vertical a mesa toma a tela inteira
-          (o recorte da cena sobe além do header) — o HUD flutua acima. */}
+          (o recorte da cena sobe além do header) — o HUD flutua acima.
+          No centro, os três círculos do melhor de 3 acompanham o duelo
+          inteiro, do cara-ou-coroa ao veredito. */}
       <header className="relative z-20 mb-4 flex items-center justify-between">
         <span className="h-11 w-11" aria-hidden="true" />
+        {/* Ancorados no meio REAL da tela: os flancos do header são
+            desiguais (espaçador de 44px × pílula de ~110px), então em
+            fluxo os círculos escorregariam do centro — e dançariam a
+            cada dígito que o saldo ganha ou perde. O wrapper é FLEX de
+            propósito: como bloco, o strut da linha de texto deixaria o
+            wrapper mais alto que a pílula e ela penderia para cima.
+            O placar só entra com as CARTAS em jogo — do countdown em
+            diante; o cara-ou-coroa ainda é pré-jogo. */}
+        {series && phase !== 'coinflip' ? (
+          <span className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2">
+            <SeriesDots series={series} cardColors={cardColors} />
+          </span>
+        ) : null}
         <BalancePill balance={displayBalance} delta={balanceDelta} />
       </header>
 
@@ -70,14 +112,34 @@ export function GameScreen() {
             {phase === 'found' && match && <FoundSplash match={match} />}
             {phase === 'confirm' && match && <ConfirmPanel match={match} />}
             {phase === 'negotiate' && match && <NegotiationPanel match={match} />}
-            {phase === 'coinflip' && <CoinFlipOverlay />}
+            {phase === 'coinflip' && coinFlip && match && (
+              <CoinFlipOverlay
+                coinFlip={coinFlip}
+                opponentName={match.opponent.name}
+                playerColor={cardColors.player}
+                onChoose={chooseCardColor}
+              />
+            )}
             {phase === 'countdown' && <CountdownOverlay value={countdown} />}
-            {(phase === 'rolling' || phase === 'reveal' || phase === 'completed') && match && (
-              // Sem justify-between/gap: em completed o ResultBanner é
-              // flex-1 e divide sozinho a faixa livre (veredito centrado
-              // + ações no rodapé). Em rolling/reveal só há o DiceArena.
-              <div className="flex flex-1 flex-col">
-                <DiceArena phase={phase} match={match} result={result} />
+            {ARENA_PHASES.includes(phase) && match && (
+              // relative: os banners de rodada/resultado se sobrepõem à
+              // mesa em vez de disputar o flex com as mãos — as cartas
+              // não pulam de lugar quando o veredito entra.
+              <div className="relative flex flex-1 flex-col">
+                <HandsArena
+                  phase={phase}
+                  match={match}
+                  round={round}
+                  result={result}
+                  onHit={hit}
+                  onStand={stand}
+                  actionPending={actionPending}
+                />
+                {phase === 'roundEnd' && result && (
+                  <div className="pointer-events-none absolute inset-0 z-10 flex flex-col">
+                    <RoundEndBanner result={result} />
+                  </div>
+                )}
                 {phase === 'completed' && result && <ResultBanner result={result} />}
               </div>
             )}
@@ -86,7 +148,7 @@ export function GameScreen() {
                 {/* Tinta de vinho gravada, como o texto de erro abaixo. */}
                 <Icon name="warning" size={52} className="text-[#7a1f28]" />
                 <p
-                  className="text-engraved text-lg font-extrabold text-[#33261a]"
+                  className="text-engraved text-lg font-extrabold text-[#123324]"
                   role="alert"
                   data-testid="error-message"
                 >
@@ -106,18 +168,18 @@ export function GameScreen() {
 
 /**
  * Agrupa fases que compartilham o mesmo layout para a transição de tela
- * não desmontar os dados entre rolling → reveal → completed.
+ * não desmontar as cartas entre dealing → playerTurn → … → completed.
  */
 function phaseGroup(phase: GamePhase): string {
-  if (phase === 'rolling' || phase === 'reveal' || phase === 'completed') return 'arena';
-  return phase;
+  return ARENA_PHASES.includes(phase) ? 'arena' : phase;
 }
 
 /**
- * Enquadramento por fase: câmera vertical sobre a mesa enquanto os
- * dados chacoalham e param; frontal em todo o resto — inclusive em
- * `completed`, quando a dealer volta ao quadro reagindo ao resultado.
+ * Enquadramento por fase: câmera vertical sobre o feltro enquanto as
+ * cartas são distribuídas, decididas e reveladas — inclusive no
+ * veredito parcial da rodada; frontal em todo o resto, e em `completed`
+ * a dealer volta ao quadro reagindo ao resultado.
  */
 function cameraFor(phase: GamePhase): SceneCamera {
-  return phase === 'rolling' || phase === 'reveal' ? 'overhead' : 'front';
+  return phase !== 'completed' && ARENA_PHASES.includes(phase) ? 'overhead' : 'front';
 }

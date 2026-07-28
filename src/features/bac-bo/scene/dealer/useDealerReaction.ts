@@ -5,7 +5,8 @@ import type { DealerReaction } from './DealerController';
 
 /**
  * Mapa fase → reação do dealer (docs/scenario.md §9.1).
- * Em `completed`, o resultado da rodada sobrepõe a fase.
+ * No veredito (settle/roundEnd/completed), o resultado da rodada
+ * sobrepõe a fase.
  */
 const PHASE_TO_REACTION: Record<GamePhase, DealerReaction> = {
   idle: 'idle',
@@ -16,8 +17,15 @@ const PHASE_TO_REACTION: Record<GamePhase, DealerReaction> = {
   negotiate: 'present',
   coinflip: 'anticipate',
   countdown: 'anticipate',
-  rolling: 'shake',
-  reveal: 'reveal',
+  // Distribuindo as cartas: as mãos da dealer trabalham.
+  dealing: 'shake',
+  // As vezes dos jogadores: a dealer apresenta a mesa e aguarda.
+  playerTurn: 'present',
+  opponentTurn: 'present',
+  // A virada da fechada e as compras até 17 são o show da própria dealer.
+  dealerTurn: 'reveal',
+  settle: 'reveal',
+  roundEnd: 'reveal',
   completed: 'idle',
   error: 'apologize',
 };
@@ -33,7 +41,12 @@ export function resolveDealerReaction(
   phase: GamePhase,
   outcome: RoundOutcome | null,
 ): DealerReaction {
-  if (phase === 'completed' && outcome) return OUTCOME_TO_REACTION[outcome];
+  // No melhor de 3 a dealer também reage ao veredito PARCIAL da rodada
+  // (settle/roundEnd) — celebra, consola ou dá de ombros no empate
+  // re-distribuído.
+  if ((phase === 'completed' || phase === 'roundEnd' || phase === 'settle') && outcome) {
+    return OUTCOME_TO_REACTION[outcome];
+  }
   return PHASE_TO_REACTION[phase];
 }
 

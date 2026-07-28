@@ -7,7 +7,7 @@ import { isBroke } from '../engine/credits';
 import { audioManager } from '../services/AudioManager';
 import { useGameStore } from '../store/gameStore';
 import { BalancePill } from './BalancePill';
-import { BrandDie } from './BrandDie';
+import { BrandCard } from './BrandCard';
 
 export interface HomeScreenProps {
   onOpenTutorial: () => void;
@@ -74,11 +74,11 @@ export function HomeScreen({
           animate={{ rotate: [0, -8, 8, 0] }}
           transition={{ repeat: Infinity, repeatDelay: 3, duration: 0.8 }}
         >
-          <BrandDie size={80} />
+          <BrandCard size={80} />
         </motion.span>
         <h1 className="flex flex-col items-center gap-1.5 text-6xl font-black leading-none tracking-tight">
-          <span>BAC BO</span>
-          {/* Letras distribuídas para que "ARENA" tenha a mesma largura de "BAC BO". */}
+          <span>BLACKJACK</span>
+          {/* Letras distribuídas para que "ARENA" tenha a mesma largura de "BLACKJACK". */}
           <span className="flex w-full justify-between text-gold" aria-hidden="true">
             {['A', 'R', 'E', 'N', 'A'].map((letter, index) => (
               <span key={`${letter}-${index}`}>{letter}</span>
@@ -97,7 +97,8 @@ export function HomeScreen({
           </Button>
         ) : (
           <Button onClick={handlePlay} fullWidth data-testid="play-button">
-            <Icon name="dice" /> 1V1
+            {/* Naipe de paus no lugar do dado: a casa agora joga cartas. */}
+            <Icon name="club" /> 1V1
           </Button>
         )}
         <Button

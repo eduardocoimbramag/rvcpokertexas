@@ -12,6 +12,7 @@ import { useGameStore } from '../../store/gameStore';
 import { randomLobbyPassword, suggestLobbyName } from '../simulation';
 import { useTournamentStore } from '../tournamentStore';
 import type { LobbyVisibility, TournamentSize } from '../types';
+import { TOURNAMENT_SIZES } from '../types';
 import { PrizeSplit } from './PrizeSplit';
 
 export interface CreateLobbySheetProps {
@@ -147,9 +148,12 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
           )}
         </AnimatePresence>
 
+        {/* O quantitativo se decide AQUI e vira contrato: depois de criada
+            a sala, não há onde mudá-lo. Com 16, o chaveamento abre nas
+            oitavas de final. */}
         <Field label="Jogadores">
           <div className="seg seg--full" role="group" aria-label="Número de jogadores">
-            {([4, 8] as TournamentSize[]).map((n) => (
+            {TOURNAMENT_SIZES.map((n) => (
               <button
                 key={n}
                 type="button"
@@ -162,6 +166,7 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
               </button>
             ))}
           </div>
+          <p className="field__hint">Fixo após a criação da sala.</p>
         </Field>
 
         {/* Taxa livre, no mesmo campo com atalhos da mesa de negociação:

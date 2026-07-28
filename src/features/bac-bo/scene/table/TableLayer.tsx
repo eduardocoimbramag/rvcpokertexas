@@ -29,11 +29,12 @@ const PINLINE_PATH = 'M 0 126 Q 200 44 400 126';
 const STITCH_PATH = 'M 0 134 Q 200 52 400 134';
 
 /**
- * Camada 10 — mesa de Bac Bo em couro cáqui (a mesma superfície onde os
- * poços de dados são rebaixados — mesa e poços são uma peça só).
- * Couro + trilho de mogno + pinline dourada + costura, tudo em SVG
- * vetorial com gradientes. O grão do couro (ruído) só em qualidade alta,
- * e o brasão da casa prensado no couro (TableCrest) em qualquer uma.
+ * Camada 10 — mesa de blackjack em feltro verde (a superfície clássica
+ * do cassino, onde as cartas deslizam).
+ * Feltro + trilho de mogno + pinline dourada + costura, tudo em SVG
+ * vetorial com gradientes. O grão do feltro (ruído) só em qualidade
+ * alta, e o brasão da casa prensado no feltro (TableCrest) em qualquer
+ * uma.
  */
 export function TableLayer({ quality }: TableLayerProps) {
   const uid = useId();
@@ -110,11 +111,11 @@ export function TableLayer({ quality }: TableLayerProps) {
           strokeWidth="1.6"
           opacity="0.55"
         />
-        {/* Costura pespontada do couro */}
+        {/* Costura pespontada do feltro (linha verde-mata, tom sobre tom) */}
         <path
           d={STITCH_PATH}
           fill="none"
-          stroke="rgba(90, 64, 34, 0.55)"
+          stroke="rgba(14, 46, 30, 0.6)"
           strokeWidth="1.2"
           strokeDasharray="4 3"
         />

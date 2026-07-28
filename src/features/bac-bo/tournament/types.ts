@@ -4,7 +4,15 @@
  * backend real entregaria — participantes, chaveamento, salas e chat.
  */
 
-export type TournamentSize = 4 | 8;
+/**
+ * Tamanhos de sala suportados. O quantitativo é escolhido na CRIAÇÃO da
+ * sala e não muda mais: é o contrato com quem entrou (chaveamento,
+ * premiação e taxa derivam dele).
+ */
+export type TournamentSize = 4 | 8 | 16;
+
+/** Opções oferecidas na folha de criação, na ordem de exibição. */
+export const TOURNAMENT_SIZES: readonly TournamentSize[] = [4, 8, 16];
 export type LobbyVisibility = 'public' | 'private';
 
 export interface TournamentPlayer {
@@ -44,6 +52,17 @@ export interface LobbyListing {
 }
 
 /**
+ * A porta da sala privada: sem o código do anfitrião não se entra. É a
+ * regra ÚNICA da senha — a usam tanto a folha que a pede quanto o
+ * `joinLobby`, então nenhum caminho de UI consegue pular a checagem, e
+ * perguntar "a senha confere?" (para só então confirmar a entrada) não
+ * exige entrar na sala antes.
+ */
+export function lobbyPasswordMatches(lobby: LobbyListing, password: string): boolean {
+  return lobby.visibility !== 'private' || password.trim() === lobby.password;
+}
+
+/**
  * Uma partida do chaveamento. `a`/`b` ficam nulos até os vencedores da
  * rodada anterior os preencherem. `scoreA`/`scoreB` são as somas dos
  * dados (2–12) quando a partida termina.
@@ -76,12 +95,15 @@ export interface Bracket {
 /**
  * Rótulos das fases conforme o número de partidas restantes. Curtos de
  * propósito: cabem no stepper do chaveamento sem quebrar linha e leem
- * bem também no overlay de avanço ("Você avança para Semi").
+ * bem também no overlay de avanço ("Você avança para Quartas"). No
+ * plural, como se fala: oitavas e quartas de final.
  */
 export function roundLabel(matchesInRound: number): string {
   switch (matchesInRound) {
+    case 8:
+      return 'Oitavas';
     case 4:
-      return 'Quarta';
+      return 'Quartas';
     case 2:
       return 'Semi';
     case 1:

@@ -19,10 +19,18 @@ describe('synthesizeSfx', () => {
     }
   });
 
-  it('vitória carrega a celebração da plateia (aplausos por ~2,8s)', () => {
+  it('o aplauso da vitória é uma ovação longa, separada da fanfarra', () => {
     const sfx = synthesizeSfx();
-    // A ovação domina a duração: bem mais longa que a fanfarra (~0,7s).
-    expect(pcmBytes(sfx.win)).toBeGreaterThan(2.5 * SAMPLE_RATE * BYTES_PER_SAMPLE);
-    expect(pcmBytes(sfx.win)).toBeGreaterThan(pcmBytes(sfx.lose) * 3);
+    // A ovação (~3,4s) vive no próprio efeito `applause`; o `win` volta a
+    // ser só a fanfarra (~0,7s) e os dois tocam juntos na vitória.
+    expect(pcmBytes(sfx.applause)).toBeGreaterThan(3 * SAMPLE_RATE * BYTES_PER_SAMPLE);
+    expect(pcmBytes(sfx.applause)).toBeGreaterThan(pcmBytes(sfx.win) * 3);
+  });
+
+  it('as rodadas do melhor de 3 têm cues curtos, sem plateia', () => {
+    const sfx = synthesizeSfx();
+    // Meio segundo de cue: bem mais curto que a ovação da série fechada.
+    expect(pcmBytes(sfx.roundWin)).toBeLessThan(1 * SAMPLE_RATE * BYTES_PER_SAMPLE);
+    expect(pcmBytes(sfx.roundLose)).toBeLessThan(1 * SAMPLE_RATE * BYTES_PER_SAMPLE);
   });
 });

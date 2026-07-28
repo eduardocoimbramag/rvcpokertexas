@@ -157,13 +157,21 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
 
   return (
     <div className="flex flex-1 flex-col">
-      {/* Conteúdo centralizado verticalmente no couro livre (docs/
-          centralizacao.md): título, assentos e aposta ficam no meio da
-          mesa, não colados no trilho. Gaps enxutos: esta é a fase mais
-          alta do fluxo e precisa caber no viewport fixo mesmo em
-          aparelhos baixos (o dealer-spacer cede primeiro). */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-4">
-        <PhaseTitle>{bothReady ? 'Que vença o melhor!' : 'Confirmar duelo?'}</PhaseTitle>
+      {/* Três espaçadores em proporção 2 : 1 : 1. O de cima é o dobro
+          dos outros: ele empurra o título para DENTRO do couro (sem ele
+          a placa nasceria colada no trilho da mesa) e, de quebra,
+          aperta o trio — título, duelistas e ações ficam próximos em vez
+          de esparramados pela mesa. Os dois de baixo são iguais entre
+          si, então os duelistas continuam no meio EXATO entre o título e
+          os botões (docs/centralizacao.md). Tudo em fluxo normal: em
+          aparelhos baixos a faixa comprime junto em vez de sobrepor. */}
+      <div className="flex flex-1 flex-col items-center">
+        <div aria-hidden className="w-full grow-[2]" />
+
+        <PhaseTitle>{bothReady ? 'Que vença o melhor!' : 'Confirmação de duelo'}</PhaseTitle>
+
+        {/* Espaçador do título até os assentos. */}
+        <div aria-hidden className="w-full grow" />
 
         <div className="flex w-full items-center justify-around">
           <ReadySeat
@@ -204,8 +212,12 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
           />
         </div>
 
-        {/* Sem placa de aposta aqui: o valor do duelo nasce DEPOIS, na
+        {/* Espaçador inferior: dos assentos até as ações. Mesmo grow do
+            de cima → duelistas EXATAMENTE no meio da faixa.
+
+            Sem placa de aposta aqui: o valor do duelo nasce DEPOIS, na
             mesa de negociação — esta fase só sela o pareamento. */}
+        <div aria-hidden className="w-full grow" />
       </div>
 
       {/* Mesma faixa de segurança do CTA da tela de aposta

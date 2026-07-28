@@ -12,6 +12,7 @@ import {
   yourPendingMatch,
 } from '../tournament/bracket';
 import type { BracketMatch, TournamentPlayer } from '../tournament/types';
+import { roundLabel } from '../tournament/types';
 
 function players(n: number): TournamentPlayer[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -46,6 +47,19 @@ describe('createBracket', () => {
     const b = createBracket(players(4), 4);
     expect(b.rounds.map((r) => r.length)).toEqual([2, 1]);
   });
+
+  it('monta 4 fases (8/4/2/1) para 16 jogadores, das oitavas à final', () => {
+    const b = createBracket(players(16), 16);
+    expect(b.rounds.map((r) => r.length)).toEqual([8, 4, 2, 1]);
+    expect(match(b.rounds, 0, 0).a?.id).toBe('p0');
+    expect(match(b.rounds, 0, 7).b?.id).toBe('p15');
+    expect(b.rounds.map((r) => roundLabel(r.length))).toEqual([
+      'Oitavas',
+      'Quartas',
+      'Semi',
+      'Final',
+    ]);
+  });
 });
 
 describe('resultados e propagação', () => {
@@ -64,6 +78,25 @@ describe('resultados e propagação', () => {
     for (const m of must(b.rounds[1])) b = recordMatchResult(b, m.id, 11, 7);
     b = recordMatchResult(b, match(b.rounds, 2, 0).id, 12, 9);
     expect(tournamentChampion(b)?.id).toBe('p0');
+  });
+
+  it('joga o torneio de 16 inteiro, das oitavas ao campeão', () => {
+    let b = createBracket(players(16), 16);
+    // Oitavas, quartas e semis: o lado A vence tudo (p0 segue vivo).
+    for (const roundIndex of [0, 1, 2]) {
+      for (const m of must(b.rounds[roundIndex])) b = recordMatchResult(b, m.id, 10, 6);
+    }
+    // A disputa do 3º corre antes da final, como nas mesas menores — e
+    // aqui a ordem é AFIRMADA, não só comentada: com as semis fechadas,
+    // a partida em jogo é o bronze, não a final.
+    const third = must(b.thirdPlace);
+    expect(third.a).not.toBeNull();
+    expect(currentMatches(b).map((m) => m.id)).toEqual([third.id]);
+    b = recordMatchResult(b, third.id, 9, 5);
+    b = recordMatchResult(b, match(b.rounds, 3, 0).id, 12, 9);
+
+    expect(tournamentChampion(b)?.id).toBe('p0');
+    expect(placementOf(b, 'p0')).toBe(1);
   });
 });
 

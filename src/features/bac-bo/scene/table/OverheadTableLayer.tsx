@@ -13,12 +13,12 @@ const PINLINE_INSET = 37;
 const STITCH_INSET = 46;
 
 /**
- * Mesa vista de cima (câmera vertical das fases rolling/reveal): o
- * trilho de mogno vira uma moldura em volta de todo o palco e o couro
+ * Mesa vista de cima (câmera vertical da rodada de blackjack): o trilho
+ * de mogno vira uma moldura em volta de todo o palco e o feltro verde
  * preenche o interior, com a mesma linguagem da mesa frontal — pinline
- * dourada, costura pespontada e grão de couro em qualidade alta. É a
- * única camada em cena: a dealer sai do enquadramento e a estrutura da
- * mesa (poços + estampas) fica em evidência.
+ * dourada, costura pespontada e grão do feltro em qualidade alta. É a
+ * única camada em cena: a dealer sai do enquadramento e a mesa (mãos +
+ * estampas) fica em evidência.
  */
 export function OverheadTableLayer({ quality }: OverheadTableLayerProps) {
   const uid = useId();
@@ -115,7 +115,7 @@ export function OverheadTableLayer({ quality }: OverheadTableLayerProps) {
           strokeWidth="1.6"
           opacity="0.55"
         />
-        {/* Costura pespontada do couro */}
+        {/* Costura pespontada do feltro (linha verde-mata, tom sobre tom) */}
         <rect
           x={STITCH_INSET}
           y={STITCH_INSET}
@@ -123,7 +123,7 @@ export function OverheadTableLayer({ quality }: OverheadTableLayerProps) {
           height={720 - STITCH_INSET * 2}
           rx="18"
           fill="none"
-          stroke="rgba(90, 64, 34, 0.55)"
+          stroke="rgba(14, 46, 30, 0.6)"
           strokeWidth="1.2"
           strokeDasharray="4 3"
         />
@@ -142,10 +142,10 @@ export function OverheadTableLayer({ quality }: OverheadTableLayerProps) {
         )}
       </svg>
 
-      {/* Brasão da casa gravado no couro, abaixo da zona de dados. */}
+      {/* Brasão da casa gravado no feltro, na faixa livre entre as mãos. */}
       <TableCrest camera="overhead" />
 
-      {/* Luz zenital: poça quente sobre os poços + vinheta nas bordas. */}
+      {/* Luz zenital: poça quente sobre as cartas + vinheta nas bordas. */}
       <div className="overhead-light" />
     </div>
   );

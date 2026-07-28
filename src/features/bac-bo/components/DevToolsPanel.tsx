@@ -34,7 +34,7 @@ export function DevToolsPanel() {
     <div className="fixed bottom-2 left-2 z-40 flex flex-col items-start gap-2 text-xs">
       {open && (
         <div className="flex flex-col gap-2 rounded-xl border border-arena-line bg-arena-900/95 p-3 shadow-xl">
-          <p className="font-bold text-lavender">Forçar próxima rodada:</p>
+          <p className="font-bold text-lavender">Forçar rodadas (vale a série inteira):</p>
           <div className="flex gap-1">
             {outcomes.map((outcome) => (
               <button

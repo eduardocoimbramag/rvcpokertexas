@@ -8,9 +8,11 @@ export default defineConfig({
   testDir: './e2e',
   /* O fluxo completo é dramático de propósito (splash ~3,4s + lock-in
      1,6s + cara-ou-coroa ~10s, já com o beat do veredito + countdown
-     4,5s + rolagem 2s + revelação ~5,9s): uma rodada inteira passa dos
-     30s padrão. */
-  timeout: 60_000,
+     4,5s + rolagem 2s + revelação ~5,9s) e o 1v1 é uma SÉRIE melhor de
+     3: com resultado forçado são duas rodadas + o beat de fim de rodada
+     (~2,6s) entre elas — o duelo inteiro passa dos 60s com folga curta,
+     e o teste do empate re-rolado joga até três rodadas. */
+  timeout: 120_000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

@@ -27,14 +27,29 @@ function sampleState(): PersistedState {
       {
         id: 'r1',
         matchId: 'm1',
-        playerDice: [6, 3],
-        opponentDice: [2, 2],
-        playerTotal: 9,
-        opponentTotal: 4,
+        playerHand: [
+          { rank: '10', suit: 'spades' },
+          { rank: '9', suit: 'hearts' },
+        ],
+        opponentHand: [
+          { rank: '10', suit: 'clubs' },
+          { rank: '7', suit: 'diamonds' },
+        ],
+        dealerHand: [
+          { rank: '9', suit: 'hearts' },
+          { rank: '8', suit: 'diamonds' },
+        ],
+        playerTotal: 19,
+        opponentTotal: 17,
+        dealerTotal: 17,
+        playerCategory: 'win',
+        opponentCategory: 'push',
+        playerNatural: false,
+        opponentNatural: false,
         outcome: 'win',
         stake: 50,
-        payout: 100,
-        netChange: 50,
+        payout: 95,
+        netChange: 45,
         completedAt: 1700000000000,
         opponentName: 'Luna',
       },
@@ -75,10 +90,45 @@ describe('GameStorageService', () => {
     const storage = createMemoryStorage();
     storage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ version: 1, state: { balance: -10, history: [], settings: {} } }),
+      JSON.stringify({ version: 2, state: { balance: -10, history: [], settings: {} } }),
     );
     const service = new GameStorageService(storage);
     expect(service.load()).toBeNull();
+  });
+
+  it('migra estado v1 (Bac Bo): preserva saldo/preferências, descarta o histórico', () => {
+    const storage = createMemoryStorage();
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        state: {
+          balance: 620,
+          history: [
+            {
+              id: 'r1',
+              matchId: 'm1',
+              playerDice: [6, 3],
+              opponentDice: [2, 2],
+              playerTotal: 9,
+              opponentTotal: 4,
+              outcome: 'win',
+              stake: 50,
+              payout: 100,
+              netChange: 50,
+              completedAt: 1700000000000,
+              opponentName: 'Luna',
+            },
+          ],
+          settings: { ...DEFAULT_SETTINGS, tutorialSeen: true },
+        },
+      }),
+    );
+    const service = new GameStorageService(storage);
+    const loaded = service.load();
+    expect(loaded?.balance).toBe(620);
+    expect(loaded?.history).toEqual([]);
+    expect(loaded?.settings.tutorialSeen).toBe(true);
   });
 
   it('não propaga erros de quota ao salvar', () => {

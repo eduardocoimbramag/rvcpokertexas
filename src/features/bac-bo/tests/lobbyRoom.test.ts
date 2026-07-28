@@ -9,6 +9,7 @@ import {
   useTournamentStore,
 } from '../tournament/tournamentStore';
 import type { LobbyListing } from '../tournament/types';
+import type { RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
 
 /**
@@ -83,15 +84,47 @@ describe('criação de sala', () => {
   });
 });
 
+describe('sala de 16', () => {
+  it('o elenco cobre os 15 assentos de bots, sem nomes repetidos', () => {
+    const bots = makeBots(15);
+    expect(bots).toHaveLength(15);
+    expect(new Set(bots.map((b) => b.name)).size).toBe(15);
+  });
+
+  it('a sala nasce com 16 e o chaveamento abre nas oitavas', () => {
+    useTournamentStore.getState().createLobby({
+      name: 'Copa Grande',
+      visibility: 'public',
+      size: 16,
+      fee: 10,
+      password: '',
+    });
+    const members = [you(), ...makeBots(15)];
+    useTournamentStore.setState({ members, readyIds: members.map((m) => m.id) });
+    useTournamentStore.getState().startTournament();
+
+    const s = useTournamentStore.getState();
+    expect(s.stage).toBe('bracket');
+    expect(s.bracket?.rounds.map((r) => r.length)).toEqual([8, 4, 2, 1]);
+  });
+});
+
 describe('porta da sala privada', () => {
   it('a lista anuncia as privadas com senha, não as esconde', () => {
-    const lobbies = makeLobbyListings();
+    // A vitrine é sorteada: UMA tirada pode vir sem sala privada (e a
+    // mesa de 16 é rara de propósito). Agregar várias tiradas garante
+    // que os dois ramos existem — e que a asserção nunca passa no vazio.
+    const lobbies = Array.from({ length: 50 }, () => makeLobbyListings()).flat();
     expect(lobbies.length).toBeGreaterThan(0);
+    expect(lobbies.some((l) => l.visibility === 'private')).toBe(true);
     for (const lobby of lobbies) {
       // Toda privada da lista tem senha de 4 dígitos; pública, nenhuma.
       if (lobby.visibility === 'private') expect(lobby.password).toMatch(/^\d{4}$/);
       else expect(lobby.password).toBe('');
+      expect([4, 8, 16]).toContain(lobby.size);
     }
+    // A copa de 16 aparece na vitrine — rara, mas existente.
+    expect(lobbies.some((l) => l.size === 16)).toBe(true);
   });
 
   it('senha errada não abre a porta', () => {
@@ -140,6 +173,46 @@ function fullRoom(fee: number, { ready = true } = {}) {
 function startedTournament(fee: number) {
   fullRoom(fee);
   useTournamentStore.getState().startTournament();
+}
+
+/**
+ * Desfecho de uma mão de blackjack, do jeito que a mesa do torneio o
+ * entrega ao `finishMyMatch`: quem venceu fez 19 contra o dealer parado
+ * em 17; quem perdeu empatou com a casa em 17 (push). Nada de estouro —
+ * os totais gravados no chaveamento são os das próprias mãos.
+ */
+function blackjackResult(outcome: 'win' | 'lose'): RoundResult {
+  const winningHand = [
+    { rank: '10', suit: 'spades' },
+    { rank: '9', suit: 'hearts' },
+  ] as const;
+  const losingHand = [
+    { rank: '10', suit: 'clubs' },
+    { rank: '7', suit: 'hearts' },
+  ] as const;
+  const youWin = outcome === 'win';
+  return {
+    id: 'r1',
+    matchId: 'bm-1',
+    playerHand: [...(youWin ? winningHand : losingHand)],
+    opponentHand: [...(youWin ? losingHand : winningHand)],
+    dealerHand: [
+      { rank: '10', suit: 'diamonds' },
+      { rank: '7', suit: 'spades' },
+    ],
+    playerTotal: youWin ? 19 : 17,
+    opponentTotal: youWin ? 17 : 19,
+    dealerTotal: 17,
+    playerCategory: youWin ? 'win' : 'push',
+    opponentCategory: youWin ? 'push' : 'win',
+    playerNatural: false,
+    opponentNatural: false,
+    outcome,
+    stake: 10,
+    payout: youWin ? 20 : 0,
+    netChange: youWin ? 10 : -10,
+    completedAt: 0,
+  };
 }
 
 describe('confirmação da sala', () => {
@@ -248,42 +321,28 @@ describe('taxa de entrada: cobrada só na derrota', () => {
   it('perder a partida debita a taxa uma única vez', () => {
     startedTournament(50);
     useTournamentStore.getState().playMyMatch();
+    if (!useTournamentStore.getState().activeMatch) {
+      throw new Error('partida do jogador não iniciada');
+    }
 
-    const am = useTournamentStore.getState().activeMatch;
-    if (!am) throw new Error('partida do jogador não iniciada');
-    // Força a derrota do jogador no resultado já sorteado.
-    useTournamentStore.setState({
-      activeMatch: {
-        ...am,
-        youWin: false,
-        result: { ...am.result, playerTotal: 4, opponentTotal: 11, outcome: 'lose' },
-      },
-    });
-
-    useTournamentStore.getState().finishMyMatch();
+    // A mesa fechou a mão com a derrota do jogador (17 × 19).
+    useTournamentStore.getState().finishMyMatch(blackjackResult('lose'));
     expect(useGameStore.getState().balance).toBe(950);
     expect(useTournamentStore.getState().feePaid).toBe(true);
 
     // Uma segunda chamada não cobra de novo.
-    useTournamentStore.getState().finishMyMatch();
+    useTournamentStore.getState().finishMyMatch(blackjackResult('lose'));
     expect(useGameStore.getState().balance).toBe(950);
   });
 
   it('vencer não debita: o jogador segue no torneio sem pagar', () => {
     startedTournament(50);
     useTournamentStore.getState().playMyMatch();
+    if (!useTournamentStore.getState().activeMatch) {
+      throw new Error('partida do jogador não iniciada');
+    }
 
-    const am = useTournamentStore.getState().activeMatch;
-    if (!am) throw new Error('partida do jogador não iniciada');
-    useTournamentStore.setState({
-      activeMatch: {
-        ...am,
-        youWin: true,
-        result: { ...am.result, playerTotal: 11, opponentTotal: 4, outcome: 'win' },
-      },
-    });
-
-    useTournamentStore.getState().finishMyMatch();
+    useTournamentStore.getState().finishMyMatch(blackjackResult('win'));
     expect(useGameStore.getState().balance).toBe(1000);
     expect(useTournamentStore.getState().feePaid).toBe(false);
   });

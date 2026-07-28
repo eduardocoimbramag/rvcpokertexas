@@ -2,8 +2,7 @@ import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
 import { formatCredits } from '@/shared/lib/format';
 
-import { tournamentSelectors, useTournamentStore } from '../tournamentStore';
-import type { TournamentSize } from '../types';
+import { useTournamentStore } from '../tournamentStore';
 import { PrizeSplit } from './PrizeSplit';
 
 export interface TournamentSettingsSheetProps {
@@ -12,38 +11,45 @@ export interface TournamentSettingsSheetProps {
 }
 
 /**
- * Ficha da sala. A taxa de entrada e a senha vêm da criação e não se
- * mexem mais — são o contrato com quem entrou. O que ainda se ajusta é o
- * tamanho da mesa, e só pelo dono; para os outros, a folha é leitura.
+ * Ficha da sala. TUDO aqui vem da criação e não se mexe mais — tamanho,
+ * taxa e senha são o contrato com quem entrou. Para todo mundo (dono
+ * inclusive), a folha é só leitura.
  */
 export function TournamentSettingsSheet({ open, onClose }: TournamentSettingsSheetProps) {
   const size = useTournamentStore((s) => s.size);
   const entryFee = useTournamentStore((s) => s.entryFee);
   const visibility = useTournamentStore((s) => s.visibility);
   const password = useTournamentStore((s) => s.password);
-  const setSize = useTournamentStore((s) => s.setSize);
-  const owner = useTournamentStore(tournamentSelectors.isOwner);
+  const lobbyCode = useTournamentStore((s) => s.lobbyCode);
 
   return (
     <Sheet open={open} title="Detalhes da sala" onClose={onClose}>
       <div className="flex flex-col gap-5">
+        {/* Identidade da sala: como ela aparece na lista e o código que
+            se compartilha. Saiu do cabeçalho da tela — lá fica só o
+            nome — e passou a morar aqui, com o resto da ficha. */}
+        <div>
+          <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">Sala</p>
+          <div className="room-fact" data-testid="settings-code">
+            <span className="flex items-center gap-2">
+              <Icon name={visibility === 'public' ? 'globe' : 'lock'} />{' '}
+              {visibility === 'public' ? 'Pública' : 'Privada'}
+            </span>
+            <span className="room-fact__value tracking-[0.2em]">{lobbyCode}</span>
+          </div>
+        </div>
+
+        {/* Tamanho: escolhido na criação, exibido como fato consumado —
+            o chaveamento e a premiação derivam dele. */}
         <div>
           <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">Jogadores</p>
-          <div className="seg seg--full" role="group" aria-label="Número de jogadores">
-            {([4, 8] as TournamentSize[]).map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setSize(n)}
-                disabled={!owner}
-                aria-pressed={size === n}
-                className={`seg__btn ${size === n ? 'seg__btn--on' : ''}`}
-                data-testid={`settings-size-${n}`}
-              >
-                {n} jogadores
-              </button>
-            ))}
+          <div className="room-fact" data-testid="settings-size">
+            <span className="flex items-center gap-2">
+              <Icon name="users" /> Na mesa
+            </span>
+            <span className="room-fact__value">{size} jogadores</span>
           </div>
+          <p className="field__hint">Definido na criação da sala — não muda mais.</p>
         </div>
 
         {/* Taxa: definida na criação, exibida como fato consumado. */}

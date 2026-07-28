@@ -12,7 +12,7 @@ export interface ResultBannerProps {
   result: RoundResult;
 }
 
-/* Tintas escuras e saturadas: o banner assenta sobre o couro claro. */
+/* Tintas escuras e saturadas: o banner assenta sobre o feltro claro. */
 const OUTCOME_COPY: Record<RoundOutcome, { title: string; className: string }> = {
   win: { title: 'VITÓRIA!', className: 'text-[#7a4503]' },
   lose: { title: 'DERROTA', className: 'text-[#8f1616]' },
@@ -33,10 +33,10 @@ export function ResultBanner({ result }: ResultBannerProps) {
   const broke = isBroke(balance);
 
   return (
-    // O banner ocupa toda a faixa livre abaixo dos dados (flex-1) e a
+    // O banner ocupa toda a faixa livre abaixo das cartas (flex-1) e a
     // divide em: [espaço] · veredito · [espaço] · ações. Os dois
     // espaçadores crescem igual (grow), então o veredito fica
-    // EXATAMENTE no centro vertical entre os dados e o botão "Jogar de
+    // EXATAMENTE no centro vertical entre as cartas e o botão "Jogar de
     // novo" — em qualquer altura de tela (docs/centralizacao.md).
     <motion.div
       className="relative flex flex-1 flex-col items-center pb-4"
@@ -51,7 +51,7 @@ export function ResultBanner({ result }: ResultBannerProps) {
         </>
       )}
 
-      {/* Espaçador superior: da base dos dados até o veredito. */}
+      {/* Espaçador superior: da base das cartas até o veredito. */}
       <div aria-hidden className="w-full grow" />
 
       <div className="flex flex-col items-center gap-0.5">
@@ -88,7 +88,7 @@ export function ResultBanner({ result }: ResultBannerProps) {
           </Button>
         ) : (
           <Button onClick={playAgain} size="md" fullWidth data-testid="play-again">
-            <Icon name="dice" /> JOGAR DE NOVO
+            <Icon name="club" /> JOGAR DE NOVO
           </Button>
         )}
         <Button variant="secondary" onClick={goHome} size="md" fullWidth data-testid="go-home">

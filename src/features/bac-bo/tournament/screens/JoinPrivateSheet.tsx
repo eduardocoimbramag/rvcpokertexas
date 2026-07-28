@@ -6,13 +6,20 @@ import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
 import { formatCredits } from '@/shared/lib/format';
 
-import { useTournamentStore } from '../tournamentStore';
 import type { LobbyListing } from '../types';
+import { lobbyPasswordMatches } from '../types';
 
 export interface JoinPrivateSheetProps {
   /** Sala privada escolhida na lista; `null` mantém a folha fechada. */
   lobby: LobbyListing | null;
   onClose: () => void;
+  /**
+   * Senha aceita. A folha NÃO entra na sala: ela só destranca a porta e
+   * devolve o código — quem pergunta "deseja mesmo entrar?" e efetiva a
+   * entrada é a tela de salas, para o aviso da taxa ser o mesmo nas
+   * salas públicas e nas privadas.
+   */
+  onUnlocked: (password: string) => void;
 }
 
 /**
@@ -21,10 +28,10 @@ export interface JoinPrivateSheetProps {
  *
  * O convite mostra o código porque, num app local, não existe o "fora
  * do jogo" onde ele seria combinado; o gesto de digitar continua real, e
- * a validação mora no store (nenhuma tela consegue pular a senha).
+ * a regra da senha é a mesma que o `joinLobby` aplica na hora de entrar
+ * (nenhuma tela consegue pular a senha).
  */
-export function JoinPrivateSheet({ lobby, onClose }: JoinPrivateSheetProps) {
-  const joinLobby = useTournamentStore((s) => s.joinLobby);
+export function JoinPrivateSheet({ lobby, onClose, onUnlocked }: JoinPrivateSheetProps) {
   // Campo e erro nascem limpos a cada tentativa: quem zera é a chave
   // que a tela de salas troca ao abrir a folha.
   const [code, setCode] = useState('');
@@ -32,8 +39,8 @@ export function JoinPrivateSheet({ lobby, onClose }: JoinPrivateSheetProps) {
 
   const submit = () => {
     if (!lobby) return;
-    if (joinLobby(lobby, code)) {
-      onClose();
+    if (lobbyPasswordMatches(lobby, code)) {
+      onUnlocked(code);
       return;
     }
     setWrong(true);
@@ -98,7 +105,7 @@ export function JoinPrivateSheet({ lobby, onClose }: JoinPrivateSheetProps) {
           </div>
 
           <Button onClick={submit} size="md" fullWidth data-testid="join-confirm">
-            <Icon name="check" /> ENTRAR NA SALA
+            <Icon name="check" /> DESTRANCAR SALA
           </Button>
         </div>
       )}

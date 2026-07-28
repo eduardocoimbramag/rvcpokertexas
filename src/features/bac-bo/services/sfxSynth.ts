@@ -90,7 +90,7 @@ function at(offsetSec: number, part: Float32Array): Float32Array {
  * instantâneo e decaimento exponencial, espalhados ao acaso. A densidade
  * segue o envelope: a ovação cresce rápido e se esvai no final.
  */
-function applause(durationSec: number, volume: number): Float32Array {
+function applause(durationSec: number, volume: number, clapsPerSec = 36): Float32Array {
   const length = Math.floor(SAMPLE_RATE * durationSec);
   const out = new Float32Array(length);
 
@@ -107,7 +107,7 @@ function applause(durationSec: number, volume: number): Float32Array {
     out[i] = low2 * volume * 0.55 * swellAt(i / SAMPLE_RATE);
   }
 
-  const clapCount = Math.floor(durationSec * 36);
+  const clapCount = Math.floor(durationSec * clapsPerSec);
   for (let c = 0; c < clapCount; c += 1) {
     const startSec = Math.random() * (durationSec - 0.04);
     const start = Math.floor(startSec * SAMPLE_RATE);
@@ -187,22 +187,29 @@ export type SfxName =
   | 'countdownGo'
   | 'coinToss'
   | 'coinLand'
-  | 'roll'
-  | 'reveal'
+  | 'shuffle'
+  | 'cardFlip'
+  | 'roundWin'
+  | 'roundLose'
   | 'win'
   | 'lose'
-  | 'tie';
+  | 'tie'
+  | 'applause';
 
 /** Sintetiza todos os efeitos sonoros do jogo como data URIs WAV. */
 export function synthesizeSfx(): Record<SfxName, string> {
-  const rattle = sequence(
-    noise(0.12, 0.5, { attack: 0.005, release: 0.06 }),
-    silence(0.05),
-    noise(0.1, 0.4, { attack: 0.005, release: 0.05 }),
-    silence(0.07),
-    noise(0.14, 0.55, { attack: 0.005, release: 0.07 }),
-    silence(0.04),
-    noise(0.09, 0.35, { attack: 0.005, release: 0.05 }),
+  /* Riffle do sapato: rajadas de ruído curtas e densas — o "trrrrap"
+     das cartas correndo entre os polegares antes da distribuição. */
+  const riffle = sequence(
+    noise(0.09, 0.45, { attack: 0.004, release: 0.04 }),
+    silence(0.03),
+    noise(0.07, 0.38, { attack: 0.004, release: 0.03 }),
+    silence(0.025),
+    noise(0.11, 0.5, { attack: 0.004, release: 0.05 }),
+    silence(0.03),
+    noise(0.08, 0.42, { attack: 0.004, release: 0.04 }),
+    silence(0.025),
+    noise(0.12, 0.55, { attack: 0.004, release: 0.06 }),
   );
 
   const fanfare = sequence(
@@ -236,13 +243,27 @@ export function synthesizeSfx(): Record<SfxName, string> {
     );
   const coinLand = mix(coinStrike(1), at(0.18, coinStrike(0.45)));
 
-  /* Vitória com plateia: a fanfarra abre e a torcida vibra junto —
-     ovação de palmas com dois assobios em alturas diferentes. */
-  const winCelebration = mix(
-    fanfare,
-    applause(2.8, 0.85),
-    at(0.4, crowdWhistle(880, 2100, 0.3)),
-    at(1.25, crowdWhistle(990, 2350, 0.26)),
+  /* Aplauso da vitória: ovação em pé SEPARADA da fanfarra — palmas mais
+     cerradas, torcida mais alta e dois assobios. Por ser um efeito
+     próprio, toca junto do `win` na vitória da série, na do torneio e na
+     coroação do campeão, sem depender da fanfarra. */
+  const standingOvation = mix(
+    applause(3.4, 0.9, 58),
+    at(0.5, crowdWhistle(880, 2100, 0.32)),
+    at(1.6, crowdWhistle(990, 2350, 0.28)),
+  );
+
+  /* Rodada vencida no melhor de 3: um "meio-gol" — dois toques subindo,
+     sem plateia (a ovação fica guardada para a série fechada). */
+  const roundWinCue = sequence(
+    tone(659, 659, 0.1, 0.5, { attack: 0.005, release: 0.05 }),
+    tone(988, 988, 0.2, 0.55, { attack: 0.006, release: 0.12 }),
+  );
+
+  /* Rodada perdida: o espelho descendente do cue de rodada vencida. */
+  const roundLoseCue = sequence(
+    tone(494, 494, 0.1, 0.45, { attack: 0.005, release: 0.05 }),
+    tone(330, 330, 0.2, 0.45, { attack: 0.006, release: 0.12 }),
   );
 
   return {
@@ -270,9 +291,11 @@ export function synthesizeSfx(): Record<SfxName, string> {
     countdownGo: encodeWavDataUri(tone(988, 1319, 0.22, 0.55, { attack: 0.01, release: 0.12 })),
     coinToss: encodeWavDataUri(coinToss),
     coinLand: encodeWavDataUri(coinLand),
-    roll: encodeWavDataUri(rattle),
-    reveal: encodeWavDataUri(tone(330, 990, 0.22, 0.45, { attack: 0.01, release: 0.1 })),
-    win: encodeWavDataUri(winCelebration),
+    shuffle: encodeWavDataUri(riffle),
+    cardFlip: encodeWavDataUri(tone(330, 990, 0.22, 0.45, { attack: 0.01, release: 0.1 })),
+    roundWin: encodeWavDataUri(roundWinCue),
+    roundLose: encodeWavDataUri(roundLoseCue),
+    win: encodeWavDataUri(fanfare),
     lose: encodeWavDataUri(
       sequence(
         tone(392, 392, 0.16, 0.45),
@@ -283,6 +306,7 @@ export function synthesizeSfx(): Record<SfxName, string> {
     tie: encodeWavDataUri(
       sequence(tone(494, 494, 0.14, 0.45), silence(0.05), tone(494, 494, 0.2, 0.45)),
     ),
+    applause: encodeWavDataUri(standingOvation),
   };
 }
 

@@ -1,6 +1,5 @@
 import { createId } from '@/shared/lib/ids';
 
-import type { DicePair, DieValue } from '../engine/types';
 import type {
   ChatMessage,
   LobbyListing,
@@ -15,6 +14,8 @@ import type {
  * que a troca por um backend real toque só o store.
  */
 
+/* Elenco com folga para a sala de 16: são 15 assentos de bots, e ainda
+   sobram nomes para repor expulsões sem a sala ficar pela metade. */
 const BOT_POOL: readonly { name: string; avatar: string }[] = [
   { name: 'Otto', avatar: 'O' },
   { name: 'Luna', avatar: 'L' },
@@ -28,6 +29,14 @@ const BOT_POOL: readonly { name: string; avatar: string }[] = [
   { name: 'Ísis', avatar: 'Í' },
   { name: 'Théo', avatar: 'T' },
   { name: 'Zara', avatar: 'Z' },
+  { name: 'Caio', avatar: 'C' },
+  { name: 'Flora', avatar: 'F' },
+  { name: 'Gael', avatar: 'G' },
+  { name: 'Helena', avatar: 'H' },
+  { name: 'Igor', avatar: 'I' },
+  { name: 'Jade', avatar: 'J' },
+  { name: 'Enzo', avatar: 'E' },
+  { name: 'Alba', avatar: 'A' },
 ];
 
 const HOST_NAMES = ['Otto', 'Luna', 'Dante', 'Rex', 'Maya', 'Vera'];
@@ -56,7 +65,7 @@ const SIMULATED_FEES = [10, 25, 50, 100, 250];
 const YOUR_LOBBY_NAMES = [
   'Mesa Borgonha',
   'Salão do Coringa',
-  'Privê dos Dados',
+  'Privê dos Ases',
   'Copa da Casa',
   'Mesa Coroa',
 ];
@@ -68,7 +77,7 @@ const CHAT_LINES = [
   'partiu copa',
   'hoje o troféu é meu',
   'respeita o campeão',
-  'tô sentindo os dados quentes hoje',
+  'tô sentindo as cartas quentes hoje',
   'gg antecipado',
   'vamo que vamo',
   'que comece o show',
@@ -133,7 +142,9 @@ export function makeLobbyListings(): LobbyListing[] {
   return shuffle(LOBBY_NAMES)
     .slice(0, randInt(3, 5))
     .map((name, index) => {
-      const size: TournamentSize = Math.random() < 0.5 ? 4 : 8;
+      const roll = Math.random();
+      // As mesas de 16 existem, mas são raras — como numa casa real.
+      const size: TournamentSize = roll < 0.45 ? 4 : roll < 0.85 ? 8 : 16;
       // Uma em cada três, e nunca a primeira: a lista abre com uma sala
       // de entrada livre em vez de uma porta trancada.
       const visibility: LobbyVisibility =
@@ -172,41 +183,27 @@ export function botChatLine(): string {
 }
 
 /**
- * Soma (2–12) de um lado numa partida simulada de bot. Distribuição de
- * 2 dados honestos — a mesma base do jogo real.
+ * Total plausível de uma mão de blackjack simulada de bot. A convenção
+ * do PLACAR do chaveamento: estouro conta 0 (quem estoura não tem mão),
+ * o resto para entre 17 e 21 — a faixa em que mãos reais terminam.
  */
-export function rollSum(): number {
-  return randInt(1, 6) + randInt(1, 6);
+export function blackjackScore(): number {
+  const roll = Math.random();
+  if (roll < 0.16) return 0; // estourou
+  if (roll < 0.24) return 21;
+  return randInt(17, 20);
 }
 
 /**
- * Resultado de uma partida SEM o jogador (dois bots): rola até haver um
+ * Resultado de uma partida SEM o jogador (dois bots): joga até haver um
  * vencedor (mata-mata não admite empate).
  */
 export function simulateBotMatch(): { scoreA: number; scoreB: number } {
-  let scoreA = rollSum();
-  let scoreB = rollSum();
+  let scoreA = blackjackScore();
+  let scoreB = blackjackScore();
   while (scoreA === scoreB) {
-    scoreA = rollSum();
-    scoreB = rollSum();
+    scoreA = blackjackScore();
+    scoreB = blackjackScore();
   }
   return { scoreA, scoreB };
-}
-
-function rollDie(): DieValue {
-  return randInt(1, 6) as DieValue;
-}
-
-/**
- * Dados da partida do jogador contra o adversário do chaveamento —
- * honestos, mas sem empate (mata-mata sempre decide um vencedor).
- */
-export function rollPlayerMatch(): { playerDice: DicePair; opponentDice: DicePair } {
-  let playerDice: DicePair = [rollDie(), rollDie()];
-  let opponentDice: DicePair = [rollDie(), rollDie()];
-  while (playerDice[0] + playerDice[1] === opponentDice[0] + opponentDice[1]) {
-    playerDice = [rollDie(), rollDie()];
-    opponentDice = [rollDie(), rollDie()];
-  }
-  return { playerDice, opponentDice };
 }

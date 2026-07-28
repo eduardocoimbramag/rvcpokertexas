@@ -6,11 +6,10 @@ import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 
 import { TIMINGS } from '../animations/timings';
-import type { DiceColorId } from '../store/diceColors';
-import { DICE_COLORS, DICE_COLOR_LIST } from '../store/diceColors';
-import type { CoinSide } from '../store/gameStore';
-import { useGameStore } from '../store/gameStore';
-import { Die3D } from './Die3D';
+import type { CardColorId } from '../store/cardColors';
+import { CARD_COLORS, CARD_COLOR_LIST } from '../store/cardColors';
+import type { CoinFlipState, CoinSide } from '../store/gameStore';
+import { Card3D } from './Card3D';
 import { PhaseTitle } from './PhaseTitle';
 
 /**
@@ -20,12 +19,25 @@ import { PhaseTitle } from './PhaseTitle';
  *    sorteada, com o título "Cara ou coroa" ancorado embaixo dela.
  * 2. O VEREDITO — a tela se esvazia e fica só o anúncio de quem venceu
  *    o sorteio, um beat inteiro só dele.
- * 3. A ESCOLHA — entram os dois dados da mesa; o vencedor toca um e
- *    confirma, sob o relógio de 10 s.
+ * 3. A ESCOLHA — entram os dois versos de carta da mesa; o vencedor
+ *    toca um e confirma, sob o relógio de 10 s.
  *
- * Nada aqui decide o resultado: a face sorteada, o vencedor e o relógio
- * vêm prontos do store (`coinFlip`), e este componente só coreografa.
+ * Nada aqui decide nem agenda coisa alguma: a face sorteada, o vencedor
+ * e o relógio chegam prontos por PROPS — do gameStore no 1v1, do
+ * useCoinFlip na partida do torneio — e este componente só coreografa.
+ * É o que permite ao sorteio existir nas duas modalidades sem duplicar
+ * uma linha de cena.
  */
+
+export interface CoinFlipOverlayProps {
+  coinFlip: CoinFlipState;
+  /** Nome do adversário (anúncios do veredito e da escolha dele). */
+  opponentName: string;
+  /** Cor que ficou com o jogador (anúncio do beat `picked`). */
+  playerColor: CardColorId;
+  /** Confirmação da escolha do jogador (fase `pick`). */
+  onChoose: (color: CardColorId) => void;
+}
 
 /** Voltas completas da ficha no ar antes de assentar. */
 const TOSS_SPINS = 5;
@@ -73,15 +85,15 @@ const SIDE_ICON: Record<CoinSide, 'user' | 'crown'> = { cara: 'user', coroa: 'cr
  */
 const RIM_LAYERS = Array.from({ length: 9 }, (_, i) => -0.85 + (i * 1.7) / 8);
 
-export function CoinFlipOverlay() {
-  const coinFlip = useGameStore((state) => state.coinFlip);
-  const match = useGameStore((state) => state.match);
-  const diceColors = useGameStore((state) => state.diceColors);
-  const chooseDiceColor = useGameStore((state) => state.chooseDiceColor);
+export function CoinFlipOverlay({
+  coinFlip,
+  opponentName,
+  playerColor,
+  onChoose,
+}: CoinFlipOverlayProps) {
   const reducedMotion = useReducedMotion() ?? false;
-  const [selected, setSelected] = useState<DiceColorId | null>(null);
+  const [selected, setSelected] = useState<CardColorId | null>(null);
 
-  if (!coinFlip || !match) return null;
   const { playerSide, result, winner, stage, chosenColor, pickSeconds } = coinFlip;
 
   const choosing = stage === 'pick' || stage === 'botPick' || stage === 'picked';
@@ -98,15 +110,15 @@ export function CoinFlipOverlay() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
           >
-            <DiceChoiceScene
-              opponentName={match.opponent.name}
+            <CardChoiceScene
+              opponentName={opponentName}
               stage={stage}
               chosenColor={chosenColor}
-              playerColor={diceColors.player}
+              playerColor={playerColor}
               selected={selected}
               pickSeconds={pickSeconds}
               onSelect={setSelected}
-              onConfirm={() => selected && chooseDiceColor(selected)}
+              onConfirm={() => selected && onChoose(selected)}
               instant={reducedMotion}
             />
           </motion.div>
@@ -119,11 +131,7 @@ export function CoinFlipOverlay() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.28, ease: 'easeOut' }}
           >
-            <VerdictScene
-              winner={winner}
-              opponentName={match.opponent.name}
-              instant={reducedMotion}
-            />
+            <VerdictScene winner={winner} opponentName={opponentName} instant={reducedMotion} />
           </motion.div>
         ) : (
           <motion.div
@@ -331,26 +339,26 @@ function CoinFace({ side }: { side: CoinSide }) {
   );
 }
 
-interface DiceChoiceSceneProps {
+interface CardChoiceSceneProps {
   opponentName: string;
   stage: 'pick' | 'botPick' | 'picked';
-  chosenColor: DiceColorId | null;
-  playerColor: DiceColorId;
-  selected: DiceColorId | null;
+  chosenColor: CardColorId | null;
+  playerColor: CardColorId;
+  selected: CardColorId | null;
   /** Segundos restantes do relógio da escolha (`null` fora de `pick`). */
   pickSeconds: number | null;
-  onSelect: (color: DiceColorId) => void;
+  onSelect: (color: CardColorId) => void;
   onConfirm: () => void;
   instant: boolean;
 }
 
 /**
- * Cena 3: os dois dados da mesa. Vencendo o sorteio, o jogador toca um
- * deles e confirma antes do relógio zerar; perdendo, os cartões só
- * mostram o que o adversário levou. A cor não escolhida fica
+ * Cena 3: os dois versos de carta da mesa. Vencendo o sorteio, o
+ * jogador toca um e confirma antes do relógio zerar; perdendo, os
+ * cartões só mostram o que o adversário levou. A cor não escolhida fica
  * automaticamente com o outro lado.
  */
-function DiceChoiceScene({
+function CardChoiceScene({
   opponentName,
   stage,
   chosenColor,
@@ -360,13 +368,13 @@ function DiceChoiceScene({
   onSelect,
   onConfirm,
   instant,
-}: DiceChoiceSceneProps) {
+}: CardChoiceSceneProps) {
   const picking = stage === 'pick';
   const headline = picking
-    ? 'Escolha seus dados'
+    ? 'Escolha suas cartas'
     : stage === 'picked'
-      ? `Você joga com os dados ${DICE_COLORS[playerColor].label}`
-      : `${opponentName} escolheu os dados ${chosenColor ? DICE_COLORS[chosenColor].label : ''}`;
+      ? `Você joga com as cartas ${CARD_COLORS[playerColor].label}`
+      : `${opponentName} escolheu as cartas ${chosenColor ? CARD_COLORS[chosenColor].label : ''}`;
 
   return (
     <>
@@ -381,11 +389,11 @@ function DiceChoiceScene({
           no fluxo, fazia o cartão vermelho nascer maior que o azul. */}
       <div
         className="mt-8 grid w-[min(100%,19rem)] grid-cols-2 gap-4"
-        data-testid="dice-color-picker"
+        data-testid="card-color-picker"
         role={picking ? 'radiogroup' : undefined}
-        aria-label={picking ? 'Cor dos seus dados' : undefined}
+        aria-label={picking ? 'Cor das suas cartas' : undefined}
       >
-        {DICE_COLOR_LIST.map((color, index) => {
+        {CARD_COLOR_LIST.map((color, index) => {
           const on = picking ? selected === color.id : chosenColor === color.id;
           // O cartão preterido recua (escala e brilho) para o escolhido
           // ficar sozinho em evidência — nos dois caminhos: enquanto o
@@ -397,8 +405,8 @@ function DiceChoiceScene({
           return (
             <Tag
               key={color.id}
-              className={`dice-choice ${on ? 'dice-choice--on' : ''} ${dim ? 'dice-choice--dim' : ''}`}
-              style={{ '--dice-choice-accent': color.gradientA } as React.CSSProperties}
+              className={`card-choice ${on ? 'card-choice--on' : ''} ${dim ? 'card-choice--dim' : ''}`}
+              style={{ '--card-choice-accent': color.gradientA } as React.CSSProperties}
               initial={instant ? false : { opacity: 0, y: 24, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: on ? 1.06 : dim ? 0.95 : 1 }}
               transition={
@@ -411,16 +419,16 @@ function DiceChoiceScene({
                     type: 'button' as const,
                     role: 'radio',
                     'aria-checked': selected === color.id,
-                    'aria-label': `Dados ${color.label}`,
+                    'aria-label': `Cartas ${color.label}`,
                     onClick: () => onSelect(color.id),
                     whileTap: { scale: 0.94 },
-                    'data-testid': `dice-color-${color.id}`,
+                    'data-testid': `card-color-${color.id}`,
                   }
-                : { 'data-testid': `dice-color-${color.id}` })}
+                : { 'data-testid': `card-color-${color.id}` })}
             >
               {on && (
                 <motion.span
-                  className="dice-choice__seal"
+                  className="card-choice__seal"
                   aria-hidden="true"
                   initial={instant ? false : { scale: 0, y: 6 }}
                   animate={{ scale: 1, y: 0 }}
@@ -429,15 +437,14 @@ function DiceChoiceScene({
                   <Icon name="check" size={13} strokeWidth={2.6} />
                 </motion.span>
               )}
-              <Die3D
-                value={5}
-                side="player"
-                color={color.id}
-                rolling={false}
-                size="clamp(3.5rem,17vw,4.5rem)"
-                label={`Dado ${color.label}`}
+              <Card3D
+                card={null}
+                back={color.id}
+                silent
+                size="clamp(3.1rem,15vw,4rem)"
+                label={`Cartas ${color.label}`}
               />
-              <span className="dice-choice__name">{color.label}</span>
+              <span className="card-choice__name">{color.label}</span>
             </Tag>
           );
         })}
@@ -468,7 +475,7 @@ function DiceChoiceScene({
             size="md"
             fullWidth
             disabled={selected === null}
-            data-testid="confirm-dice-color"
+            data-testid="confirm-card-color"
           >
             <Icon name="check" /> CONFIRMAR
           </Button>

@@ -26,8 +26,12 @@ describe('resolveDealerReaction', () => {
       negotiate: 'present',
       coinflip: 'anticipate',
       countdown: 'anticipate',
-      rolling: 'shake',
-      reveal: 'reveal',
+      dealing: 'shake',
+      playerTurn: 'present',
+      opponentTurn: 'present',
+      dealerTurn: 'reveal',
+      settle: 'reveal',
+      roundEnd: 'reveal',
       completed: 'idle',
       error: 'apologize',
     };
@@ -42,9 +46,18 @@ describe('resolveDealerReaction', () => {
     expect(resolveDealerReaction('completed', 'tie')).toBe('shrug');
   });
 
-  it('fora de completed, o resultado residual é ignorado', () => {
+  it('no veredito (settle e roundEnd), a dealer reage ao desfecho parcial', () => {
+    expect(resolveDealerReaction('settle', 'win')).toBe('celebrate');
+    expect(resolveDealerReaction('settle', 'lose')).toBe('console');
+    expect(resolveDealerReaction('roundEnd', 'win')).toBe('celebrate');
+    expect(resolveDealerReaction('roundEnd', 'lose')).toBe('console');
+    expect(resolveDealerReaction('roundEnd', 'tie')).toBe('shrug');
+  });
+
+  it('fora do veredito, o resultado residual é ignorado', () => {
     expect(resolveDealerReaction('negotiate', 'win')).toBe('present');
-    expect(resolveDealerReaction('rolling', 'tie')).toBe('shake');
+    expect(resolveDealerReaction('dealing', 'tie')).toBe('shake');
+    expect(resolveDealerReaction('playerTurn', 'win')).toBe('present');
   });
 });
 

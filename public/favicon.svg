@@ -1,10 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect x="4" y="4" width="56" height="56" rx="14" fill="#0b1020"/>
-  <rect x="10" y="10" width="26" height="26" rx="7" fill="#3b82f6"/>
-  <circle cx="18" cy="18" r="3" fill="#fff"/>
-  <circle cx="28" cy="28" r="3" fill="#fff"/>
-  <rect x="28" y="28" width="26" height="26" rx="7" fill="#ef4444"/>
-  <circle cx="35" cy="35" r="3" fill="#fff"/>
-  <circle cx="41" cy="41" r="3" fill="#fff"/>
-  <circle cx="47" cy="47" r="3" fill="#fff"/>
+  <!-- Favicon do Blackjack Arena: Ás dourado sobre o preto-ameixa da
+       casa. Formas grandes e sem miudeza para seguir legível em 16×16. -->
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff4e8"/>
+      <stop offset="0.4" stop-color="#fcd9a0"/>
+      <stop offset="0.75" stop-color="#f5b76f"/>
+      <stop offset="1" stop-color="#c67e38"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#140404"/>
+  <g transform="rotate(-8 32 32)">
+    <rect x="18" y="10" width="28" height="44" rx="5" fill="url(#face)" stroke="#fcd9a0" stroke-width="1.5"/>
+    <path d="M32 19c-4.8 5.4-8.6 8-8.6 12.1a4.1 4.1 0 0 0 6.9 3c-.3 2.4-1.2 4.1-2.7 5.5h8.8c-1.5-1.4-2.4-3.1-2.7-5.5a4.1 4.1 0 0 0 6.9-3c0-4.1-3.8-6.7-8.6-12.1z" fill="#4c0a15"/>
+  </g>
 </svg>

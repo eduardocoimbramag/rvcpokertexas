@@ -26,9 +26,9 @@ const STEPS: readonly { icon: IconName; title: string; text: string }[] = [
     text: 'Troquem propostas no chat até fecharem o valor do duelo. Quem propõe espera o outro aceitar — só o acordo libera a partida.',
   },
   {
-    icon: 'dice',
-    title: 'Maior soma vence',
-    text: 'São 4 dados: 2 azuis seus e 2 vermelhos do oponente. A vitória leva 90% da aposta do adversário e o empate devolve a sua.',
+    icon: 'club',
+    title: 'Vença a mão de blackjack',
+    text: 'Você e o rival jogam contra o MESMO dealer: peça cartas ou pare mirando 21. Quem terminar melhor contra a casa leva a rodada — blackjack decisivo paga 3:2.',
   },
 ];
 

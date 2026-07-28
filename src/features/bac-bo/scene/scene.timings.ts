@@ -3,7 +3,7 @@ import { TIMINGS } from '../animations/timings';
 /**
  * Durações canônicas do dealer/cena (docs/scenario.md §9.4).
  * Reaproveita os TIMINGS do jogo para manter uma única fonte de verdade —
- * o dealer nunca fica dessincronizado dos dados.
+ * o dealer nunca fica dessincronizado das cartas.
  */
 export const DEALER_TIMINGS = {
   /** Crossfade entre reações (nunca corte seco). */
@@ -16,8 +16,8 @@ export const DEALER_TIMINGS = {
   greetMs: TIMINGS.foundSplashMs,
   /** Pulso de antecipação por tick do countdown. */
   anticipateBeatMs: TIMINGS.countdownTickMs,
-  /** Chacoalhar do copo — casa com o giro dos dados. */
-  shakeMs: TIMINGS.rollingMs,
-  /** Inclinação de revelação. */
-  revealMs: TIMINGS.revealMs,
+  /** Gesto de distribuir — casa com o voo das cartas do sapato. */
+  shakeMs: TIMINGS.dealMs,
+  /** Inclinação de revelação — casa com a virada da fechada + compras. */
+  revealMs: TIMINGS.holeFlipMs + TIMINGS.dealerDrawMs + TIMINGS.dealerBreathMs,
 } as const;

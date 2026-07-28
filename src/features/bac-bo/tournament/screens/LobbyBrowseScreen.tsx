@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog';
 import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
@@ -9,6 +10,13 @@ import { useTournamentStore } from '../tournamentStore';
 import type { LobbyListing } from '../types';
 import { CreateLobbySheet } from './CreateLobbySheet';
 import { JoinPrivateSheet } from './JoinPrivateSheet';
+
+/** Sala destrancada esperando o "sim" da porta. */
+interface PendingJoin {
+  lobby: LobbyListing;
+  /** Senha digitada (vazia nas públicas) — vai junto no joinLobby. */
+  password: string;
+}
 
 export interface LobbyBrowseScreenProps {
   onBack: () => void;
@@ -25,9 +33,10 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
   const joinLobby = useTournamentStore((s) => s.joinLobby);
 
   // Duas folhas, dois estados: a de criação e a da senha (que guarda a
-  // sala escolhida).
+  // sala escolhida). O terceiro é a pergunta da porta.
   const [creating, setCreating] = useState(false);
   const [locked, setLocked] = useState<LobbyListing | null>(null);
+  const [pending, setPending] = useState<PendingJoin | null>(null);
   // Contadores de abertura usados como `key`: remontar a folha é o que
   // devolve os formulários ao estado inicial. Eles só sobem ao ABRIR —
   // no fechamento a chave fica parada, senão a folha seria arrancada da
@@ -77,7 +86,12 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
               <motion.button
                 key={lobby.id}
                 type="button"
-                onClick={() => (isPrivate ? openLocked(lobby) : joinLobby(lobby))}
+                // Pública vai direto à pergunta da porta; privada pede a
+                // senha antes — e a pergunta vem depois, igual para as
+                // duas.
+                onClick={() =>
+                  isPrivate ? openLocked(lobby) : setPending({ lobby, password: '' })
+                }
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.06 }}
@@ -118,6 +132,36 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
         key={`join-${lockedSeq}`}
         lobby={locked}
         onClose={() => setLocked(null)}
+        onUnlocked={(password) => {
+          if (!locked) return;
+          setPending({ lobby: locked, password });
+          setLocked(null);
+        }}
+      />
+
+      {/* A porta de qualquer sala: entrar é assumir uma taxa, então a
+          entrada nunca acontece por um toque só. Nas privadas esta
+          pergunta vem DEPOIS da senha — destrancar a porta e atravessá-la
+          são dois gestos. */}
+      <ConfirmDialog
+        open={pending !== null}
+        title="Entrar na sala"
+        message={
+          <>
+            Deseja realmente entrar em <span className="text-gold">{pending?.lobby.name}</span>? A
+            taxa de entrada é de{' '}
+            <span className="text-gold">{formatCredits(pending?.lobby.fee ?? 0)} créditos</span>.
+          </>
+        }
+        confirmLabel="SIM"
+        cancelLabel="NÃO"
+        actions="row"
+        data-testid="join-room-confirm"
+        onConfirm={() => {
+          if (pending) joinLobby(pending.lobby, pending.password);
+          setPending(null);
+        }}
+        onCancel={() => setPending(null)}
       />
     </main>
   );
