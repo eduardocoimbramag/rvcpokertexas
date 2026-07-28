@@ -62,6 +62,8 @@ const sampleRound: BlackjackRoundState = {
   opponentVisible: [card('10', 'clubs')],
   opponentHidden: 1,
   legalActions: ['hit', 'stand'],
+  playerClosed: false,
+  opponentClosed: false,
 };
 
 const sampleEntry: HistoryEntry = { ...sampleResult, opponentName: 'Luna' };
@@ -263,7 +265,7 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     opponentBust: true,
   };
 
-  /** Showdown com blackjack natural na sua mão (A♠ K♦), que paga 3:2. */
+  /** Showdown com blackjack natural na sua mão (A♠ K♦). */
   const naturalPlayer: RoundResult = {
     ...sampleResult,
     playerHand: [card('A', 'spades'), card('K', 'diamonds')],
@@ -345,7 +347,7 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
 
     expect(screen.getByTestId('player-total')).toHaveTextContent('19');
     // 10♣ aberta + a oculta: nada de somar o que ainda não virou.
-    expect(screen.getByTestId('opponent-total')).toHaveTextContent('10 +?');
+    expect(screen.getByTestId('opponent-total')).toHaveTextContent('10+?');
   });
 
   it('no showdown as ocultas viram e o total do rival fecha de verdade', () => {
@@ -377,6 +379,90 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
 
     expect(screen.queryByTestId('verdict-player')).not.toBeInTheDocument();
     expect(screen.queryByTestId('verdict-opponent')).not.toBeInTheDocument();
+  });
+
+  it('a mesa é espelhada: cada total aponta para o centro do feltro', () => {
+    renderArena();
+
+    // Rival na cabeceira de cima: o total dele vem DEPOIS das cartas.
+    const opponentCards = screen.getByTestId('hand-opponent-cards');
+    const opponentTotal = screen.getByTestId('opponent-total');
+    expect(
+      opponentCards.compareDocumentPosition(opponentTotal) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // Você na de baixo: o seu total vem ANTES das suas cartas.
+    const playerCards = screen.getByTestId('hand-player-cards');
+    const playerTotal = screen.getByTestId('player-total');
+    expect(
+      playerCards.compareDocumentPosition(playerTotal) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+  });
+
+  it('as cartas deitam lado a lado, sem uma tampar a outra', () => {
+    renderArena();
+
+    // A primeira carta não desloca; as seguintes ganham RESPIRO (margem
+    // positiva), nunca sobreposição.
+    expect(screen.getByTestId('hand-player-cards-card-1').style.marginLeft).toBe('');
+    expect(screen.getByTestId('hand-player-cards-card-2').style.marginLeft).toBe(
+      'calc(var(--card-w) * 0.1)',
+    );
+    expect(screen.getByTestId('hand-opponent-cards-card-2').style.marginLeft).toBe(
+      'calc(var(--card-w) * 0.1)',
+    );
+  });
+
+  it('o botão DOBRAR só existe onde há aposta para dobrar', async () => {
+    const user = userEvent.setup();
+    const onRequestDouble = vi.fn();
+
+    // Sem `onRequestDouble` (mesa do torneio) o botão nem entra em cena.
+    const tournament = renderArena();
+    expect(screen.queryByTestId('action-double')).not.toBeInTheDocument();
+    tournament.unmount();
+
+    renderArena({ onRequestDouble, canRequestDouble: true });
+    await user.click(screen.getByTestId('action-double'));
+    expect(onRequestDouble).toHaveBeenCalledTimes(1);
+  });
+
+  it('com a dobra no ar a mesa inteira espera a resposta do rival', () => {
+    renderArena({
+      onRequestDouble: () => undefined,
+      canRequestDouble: false,
+      doubleBet: { status: 'pending', amount: 100, open: true },
+    });
+
+    expect(screen.getByTestId('action-hit')).toBeDisabled();
+    expect(screen.getByTestId('action-stand')).toBeDisabled();
+    expect(screen.getByTestId('action-double')).toBeDisabled();
+
+    const bubble = screen.getByTestId('double-request');
+    expect(bubble).toHaveAttribute('data-status', 'pending');
+    expect(screen.getByTestId('double-amount')).toHaveTextContent('100');
+    expect(bubble).toHaveTextContent('DOBRAR A APOSTA?');
+  });
+
+  it('respondida, a nuvem mostra qual das duas o rival escolheu', () => {
+    const { unmount } = renderArena({
+      onRequestDouble: () => undefined,
+      doubleBet: { status: 'accepted', amount: 100, open: true },
+    });
+    let bubble = screen.getByTestId('double-request');
+    expect(bubble).toHaveTextContent('DOBRA ACEITA');
+    expect(bubble.querySelector('.double-answer--yes')).toHaveClass('is-picked');
+    expect(bubble.querySelector('.double-answer--no')).toHaveClass('is-muted');
+    unmount();
+
+    renderArena({
+      onRequestDouble: () => undefined,
+      doubleBet: { status: 'declined', amount: 100, open: true },
+    });
+    bubble = screen.getByTestId('double-request');
+    expect(bubble).toHaveTextContent('DOBRA RECUSADA');
+    expect(bubble.querySelector('.double-answer--no')).toHaveClass('is-picked');
+    expect(bubble.querySelector('.double-answer--yes')).toHaveClass('is-muted');
   });
 
   it('em completed o placar flanqueia a crupiê e coroa o vencedor', () => {
@@ -451,13 +537,20 @@ describe('Card3D', () => {
 
   it('baralho único: o verso é o da casa, igual para os dois duelistas', () => {
     // Sem escolha de cor na mesa — nenhuma prop pinta o verso, e o
-    // monograma do clube é o mesmo dos dois lados.
-    const { unmount } = render(<Card3D card={null} silent label="Carta de Luna 2" />);
-    expect(screen.getByText('RVC')).toBeInTheDocument();
-    unmount();
+    // brasão do clube no medalhão é o mesmo dos dois lados.
+    const crest = (container: HTMLElement) => container.querySelector('.card3d__crest');
+    const oculta = render(<Card3D card={null} silent label="Carta de Luna 2" />);
+    expect(crest(oculta.container)).toBeInTheDocument();
+    oculta.unmount();
 
-    render(<Card3D card={card('9', 'hearts')} faceDown silent label="Sua carta 2" />);
-    expect(screen.getByText('RVC')).toBeInTheDocument();
+    const virada = render(
+      <Card3D card={card('9', 'hearts')} faceDown silent label="Sua carta 2" />,
+    );
+    expect(crest(virada.container)).toBeInTheDocument();
+    // O desenho vem do SVG da marca usado como máscara — nada de texto.
+    expect(virada.container.querySelector('.card3d__crest')).toHaveStyle({
+      '--crest-src': 'url("/brasaorvc.svg")',
+    });
   });
 });
 

@@ -7,6 +7,7 @@ import { SeededRng } from '@/shared/lib/random';
 import { COUNTDOWN_START, PROPOSAL_COOLDOWN_SECONDS, TIMINGS } from '../animations/timings';
 import type {
   ActParams,
+  AdvanceParams,
   BeginRoundParams,
   FindMatchParams,
   GameEngine,
@@ -57,7 +58,7 @@ const CARDS_FOR_OUTCOME: Record<RoundOutcome, { player: [Card, Card]; opponent: 
   },
 };
 
-/** Blackjack natural do jogador (21 em duas cartas): paga 3:2. */
+/** Blackjack natural do jogador (21 em duas cartas). */
 const NATURAL_CARDS: { player: [Card, Card]; opponent: [Card, Card] } = {
   player: [card('A'), card('K', 'hearts')],
   opponent: [card('10', 'clubs'), card('7', 'diamonds')],
@@ -66,10 +67,13 @@ const NATURAL_CARDS: { player: [Card, Card]; opponent: [Card, Card] } = {
 /**
  * Engine determinística instantânea. Recebe um resultado fixo ou uma
  * SEQUÊNCIA (um por partida, já que agora a rodada é única); o último da
- * fila se repete. Por padrão a rodada abre a vez do jogador — com a mão
- * do rival mostrando só a primeira carta — e QUALQUER ação a fecha com o
- * resultado roteirizado. Com `natural: true` a rodada volta resolvida já
- * na distribuição, pulando a vez do jogador.
+ * fila se repete.
+ *
+ * O rodízio é o mais curto que respeita o contrato: a rodada abre na vez
+ * do jogador (com a mão do rival mostrando só a primeira carta),
+ * QUALQUER ação fecha a mão dele e entrega a vez ao rival, e o lance do
+ * rival fecha a rodada no resultado roteirizado. Com `natural: true` a
+ * mão do jogador já nasce fechada e a rodada abre na vez do rival.
  */
 class StubEngine implements GameEngine {
   private readonly queue: RoundOutcome[];
@@ -111,25 +115,41 @@ class StubEngine implements GameEngine {
     const outcome = (this.queue.length > 1 ? this.queue.shift() : this.queue[0]) ?? 'win';
     this.currentOutcome = outcome;
 
-    if (this.natural) {
-      return Promise.resolve(this.settledState(params.matchId, outcome, true));
-    }
-
-    const cards = CARDS_FOR_OUTCOME[outcome];
+    const cards = this.natural ? NATURAL_CARDS : CARDS_FOR_OUTCOME[outcome];
     return Promise.resolve({
       matchId: params.matchId,
-      phase: 'playerTurn',
+      // Natural já fecha a sua mão na distribuição: a vez abre do lado
+      // do rival.
+      phase: this.natural ? 'opponentTurn' : 'playerTurn',
       playerHand: [...cards.player],
       // A regra da mesa: a última carta do rival é segredo dele.
       opponentVisible: visibleCards(cards.opponent),
       opponentHidden: 1,
-      legalActions: ['hit', 'stand'],
+      legalActions: this.natural ? [] : ['hit', 'stand'],
+      playerClosed: this.natural,
+      opponentClosed: false,
     });
   }
 
   act(params: ActParams): Promise<BlackjackRoundState> {
-    // Qualquer ação fecha a rodada no roteiro do stub.
-    return Promise.resolve(this.settledState(params.matchId, this.currentOutcome, false));
+    // Qualquer ação fecha a sua mão e entrega a vez ao rival.
+    const cards = this.natural ? NATURAL_CARDS : CARDS_FOR_OUTCOME[this.currentOutcome];
+    return Promise.resolve({
+      matchId: params.matchId,
+      phase: 'opponentTurn',
+      playerHand: [...cards.player],
+      opponentVisible: visibleCards(cards.opponent),
+      opponentHidden: 1,
+      legalActions: [],
+      lastMove: { by: 'player', action: params.action, closed: true, bust: false },
+      playerClosed: true,
+      opponentClosed: false,
+    });
+  }
+
+  advance(params: AdvanceParams): Promise<BlackjackRoundState> {
+    // O lance do rival fecha a rodada no roteiro do stub.
+    return Promise.resolve(this.settledState(params.matchId, this.currentOutcome, this.natural));
   }
 
   private settledState(
@@ -153,8 +173,8 @@ class StubEngine implements GameEngine {
       opponentNatural: isNaturalBlackjack(opponentHand),
       outcome,
       stake: this.lastStake,
-      payout: payoutFor(outcome, this.lastStake, natural),
-      netChange: netChangeFor(outcome, this.lastStake, natural),
+      payout: payoutFor(outcome, this.lastStake),
+      netChange: netChangeFor(outcome, this.lastStake),
       completedAt: 0,
     };
     return {
@@ -165,6 +185,9 @@ class StubEngine implements GameEngine {
       opponentVisible: opponentHand,
       opponentHidden: 0,
       legalActions: [],
+      lastMove: { by: 'opponent', action: 'stand', closed: true, bust: false },
+      playerClosed: true,
+      opponentClosed: true,
       result,
     };
   }
@@ -218,8 +241,6 @@ function createTestStore(
 
 type TestStore = ReturnType<typeof createTestStore>;
 
-/** Vez do rival com a mão de 2 cartas do stub: só o piso de "pensar". */
-const OPPONENT_TURN_MS = TIMINGS.opponentTurnMinMs;
 /** Showdown completo: as ocultas viram, o quadro respira, veredito. */
 const SHOWDOWN_MS = TIMINGS.revealMs + TIMINGS.settleMs;
 
@@ -251,21 +272,35 @@ async function agreeAndStart(store: TestStore, stake: number) {
 async function passDealing(store: TestStore) {
   await vi.advanceTimersByTimeAsync(TIMINGS.countdownTickMs * COUNTDOWN_START);
   expect(store.getState().phase).toBe('dealing');
+  // A distribuição não tem lance a anunciar: a primeira vez abre logo
+  // depois das cartas assentarem.
   await vi.advanceTimersByTimeAsync(TIMINGS.dealMs);
 }
 
-/** Para na primeira oportunidade e atravessa rival → showdown → desfecho. */
+/**
+ * Para na primeira oportunidade e atravessa o rodízio até o desfecho: o
+ * seu lance é anunciado, a vez passa ao rival, o lance dele fecha a mão
+ * e a mesa vai ao showdown.
+ */
 async function standAndSettle(store: TestStore) {
   expect(store.getState().phase).toBe('playerTurn');
   store.getState().stand();
   await vi.advanceTimersByTimeAsync(0); // engine.act resolve num microtask
-  await vi.advanceTimersByTimeAsync(TIMINGS.actionResolveMs);
+  await passTurn(store);
   expect(store.getState().phase).toBe('opponentTurn');
 
-  await vi.advanceTimersByTimeAsync(OPPONENT_TURN_MS);
+  await vi.advanceTimersByTimeAsync(TIMINGS.opponentThinkMaxMs);
+  await vi.advanceTimersByTimeAsync(0); // engine.advance resolve num microtask
+  await passTurn(store);
   expect(store.getState().phase).toBe('settle');
 
   await vi.advanceTimersByTimeAsync(SHOWDOWN_MS);
+}
+
+/** O beat do anúncio de um lance, ao fim do qual a vez troca de lado. */
+async function passTurn(store: TestStore) {
+  await vi.advanceTimersByTimeAsync(TIMINGS.moveAnnounceMs);
+  return store;
 }
 
 /**
@@ -306,7 +341,10 @@ describe('máquina de estados', () => {
     expect(canTransition('dealing', 'playerTurn')).toBe(true);
     expect(canTransition('dealing', 'opponentTurn')).toBe(true);
     expect(canTransition('playerTurn', 'opponentTurn')).toBe(true);
-    expect(canTransition('playerTurn', 'settle')).toBe(false);
+    // O rodízio anda nos dois sentidos, e qualquer um dos dois lados
+    // pode ser o último a fechar a mão.
+    expect(canTransition('playerTurn', 'settle')).toBe(true);
+    expect(canTransition('opponentTurn', 'playerTurn')).toBe(true);
     expect(canTransition('opponentTurn', 'settle')).toBe(true);
     // Rodada única: o showdown só desemboca no fim da partida.
     expect(canTransition('settle', 'completed')).toBe(true);
@@ -396,7 +434,7 @@ describe('fluxo completo do duelo', () => {
     expect(store.getState().result).toBeNull();
   });
 
-  it('blackjack natural pula a vez do jogador e paga 3:2', async () => {
+  it('blackjack natural pula a vez do jogador e paga como toda vitória', async () => {
     const store = createGameStore({
       engine: new StubEngine('win', { natural: true }),
       storage: new GameStorageService(createMemoryStorage()),
@@ -407,20 +445,24 @@ describe('fluxo completo do duelo', () => {
     await reachNegotiation(store);
     await agreeAndStart(store, 50);
 
-    // O natural resolve na distribuição: não há decisão a tomar.
+    // O natural fecha a sua mão na distribuição: não há decisão a tomar,
+    // e a mesa abre direto na vez do rival.
     await passDealing(store);
     expect(store.getState().phase).toBe('opponentTurn');
     expect(store.getState().round?.legalActions).toEqual([]);
 
-    await vi.advanceTimersByTimeAsync(OPPONENT_TURN_MS);
+    await vi.advanceTimersByTimeAsync(TIMINGS.opponentThinkMaxMs);
+    await vi.advanceTimersByTimeAsync(0); // engine.advance resolve num microtask
+    await passTurn(store);
     expect(store.getState().phase).toBe('settle');
     await vi.advanceTimersByTimeAsync(SHOWDOWN_MS);
 
     expect(store.getState().phase).toBe('completed');
     expect(store.getState().result?.playerNatural).toBe(true);
-    // 450 + payout(50 natural) = 450 + 50 + 75 = 575.
-    expect(store.getState().balance).toBe(575);
-    expect(store.getState().history[0]?.netChange).toBe(75);
+    // O natural decide a mão, mas não paga a mais: o pote é fechado.
+    // 450 + payout(50) = 450 + 50 + 45 = 545.
+    expect(store.getState().balance).toBe(545);
+    expect(store.getState().history[0]?.netChange).toBe(45);
   });
 
   it('o débito só acontece no início da partida, depois do acordo', async () => {
@@ -524,15 +566,20 @@ describe('vez do jogador', () => {
     expect(store.getState().round?.opponentHidden).toBe(0);
   });
 
-  it('pedir carta também percorre a engine (o stub fecha a rodada)', async () => {
+  it('pedir carta também percorre a engine e entrega a vez ao rival', async () => {
     const store = createTestStore('win');
     await reachPlayerTurn(store);
 
     store.getState().hit();
     await vi.advanceTimersByTimeAsync(0);
-    expect(store.getState().round?.phase).toBe('settled');
-    await vi.advanceTimersByTimeAsync(TIMINGS.actionResolveMs);
+    // O lance é anunciado antes de a vez virar: a mesa ainda está do
+    // lado do jogador durante o beat.
+    expect(store.getState().announcement).toMatchObject({ by: 'player', action: 'hit' });
+    expect(store.getState().phase).toBe('playerTurn');
+
+    await passTurn(store);
     expect(store.getState().phase).toBe('opponentTurn');
+    expect(store.getState().round?.phase).toBe('opponentTurn');
   });
 
   it('a ação em trânsito trava os botões (actionPending)', async () => {
@@ -555,10 +602,19 @@ describe('vez do jogador', () => {
 
     store.getState().stand();
     await vi.advanceTimersByTimeAsync(0);
-    // O resultado já existe no estado (a UI o esconde por fase), mas a
-    // mesa ainda percorre os beats do rival antes do veredito.
+    // Parar fecha a SUA mão, não a rodada: o resultado ainda nem existe,
+    // porque o rival tem lance a dar.
+    expect(store.getState().result).toBeNull();
+    expect(store.getState().round?.playerClosed).toBe(true);
+
+    await passTurn(store);
+    expect(store.getState().phase).toBe('opponentTurn');
+    await vi.advanceTimersByTimeAsync(TIMINGS.opponentThinkMaxMs);
+    await vi.advanceTimersByTimeAsync(0);
+    // O lance dele fecha a rodada e o resultado chega — mas o veredito
+    // ainda espera o beat do anúncio para virar as cartas.
     expect(store.getState().result).not.toBeNull();
-    expect(store.getState().phase).toBe('playerTurn');
+    expect(store.getState().phase).toBe('opponentTurn');
   });
 });
 
@@ -658,6 +714,104 @@ describe('confirmação dupla', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(store.getState().phase).toBe('idle');
     expect(store.getState().balance).toBe(500);
+  });
+});
+
+describe('dobra da aposta', () => {
+  /** Da Home até a sua vez, com o valor da mesa já debitado. */
+  async function reachPlayerTurn(store: TestStore, stake: number) {
+    await reachNegotiation(store);
+    await agreeAndStart(store, stake);
+    await passDealing(store);
+    expect(store.getState().phase).toBe('playerTurn');
+  }
+
+  /** Resposta do rival: a janela dele + o microtask do setStake. */
+  async function waitForAnswer() {
+    await vi.advanceTimersByTimeAsync(TIMINGS.doubleAnswerMaxMs);
+    await vi.advanceTimersByTimeAsync(0);
+  }
+
+  it('rival topa: a mesa passa a valer o dobro e a diferença sai do saldo', async () => {
+    // rng 0,25 contra a mesa aberta do stub (só o 10♠): ele aceita.
+    const store = createTestStore('win', createMemoryStorage(), () => 0.25);
+    await reachPlayerTurn(store, 50);
+    expect(store.getState().balance).toBe(450);
+
+    store.getState().requestDouble();
+    expect(store.getState().doubleBet).toMatchObject({ status: 'pending', amount: 100 });
+
+    // Enquanto a dobra está no ar a mesa não anda: parar agora fecharia a
+    // mão por um valor que ainda está sendo decidido.
+    store.getState().stand();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().phase).toBe('playerTurn');
+
+    await waitForAnswer();
+    expect(store.getState().doubleBet.status).toBe('accepted');
+    expect(store.getState().match?.stake).toBe(100);
+    expect(store.getState().balance).toBe(400);
+
+    // A nuvem sai de cena, mas o pedido não volta a existir: uma por mão.
+    await vi.advanceTimersByTimeAsync(TIMINGS.doubleAnswerHoldMs);
+    expect(store.getState().doubleBet.open).toBe(false);
+    store.getState().requestDouble();
+    expect(store.getState().doubleBet.status).toBe('accepted');
+
+    // O payout deriva do valor dobrado: 400 + 100 + 90.
+    await standAndSettle(store);
+    expect(store.getState().result?.stake).toBe(100);
+    expect(store.getState().balance).toBe(590);
+  });
+
+  it('rival recusa: a mesa segue valendo o mesmo e nada é debitado', async () => {
+    const store = createTestStore('win', createMemoryStorage(), () => 0.99);
+    await reachPlayerTurn(store, 50);
+
+    store.getState().requestDouble();
+    await waitForAnswer();
+
+    expect(store.getState().doubleBet.status).toBe('declined');
+    expect(store.getState().match?.stake).toBe(50);
+    expect(store.getState().balance).toBe(450);
+
+    await standAndSettle(store);
+    expect(store.getState().result?.stake).toBe(50);
+    expect(store.getState().balance).toBe(545);
+  });
+
+  it('sem saldo para cobrir a diferença o pedido nem sai', async () => {
+    const store = createGameStore({
+      engine: new StubEngine('win'),
+      storage: new GameStorageService(createMemoryStorage()),
+      initialBalance: 90,
+      rng: () => 0.25,
+      createNegotiator: acceptAllNegotiator,
+    });
+    await reachPlayerTurn(store, 50);
+    expect(store.getState().balance).toBe(40);
+
+    store.getState().requestDouble();
+    expect(store.getState().doubleBet.status).toBe('idle');
+  });
+
+  it('a dobra só existe na sua vez e morre com a partida', async () => {
+    const store = createTestStore('win', createMemoryStorage(), () => 0.25);
+    await reachNegotiation(store);
+
+    // Fora da vez do jogador não há mão para dobrar.
+    store.getState().requestDouble();
+    expect(store.getState().doubleBet.status).toBe('idle');
+
+    await agreeAndStart(store, 50);
+    await passDealing(store);
+    store.getState().requestDouble();
+    await waitForAnswer();
+    expect(store.getState().doubleBet.status).toBe('accepted');
+
+    await standAndSettle(store);
+    void store.getState().startSearch();
+    expect(store.getState().doubleBet).toEqual({ status: 'idle', amount: 0, open: false });
   });
 });
 

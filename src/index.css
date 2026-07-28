@@ -84,6 +84,20 @@ h2 {
      4rem + 1px, e o CSS não deixa uma media query ler custom property. */
   --app-shell-w: 480px;
 
+  /* Altura reservada para a barra de ações da rodada, em TODAS as fases
+     da mesa (ver .arena-actions): duas fileiras de botão `size="md"`
+     (2×2,75rem) + o respiro entre elas (0,75rem) + o respiro para as
+     cartas (0,75rem). É medida de layout e não de estilo: a mesa
+     espelhada e o brasão derivam a geometria dela. */
+  --arena-actions-h: 7rem;
+
+  /* As duas bordas de uma mão. A placa de nome fica na de FORA e o total
+     na de DENTRO; como as duas mãos têm a mesma composição espelhada, a
+     faixa livre entre elas (onde o brasão respira) fica exatamente no
+     meio — ver .table-crest--overhead. */
+  --arena-nameplate-h: 1.4rem;
+  --arena-total-h: 2.2rem;
+
   /* COLUNA DE CENA: a faixa central onde o salão é desenhado. No
      celular ela É a tela — nada muda em relação ao que sempre existiu.
      O enquadramento de web é ligado num ÚNICO ponto (o @media lá
@@ -582,15 +596,20 @@ h2 {
    perspectiva real (afunila no topo, comprime na vertical) casando com
    a curvatura do rebordo logo acima. Assenta na faixa de couro entre o
    trilho e a área de jogo. */
+/* A centragem entra na PRÓPRIA lista de `transform`, não na propriedade
+   `translate` ao lado: o minificador de CSS do build funde as duas e, na
+   fusão, descarta o `translate` — em produção a marca saía do centro do
+   feltro (no dev, não). Como `translate` é aplicado antes de `transform`,
+   `translate(-50%, -50%)` na frente da lista dá o MESMO resultado, e o
+   minificador não tem mais o que fundir. */
 .table-crest--front .table-crest__stamp {
   top: 48%;
   width: 66%;
   max-width: 365px;
-  translate: -50% -50%;
   /* A distância de perspectiva acompanha a escala (365px de largura ↔
      715px de perspectiva): o trapézio mantém EXATAMENTE a mesma
      proporção — a marca só cresce, a pose não muda. */
-  transform: perspective(715px) rotateX(52deg);
+  transform: translate(-50%, -50%) perspective(715px) rotateX(52deg);
 }
 
 .table-crest--front .table-crest__shadow {
@@ -616,24 +635,24 @@ h2 {
   display: block;
 }
 
-/* Na vista de cima a marca fica na FAIXA LIVRE do feltro — entre a
-   fileira do dealer (no alto) e as mãos dos duelistas (na base), como a
-   estampa central das mesas reais de blackjack. O centro é derivado da
-   mesma geometria que posiciona as mãos, não chutado em %:
-     5rem            → o quanto o recorte da cena sobe nesta câmera
-     --dealer-h×0,95 → o espaço da dealer (dealer-spacer)
-     --card-w×2,25   → a fileira do dealer (carta = 1,4×--card-w de
-                       altura + rótulo) mais meia faixa livre até o
-                       miolo do feltro
+/* Na vista de cima a marca fica na FAIXA LIVRE do feltro — entre as
+   duas mãos, como a estampa central das mesas reais de blackjack. Com a
+   mesa ESPELHADA (ver .hands-arena--felt) o centro dessa faixa não
+   depende mais do tamanho das cartas: as duas mãos têm exatamente a
+   mesma altura e se cancelam na conta. Sobra a geometria do recorte:
+     50%              → meio do recorte da cena
+     +5rem/2 = 2,5rem → o recorte sobe 5rem nesta câmera
+     −1rem/2 = 0,5rem → o py-4 do <main> que o recorte também cobre
+     −(ações)/2       → a barra de ações, que só existe no pé da mesa
    Quase não deita: a câmera está sobre a mesa, olhando de frente para o
    feltro — só uma pitada de perspectiva para não parecer sobreposta. */
 .table-crest--overhead .table-crest__stamp {
-  top: calc(5.41rem + var(--dealer-h) * 0.95 + var(--card-w) * 2.25);
+  top: calc(50% + 2rem - var(--arena-actions-h) / 2);
   width: 60%;
   max-width: 328px;
-  translate: -50% -50%;
-  /* Perspectiva proporcional à largura (5×), como na câmera frontal. */
-  transform: perspective(1640px) rotateX(16deg);
+  /* Perspectiva proporcional à largura (5×), como na câmera frontal.
+     A centragem vem junto na lista — ver a nota da câmera frontal. */
+  transform: translate(-50%, -50%) perspective(1640px) rotateX(16deg);
 }
 
 .table-crest--overhead .table-crest__shadow {
@@ -821,7 +840,8 @@ h2 {
   pointer-events: none;
 }
 
-/* Monograma do clube no miolo do verso — a marca viaja com o baralho. */
+/* Medalhão do verso: o aro dourado e, dentro dele, o brasão da casa —
+   a marca viaja com o baralho. */
 .card3d__monogram {
   position: absolute;
   top: 50%;
@@ -829,17 +849,33 @@ h2 {
   translate: -50% -50%;
   display: grid;
   place-items: center;
-  width: 38%;
-  aspect-ratio: 1;
+  /* Cartucho VERTICAL, na proporção do próprio brasão: um medalhão
+     redondo obrigaria a marca a encolher para caber na largura, e no
+     tamanho de uma carta de celular ela viraria um borrão dourado. */
+  width: 46%;
+  aspect-ratio: 364 / 476;
   border-radius: 9999px;
-  background: rgba(20, 8, 8, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.7);
-  color: var(--color-gold-bright);
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: calc(var(--card-size, var(--card-w)) * 0.17);
-  letter-spacing: 0.08em;
-  text-indent: 0.08em;
+  background: rgba(20, 8, 8, 0.34);
+  box-shadow:
+    inset 0 0 0 1px rgba(252, 217, 160, 0.72),
+    inset 0 0 calc(var(--card-size, var(--card-w)) * 0.06) rgba(20, 8, 8, 0.5);
+}
+
+/* O brasão em si: o SVG entra como MÁSCARA, então quem pinta é o
+   degradê daqui — o mesmo ouro escovado do resto da casa, do champagne
+   no alto ao terracota na base. */
+.card3d__crest {
+  height: 84%;
+  aspect-ratio: 364 / 476;
+  -webkit-mask-image: var(--crest-src);
+  mask-image: var(--crest-src);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  background: linear-gradient(170deg, #fcd9a0 0%, #f5b76f 55%, #cb7349 100%);
 }
 
 /* Índice de canto: valor em cima, naipe embaixo, como num baralho real.
@@ -847,34 +883,101 @@ h2 {
 .card3d__corner {
   position: absolute;
   top: 4.5%;
-  left: 6.5%;
+  left: 6%;
   display: flex;
+  width: 15%;
   flex-direction: column;
   align-items: center;
   gap: calc(var(--card-size, var(--card-w)) * 0.015);
-  line-height: 1;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: calc(var(--card-size, var(--card-w)) * 0.24);
 }
 
 .card3d__corner--bottom {
   top: auto;
   left: auto;
   bottom: 4.5%;
-  right: 6.5%;
+  right: 6%;
   rotate: 180deg;
 }
 
-/* Naipe central grande — a assinatura visual da carta aberta. */
+/* O valor no índice: condensada da casa, para caber um "10" na mesma
+   caixa de um "A" sem apertar o naipe embaixo. */
+.card3d__rank {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: calc(var(--card-size, var(--card-w)) * 0.235);
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+  font-variant-numeric: lining-nums;
+}
+
+/* ---------- Miolo da carta ---------- */
+
+/* Campo de pips: cada naipe é posicionado em % da FACE (ver PIP_LAYOUT),
+   então o arranjo escala junto com a carta sem nenhuma conta extra. */
+.card3d__pips {
+  position: absolute;
+  inset: 0;
+}
+
 .card3d__pip {
+  position: absolute;
+  display: block;
+  translate: -50% -50%;
+}
+
+/* Ás: um naipe só, grande, no centro — a carta mais reconhecível do
+   baralho não precisa de mais nada. */
+.card3d__ace {
   position: absolute;
   top: 50%;
   left: 50%;
+  width: 42%;
   translate: -50% -50%;
-  width: 46%;
+}
+
+/* Figuras (J/Q/K): painel de corte com a letra e os dois naipes em
+   diagonal. Uma ilustração de figura no tamanho de uma carta de celular
+   viraria borrão — o painel dá a MESMA leitura (é uma figura, deste
+   naipe) com nitidez em qualquer tamanho. */
+.card3d__court {
+  position: absolute;
+  top: 15%;
+  bottom: 15%;
+  left: 26%;
+  right: 26%;
   display: grid;
   place-items: center;
+  border-radius: calc(var(--card-size, var(--card-w)) * 0.045);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, currentColor 42%, transparent),
+    inset 0 0 0 3px color-mix(in srgb, currentColor 7%, transparent);
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+.card3d__court-letter {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: calc(var(--card-size, var(--card-w)) * 0.32);
+  line-height: 1;
+}
+
+/* Os dois naipes do painel entram no EIXO da letra (e não em diagonal):
+   é o que mantém a figura simétrica pelos dois lados sem nunca esbarrar
+   nos índices de canto. */
+.card3d__court-pip {
+  position: absolute;
+  left: 50%;
+  width: 34%;
+  translate: -50%;
+}
+
+.card3d__court-pip--top {
+  top: 5%;
+}
+
+.card3d__court-pip--bottom {
+  bottom: 5%;
+  rotate: 180deg;
 }
 
 /* Tintas dos naipes sobre o papel-marfim: vinho para copas/ouros
@@ -1098,6 +1201,429 @@ h2 {
    nesta camada (fora de @layer) para vencer os utilitários do Tailwind. */
 .action-stack--tight {
   gap: 0.375rem;
+}
+
+/* ==================== Mesa espelhada do duelo (HandsArena) ==================== */
+
+/* Mesa vista de cima: a crupiê está FORA DE QUADRO nesta câmera, e o
+   espaço que o `dealer-spacer` reserva para o corpo dela volta a ser
+   feltro. A margem negativa devolve esse espaço à mesa — a mão do rival
+   sobe para a cabeceira de cima, de frente para a sua, e as duas ficam
+   à mesma distância das bordas do feltro.
+   O valor é o MESMO do dealer-spacer (não metade dele, como na mesa de
+   negociação): aqui a intenção é apagar o espaço, não dividi-lo. Sendo
+   um item `flex: 1` de coluna, a margem negativa não só sobe o bloco —
+   ele também cresce de volta até o pé da tela, então a barra de ações
+   continua pousada na borda de baixo. */
+.hands-arena--felt {
+  margin-top: calc(var(--dealer-h) * -0.95);
+}
+
+/* ---------- Placa de nome (borda externa de cada mão) ---------- */
+
+/* Pastilha de vinho com fio de luz: o nome de quem joga, na borda de
+   FORA da mão — o lado de dentro é do total, que aponta para o centro.
+   É também o indicador de vez: acesa em ouro, com o ponto respirando,
+   ela diz de quem é o lance sem precisar de mais nenhum texto.
+   Altura fixa: o veredito do showdown entra na MESMA linha, então nada
+   empurra as cartas do lugar e o espelho da mesa continua exato. */
+.nameplate {
+  display: inline-flex;
+  min-height: var(--arena-nameplate-h);
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.6rem;
+  border-radius: 9999px;
+  background: rgba(20, 8, 8, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.2);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-ivory);
+  white-space: nowrap;
+  transition:
+    box-shadow 0.4s ease,
+    background 0.4s ease;
+}
+
+.nameplate--player {
+  box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.35);
+}
+
+.nameplate--opponent {
+  box-shadow: inset 0 0 0 1px rgba(252, 165, 165, 0.35);
+}
+
+/* O ponto da vez: só existe quando o lance é deste lado. Ocupa o lugar
+   dele sempre (largura fixa) para a placa não mudar de tamanho. */
+.nameplate__dot {
+  width: 0.34rem;
+  height: 0.34rem;
+  border-radius: 9999px;
+  background: var(--color-gold-bright);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+/* Vez deste lado: aro dourado, halo e o ponto respirando. */
+.nameplate.is-turn {
+  background: rgba(48, 12, 6, 0.6);
+  box-shadow:
+    inset 0 0 0 1px rgba(252, 217, 160, 0.9),
+    0 0 14px rgba(245, 183, 111, 0.45);
+}
+
+.nameplate.is-turn .nameplate__dot {
+  opacity: 1;
+  animation: nameplate-breathe 1.5s ease-in-out infinite;
+}
+
+@keyframes nameplate-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+    scale: 0.7;
+  }
+  50% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* Veredito do showdown, na mesma linha da placa. */
+.nameplate__verdict {
+  padding-left: 0.4rem;
+  border-left: 1px solid rgba(252, 217, 160, 0.25);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+}
+
+.nameplate__verdict--bust {
+  color: #ff9d9d;
+}
+
+.nameplate__verdict--natural {
+  color: var(--color-gold-bright);
+}
+
+.nameplate__verdict--stand {
+  color: var(--color-lavender);
+}
+
+/* ---------- Total da mão (borda interna, apontado para o centro) ---------- */
+
+/* A condensada da casa em algarismos tabulares: o número não dança de
+   largura ao trocar de 9 para 11, e a mesma caixa serve aos dois lados.
+   A tinta é gravada no feltro (luz rente embaixo) como o resto da
+   tipografia da mesa. */
+.hand-total {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: var(--font-display);
+  font-size: var(--arena-total-h);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums lining-nums;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45),
+    0 3px 6px rgba(9, 42, 26, 0.22);
+}
+
+.hand-total--player {
+  color: #1b3d86;
+}
+
+.hand-total--opponent {
+  color: #7f1d1d;
+}
+
+.hand-total.is-bust {
+  color: #8f1616;
+}
+
+/* Mão soft: as duas leituras, com a menor em segundo plano — o que vale
+   é a de cima, e a de baixo é só o lembrete de que o Ás ainda escolhe. */
+.hand-total__soft {
+  font-size: 0.6em;
+  opacity: 0.5;
+}
+
+.hand-total__slash {
+  margin: 0 0.06em;
+  font-size: 0.5em;
+  opacity: 0.32;
+}
+
+/* A carta que o rival guarda virada. */
+.hand-total__partial {
+  margin-left: 0.16em;
+  font-size: 0.45em;
+  opacity: 0.55;
+}
+
+/* ---------- Anúncio do lance ---------- */
+
+/* Faixa no miolo do feltro: quem jogou e o que fez. Entra pelo lado de
+   quem jogou (o `y` inicial do componente), então o olho já sabe de onde
+   veio antes de ler. */
+.move-call {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  translate: -50% -50%;
+  padding: 0.38rem 1rem 0.42rem;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(24, 8, 10, 0.92) 0%, rgba(14, 5, 6, 0.86) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(245, 183, 111, 0.45),
+    0 8px 22px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
+.move-call__who {
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.move-call--player .move-call__who {
+  color: var(--color-player-soft);
+}
+
+.move-call--opponent .move-call__who {
+  color: var(--color-opponent-soft);
+}
+
+.move-call__what {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-gold-bright);
+}
+
+.move-call.is-bust .move-call__what {
+  color: #ff9d9d;
+}
+
+/* ---------- Aviso de vez do rival (pé da mesa) ---------- */
+
+/* Fora da sua vez a barra de ações sai e o slot fica com esta pastilha:
+   o rodapé nunca fica mudo, e o jogador sabe que a mesa está esperando
+   o outro lado — não ele.
+   `margin-block: auto` vence o `flex-end` do slot e centra a pastilha
+   nele: ela flutua sobre o FELTRO em vez de encostar na moldura de
+   mogno lá embaixo, onde tinta escura ficaria ilegível. */
+.turn-wait {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin-block: auto;
+  padding: 0.3rem 0.85rem;
+  border-radius: 9999px;
+  background: rgba(20, 8, 8, 0.36);
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.2);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ivory);
+}
+
+.turn-wait__dot {
+  width: 0.36rem;
+  height: 0.36rem;
+  border-radius: 9999px;
+  background: var(--color-gold-bright);
+  animation: nameplate-breathe 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nameplate.is-turn .nameplate__dot,
+  .turn-wait__dot {
+    animation: none;
+  }
+}
+
+/* Pé da mesa: a barra de ações só existe na sua vez, mas o espaço dela é
+   reservado em todas as fases — as mãos nunca sobem e descem entre a
+   distribuição, a sua vez e o showdown. `flex-end` mantém os botões
+   pousados na borda de baixo mesmo quando a barra é mais curta (o
+   torneio não tem o botão de dobra). */
+.arena-actions {
+  display: flex;
+  width: 100%;
+  min-height: var(--arena-actions-h);
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-top: 0.75rem;
+}
+
+/* ---------- Nuvem do pedido de dobra ---------- */
+
+/* Vinho lapidado com aro âmbar e o bico virado para cima: a pergunta foi
+   feita ao rival, que está do outro lado da mesa. Absoluta dentro da
+   faixa livre — entra e sai sem mexer um milímetro nas mãos. */
+.double-bubble {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  min-width: 11.5rem;
+  translate: -50%;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.6rem 1rem 0.5rem;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(76, 10, 21, 0.95) 0%, rgba(30, 6, 12, 0.95) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(245, 183, 111, 0.5),
+    0 10px 24px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
+/* O bico: um quadrado girado, com o filete âmbar só nas duas arestas
+   que ficam para fora — o resto some atrás do corpo da nuvem. */
+.double-bubble::before {
+  content: '';
+  position: absolute;
+  top: -0.4rem;
+  left: 50%;
+  width: 0.85rem;
+  height: 0.85rem;
+  translate: -50%;
+  rotate: 45deg;
+  border-radius: 0.15rem;
+  background: rgba(76, 10, 21, 0.95);
+  box-shadow: -1px -1px 0 0 rgba(245, 183, 111, 0.5);
+}
+
+.double-bubble__title {
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-gold-bright);
+}
+
+.double-bubble__amount {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 1.35rem;
+  line-height: 1.15;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ivory);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.double-bubble__hint {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: rgba(243, 230, 216, 0.7);
+}
+
+.double-bubble__answers {
+  display: flex;
+  gap: 0.6rem;
+  margin: 0.15rem 0 0.1rem;
+}
+
+/* As duas respostas que o rival tem na mão: o ✓ verde e o ✗ vermelho. */
+.double-answer {
+  display: grid;
+  width: 2.125rem;
+  height: 2.125rem;
+  place-items: center;
+  border-radius: 9999px;
+  transition:
+    opacity 0.25s ease,
+    scale 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.double-answer--yes {
+  background: linear-gradient(180deg, #2f9e5f 0%, #17663a 100%);
+  color: #eafff2;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 0 0 1px rgba(47, 158, 95, 0.6);
+}
+
+.double-answer--no {
+  background: linear-gradient(180deg, #d24747 0%, #8f1616 100%);
+  color: #fff0f0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 0 0 1px rgba(210, 71, 71, 0.6);
+}
+
+/* Enquanto ele pesa o lance, as duas pulsam fora de fase: a decisão
+   está no ar e nenhuma das duas é favorita. */
+.double-bubble[data-status='pending'] .double-answer {
+  animation: double-answer-wait 1.4s ease-in-out infinite;
+}
+
+.double-bubble[data-status='pending'] .double-answer--no {
+  animation-delay: 0.22s;
+}
+
+@keyframes double-answer-wait {
+  0%,
+  100% {
+    opacity: 0.55;
+    scale: 0.94;
+  }
+  50% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* Martelo batido: a escolhida acende, a outra apaga. */
+.double-answer.is-picked {
+  scale: 1.12;
+}
+
+.double-answer--yes.is-picked {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 0 2px #7ff0b0,
+    0 0 16px rgba(47, 158, 95, 0.7);
+}
+
+.double-answer--no.is-picked {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 0 2px #ffb3b3,
+    0 0 16px rgba(210, 71, 71, 0.7);
+}
+
+.double-answer.is-muted {
+  opacity: 0.22;
+  scale: 0.86;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .double-bubble[data-status='pending'] .double-answer {
+    animation: none;
+    opacity: 0.85;
+  }
 }
 
 /* ---------- Medalhões de jogador (AvatarBadge / Monogram) ---------- */

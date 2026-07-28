@@ -37,10 +37,33 @@ export const CARD_SETTLE_S = 0.55;
 export const CARD_FLIP_S = 0.6;
 
 /**
- * Leque da mão: cada carta gira alguns graus em torno do centro da mão
- * e sobrepõe a anterior — o gesto de segurar cartas numa mesa real.
+ * Mão DEITADA na mesa: as cartas ficam uma ao lado da outra, retas e
+ * inteiramente visíveis — não é um leque na mão de alguém, é o que a
+ * mesa mostra. Nada de sobreposição enquanto a mão couber na largura de
+ * referência (ver `handStep`).
  */
-export const FAN_STEP_DEG = 5;
 
-/** Sobreposição horizontal entre cartas vizinhas (fração de --card-w). */
-export const FAN_OVERLAP = 0.52;
+/** Respiro entre cartas vizinhas, em fração de --card-w. */
+export const HAND_GAP = 0.1;
+
+/** Quantas cartas cabem deitadas antes de a mão precisar se apertar. */
+export const HAND_SPREAD_MAX = 4;
+
+/**
+ * Largura de referência de uma mão, em cartas: o tamanho que a mão
+ * ocupa cheia de cartas deitadas. Nenhuma mão passa disto — é o que
+ * mantém as duas mesas alinhadas e o feltro respirando nas laterais.
+ */
+export const HAND_MAX_WIDTH = HAND_SPREAD_MAX + (HAND_SPREAD_MAX - 1) * HAND_GAP;
+
+/**
+ * Deslocamento de cada carta em relação à anterior (fração de --card-w):
+ * positivo é respiro, negativo é sobreposição. Até `HAND_SPREAD_MAX`
+ * cartas a mão fica aberta; a partir daí ela se aperta o MÍNIMO
+ * necessário para continuar cabendo em `HAND_MAX_WIDTH` — uma mão de
+ * sete cartas não pode vazar da mesa.
+ */
+export function handStep(count: number): number {
+  if (count <= HAND_SPREAD_MAX) return HAND_GAP;
+  return (HAND_MAX_WIDTH - 1) / (count - 1) - 1;
+}

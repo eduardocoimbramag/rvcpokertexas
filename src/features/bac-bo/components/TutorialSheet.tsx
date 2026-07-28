@@ -28,7 +28,7 @@ const STEPS: readonly { icon: IconName; title: string; text: string }[] = [
   {
     icon: 'club',
     title: 'Chegue mais perto de 21',
-    text: 'É você contra o rival, sem casa no meio: peça cartas ou pare. Quem estourar perde na hora, e a última carta de cada um só vira no showdown. Blackjack na mão paga 3:2.',
+    text: 'É você contra o rival, sem casa no meio: peça cartas, pare ou proponha dobrar a aposta. Quem estourar perde na hora, e a última carta de cada um só vira no showdown. A vitória leva 90% do que o rival pôs na mesa.',
   },
 ];
 

@@ -13,6 +13,7 @@ import type { GameEngine } from '../engine/GameEngine';
 import { GameEngineError } from '../engine/GameEngine';
 import { createGameEngine } from '../engine/createGameEngine';
 import { creditPayout, debitStake, isBroke, validateStake } from '../engine/credits';
+import { doubleAcceptChance, handValue, visibleCards } from '../engine/rules';
 import type {
   BlackjackRoundState,
   HistoryEntry,
@@ -20,6 +21,7 @@ import type {
   PlayerAction,
   RoundOutcome,
   RoundResult,
+  TableMove,
 } from '../engine/types';
 import { audioManager } from '../services/AudioManager';
 import type {
@@ -42,9 +44,11 @@ import { BOT_BEATS, NEGOTIATION_INTRO, createBotNegotiator } from './negotiation
  *
  * O duelo é uma RODADA ÚNICA de 21 contra o adversário — sem casa para
  * bater e sem série: countdown → dealing (as cartas saem do baralho) →
- * playerTurn (pedir/parar) → opponentTurn (o rival joga a mão dele) →
- * settle (showdown: as ocultas viram e as mãos se comparam) → completed.
- * Empate devolve a aposta e encerra a partida do mesmo jeito.
+ * playerTurn ⇄ opponentTurn (a mesa ALTERNA um lance de cada lado, e
+ * cada lance é anunciado antes de a vez trocar) → settle (showdown: as
+ * ocultas viram e as mãos se comparam) → completed. Quem fecha a mão
+ * sai do rodízio e o outro segue sozinho. Empate devolve a aposta e
+ * encerra a partida do mesmo jeito.
  */
 export type GamePhase =
   | 'idle'
@@ -67,10 +71,13 @@ export const PHASE_TRANSITIONS: Record<GamePhase, readonly GamePhase[]> = {
   confirm: ['negotiate', 'idle'],
   negotiate: ['countdown', 'idle', 'error'],
   countdown: ['dealing', 'error'],
-  // Um blackjack natural na distribuição pula a vez do jogador.
-  dealing: ['playerTurn', 'opponentTurn', 'error'],
-  playerTurn: ['opponentTurn', 'error'],
-  opponentTurn: ['settle', 'error'],
+  // Um blackjack natural na distribuição pula a vez de quem o recebeu —
+  // com os dois naturais a mesa vai direto ao showdown.
+  dealing: ['playerTurn', 'opponentTurn', 'settle', 'error'],
+  // O rodízio anda nos dois sentidos: cada lado joga um lance por vez
+  // até fechar a mão, e quem fecha primeiro devolve a vez ao outro.
+  playerTurn: ['opponentTurn', 'settle', 'error'],
+  opponentTurn: ['playerTurn', 'settle', 'error'],
   settle: ['completed'],
   completed: ['search', 'idle'],
   error: ['search', 'idle'],
@@ -116,6 +123,40 @@ export interface NegotiationState {
   starting: boolean;
 }
 
+/**
+ * Pedido de dobra da aposta no meio da mão (só o 1v1 tem).
+ *
+ * O jogador propõe dobrar o valor que está na mesa; o rival aceita ou
+ * recusa — a dobra só existe com os DOIS de acordo, como o stake que
+ * nasceu na negociação. Aceita, o novo valor vira a verdade da engine
+ * (payout e histórico derivam dele) e a diferença sai do saldo na hora.
+ *
+ * `status` é o estado do pedido NA RODADA: 'idle' é ninguém tendo
+ * pedido ainda — é ele que libera o botão, e por isso a resposta (aceita
+ * ou recusada) não volta para 'idle': cada mão admite um pedido só.
+ * `open` governa apenas a nuvem em cena, que sai um beat depois.
+ */
+export type DoubleBetStatus = 'idle' | 'pending' | 'accepted' | 'declined';
+
+export interface DoubleBetState {
+  status: DoubleBetStatus;
+  /** Valor que a mesa passa a valer se o rival topar (o dobro do stake). */
+  amount: number;
+  /** A nuvem do pedido está em cena. */
+  open: boolean;
+}
+
+const NO_DOUBLE_BET: DoubleBetState = { status: 'idle', amount: 0, open: false };
+
+/**
+ * O lance que a mesa está ANUNCIANDO. O `id` é o que faz um "pediu
+ * carta" seguido de outro igual entrar em cena duas vezes: sem ele a
+ * animação não teria como saber que houve um lance novo.
+ */
+export interface TableAnnouncement extends TableMove {
+  id: string;
+}
+
 /** Contagem falada da mesa, no inglês clássico de cassino. */
 const COUNTDOWN_WORDS: Record<number, string> = {
   5: 'five',
@@ -138,6 +179,10 @@ export interface GameStoreState {
   confirmations: MatchConfirmations;
   /** Mesa de negociação da partida; `null` fora da fase negotiate. */
   negotiation: NegotiationState | null;
+  /** Pedido de dobra da rodada corrente (um por mão). */
+  doubleBet: DoubleBetState;
+  /** Lance sendo anunciado pela mesa; `null` entre um lance e outro. */
+  announcement: TableAnnouncement | null;
   history: HistoryEntry[];
   /** Valor corrente do countdown (COUNTDOWN_START → 1). */
   countdown: number;
@@ -167,6 +212,8 @@ export interface GameStoreState {
   hit: () => void;
   /** Para com a mão atual (fase playerTurn). */
   stand: () => void;
+  /** Propõe ao rival dobrar a aposta que está na mesa (fase playerTurn). */
+  requestDouble: () => void;
   playAgain: () => void;
   dismissError: () => void;
   /** Recarrega créditos quando o saldo não cobre o menor stake. */
@@ -520,6 +567,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         error: null,
         confirmations: NO_CONFIRMATIONS,
         negotiation: null,
+        doubleBet: NO_DOUBLE_BET,
+        announcement: null,
       });
       audioManager.playSfx('tap');
       audioManager.startMusic();
@@ -560,6 +609,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         error: null,
         confirmations: NO_CONFIRMATIONS,
         negotiation: null,
+        doubleBet: NO_DOUBLE_BET,
+        announcement: null,
       });
     };
 
@@ -577,11 +628,72 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       schedule(() => runCountdown(value - 1), TIMINGS.countdownTickMs);
     };
 
+    /** Falha de engine no meio da rodada: o stake volta antes do erro. */
+    const refundAndFail = (): void => {
+      const { match } = get();
+      if (match) {
+        set({ balance: creditPayout(get().balance, match.stake) });
+        persist();
+      }
+      failWith('Não foi possível concluir a rodada. Seu stake foi devolvido.');
+    };
+
+    /** Põe o lance no alto-falante da mesa por um beat. */
+    const announce = (move: TableMove | undefined): void => {
+      if (!move) return;
+      const id = createId();
+      set({ announcement: { ...move, id } });
+      audioManager.playSfx(move.action === 'hit' ? 'tap' : 'ready');
+      schedule(() => {
+        if (get().announcement?.id !== id) return;
+        set({ announcement: null });
+      }, TIMINGS.announceHoldMs);
+    };
+
+    /**
+     * Recebe o estado que a engine devolveu e conduz a mesa a partir
+     * dele: anuncia o lance, encaixa a fase e agenda a vez seguinte. É o
+     * ÚNICO lugar que decide de quem é a vez — a engine diz de quem é, e
+     * daqui sai o ritmo em que isso vira cena.
+     */
+    const handOff = (next: BlackjackRoundState): void => {
+      set({ round: next, result: next.result ?? null });
+      announce(next.lastMove);
+      // A mesa só troca de lado DEPOIS do anúncio: o jogador lê o que
+      // acabou de acontecer antes de a vez virar. Na distribuição não há
+      // lance a anunciar — a primeira vez abre sem espera.
+      const beat = next.lastMove ? TIMINGS.moveAnnounceMs : 0;
+
+      const openTurn = (): void => {
+        if (next.phase === 'settled') {
+          if (!transitionTo('settle')) return;
+          // Showdown: as duas ocultas viram juntas, o quadro respira e o
+          // veredito entra.
+          schedule(completeRound, TIMINGS.revealMs + TIMINGS.settleMs);
+          return;
+        }
+        if (next.phase === 'opponentTurn') {
+          if (get().phase === 'opponentTurn' || transitionTo('opponentTurn')) {
+            schedule(
+              () => void runOpponentMove(next.matchId),
+              within(TIMINGS.opponentThinkMinMs, TIMINGS.opponentThinkMaxMs),
+            );
+          }
+          return;
+        }
+        if (get().phase !== 'playerTurn') transitionTo('playerTurn');
+      };
+
+      if (beat === 0) openTurn();
+      else schedule(openTurn, beat);
+    };
+
     /**
      * Distribuição da rodada: a engine tira as cartas do baralho e a mesa
      * as apresenta em beats (o som de cada carta é do próprio Card3D, no
-     * instante em que ela assenta — não daqui). Com blackjack natural do
-     * jogador a rodada volta já resolvida e a vez dele é pulada.
+     * instante em que ela assenta — não daqui). Um blackjack natural já
+     * fecha a mão de quem o recebeu, e a primeira vez sai do estado que
+     * a engine devolve.
      */
     const dealRound = async (): Promise<void> => {
       const { match, devForcedOutcome } = get();
@@ -601,36 +713,29 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         set({ round, result: round.result ?? null });
         schedule(() => {
           if (get().phase !== 'dealing') return;
-          if (round.phase === 'settled') {
-            // Natural na mesa: não há decisão — o rival joga direto.
-            if (transitionTo('opponentTurn')) runOpponentTurn();
-            return;
-          }
-          transitionTo('playerTurn');
+          handOff(round);
         }, TIMINGS.dealMs);
       } catch {
-        // Falha na engine: devolve o stake debitado no início do duelo.
-        set({ balance: creditPayout(get().balance, match.stake) });
-        persist();
-        failWith('Não foi possível concluir a rodada. Seu stake foi devolvido.');
+        refundAndFail();
       }
     };
 
     /**
-     * Ação do jogador na própria vez. Cada toque vai à engine e volta
-     * como um estado novo; quando a mão termina (parou, estourou ou fez
-     * 21), o estado volta `settled` e a vez do rival abre depois de um
-     * beat — a carta final precisa assentar antes de a mesa virar.
+     * UM lance do jogador na vez dele. Cada toque vai à engine e volta
+     * como um estado novo; quem conduz a mesa a partir daí é o `handOff`.
      */
     const applyAction = async (action: PlayerAction): Promise<void> => {
-      const { phase, match, round, actionPending } = get();
+      const { phase, match, round, actionPending, doubleBet } = get();
       if (phase !== 'playerTurn' || !match || !round || actionPending) return;
+      // Com uma dobra no ar a mesa espera: pedir carta agora resolveria a
+      // mão por um valor que ainda está sendo decidido.
+      if (doubleBet.status === 'pending') return;
       // A mão pode já ter fechado (parou, estourou ou cravou 21) e a
       // fase ainda estar em `playerTurn` durante o beat de acomodação da
       // última carta. Mandar outra ação à engine ali seria `illegal-
       // action` — tratada como falha de engine, com estorno e tela de
       // erro numa rodada que na verdade terminou bem.
-      if (round.phase === 'settled' || round.legalActions.length === 0) return;
+      if (round.phase !== 'playerTurn' || round.legalActions.length === 0) return;
       set({ actionPending: true });
       audioManager.playSfx('tap');
       vibrate(20);
@@ -641,56 +746,101 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         // saída congelaria os botões da vez sem nada para destravá-los.
         set({ actionPending: false });
         if (get().phase !== 'playerTurn') return;
-        set({ round: next, result: next.result ?? null });
-        if (next.phase === 'settled') {
-          schedule(() => {
-            if (transitionTo('opponentTurn')) runOpponentTurn();
-          }, TIMINGS.actionResolveMs);
-        }
+        handOff(next);
       } catch {
-        // Falha na engine: devolve o stake debitado no início do duelo.
-        set({ actionPending: false, balance: creditPayout(get().balance, match.stake) });
+        set({ actionPending: false });
+        refundAndFail();
+      }
+    };
+
+    /** UM lance do rival na vez dele — o beat que a mesa acabou de abrir. */
+    const runOpponentMove = async (matchId: string): Promise<void> => {
+      if (get().phase !== 'opponentTurn' || get().match?.id !== matchId) return;
+      try {
+        const next = await engine.advance({ matchId });
+        if (get().phase !== 'opponentTurn' || get().match?.id !== matchId) return;
+        handOff(next);
+      } catch {
+        refundAndFail();
+      }
+    };
+
+    /* ---------- Dobra da aposta ---------- */
+
+    /**
+     * Fecha o pedido de dobra: a resposta acende na nuvem (o ✓ ou o ✗) e
+     * ela sai de cena um beat depois. O `status` NÃO volta para 'idle' —
+     * cada mão admite um pedido só.
+     */
+    const closeDouble = (status: 'accepted' | 'declined', amount: number): void => {
+      set({ doubleBet: { status, amount, open: true } });
+      schedule(() => {
+        const current = get().doubleBet;
+        if (current.status !== status) return;
+        set({ doubleBet: { ...current, open: false } });
+      }, TIMINGS.doubleAnswerHoldMs);
+    };
+
+    /**
+     * Rival topou: o novo valor vira a verdade da engine ANTES do débito
+     * (payout e histórico derivam do stake gravado na partida) e só
+     * então a diferença sai do saldo — a mesma ordem do início do duelo.
+     */
+    const acceptDouble = async (matchId: string): Promise<void> => {
+      const { match, balance, doubleBet } = get();
+      if (!match || match.id !== matchId || doubleBet.status !== 'pending') return;
+      // Dobrar custa outro tanto do que já está na mesa. O saldo é
+      // reconferido aqui: recusar é o desfecho seguro de um pedido que
+      // não tem como ser pago.
+      const extra = match.stake;
+      if (!validateStake(balance, extra).ok) {
+        closeDouble('declined', doubleBet.amount);
+        return;
+      }
+      try {
+        const updated = await engine.setStake({ matchId, stake: doubleBet.amount });
+        if (get().match?.id !== matchId || get().doubleBet.status !== 'pending') return;
+        set({ match: updated, balance: debitStake(get().balance, extra) });
         persist();
-        failWith('Não foi possível concluir a rodada. Seu stake foi devolvido.');
+        closeDouble('accepted', doubleBet.amount);
+        audioManager.playSfx('stake');
+        vibrate([30, 40, 60]);
+      } catch {
+        // A engine não gravou o valor novo: nada foi debitado e a mesa
+        // segue valendo o que valia.
+        closeDouble('declined', doubleBet.amount);
       }
     };
 
     /**
-     * Vez do rival: as cartas que ele pediu já estão no `result` — a mesa
-     * as apresenta uma a uma (stagger do componente), e cada carta nova
-     * empurra a anterior para o campo visível: a ÚLTIMA dele continua
-     * virada para baixo até o showdown.
+     * Resposta do rival ao pedido de dobra. Ele decide com a MESMA
+     * informação parcial que tem de você — as suas cartas abertas, nunca
+     * a última.
      */
-    const runOpponentTurn = (): void => {
-      const { match, result } = get();
-      if (!result) {
-        // Única transição do fluxo sem sucessor natural: sem resultado
-        // não há o que apresentar nem como seguir. Sair por erro (com o
-        // stake de volta) é melhor do que ficar preso na vez do rival.
-        if (match) {
-          set({ balance: creditPayout(get().balance, match.stake) });
-          persist();
-        }
-        failWith('Não foi possível concluir a rodada. Seu stake foi devolvido.');
+    const answerDouble = (matchId: string): void => {
+      const { phase, match, round, doubleBet } = get();
+      if (match?.id !== matchId || doubleBet.status !== 'pending') return;
+
+      // A mão pode ter fechado enquanto ele pensava. Sem mão viva não há
+      // aposta para dobrar: o pedido morre recusado, sem debitar nada.
+      if (phase !== 'playerTurn' || !round || round.phase === 'settled') {
+        closeDouble('declined', doubleBet.amount);
         return;
       }
-      const extraCards = result.opponentHand.length - 2;
-      const duration = Math.max(
-        TIMINGS.opponentTurnMinMs,
-        extraCards * TIMINGS.opponentHitMs + TIMINGS.actionResolveMs,
-      );
-      schedule(() => {
-        if (!transitionTo('settle')) return;
-        // Showdown: as duas ocultas viram juntas, o quadro respira e o
-        // veredito entra.
-        schedule(completeRound, TIMINGS.revealMs + TIMINGS.settleMs);
-      }, duration);
+
+      const visibleTotal = handValue(visibleCards(round.playerHand)).total;
+      if (rng() < doubleAcceptChance(visibleTotal)) {
+        void acceptDouble(matchId);
+        return;
+      }
+      closeDouble('declined', doubleBet.amount);
+      audioManager.playSfx('tap');
     };
 
     /**
      * Fim do showdown: credita o payout, grava o histórico e celebra. O
-     * payout/netChange vêm calculados pela engine (com o 3:2 de um
-     * blackjack natural incluso) — nada é recalculado aqui.
+     * payout/netChange vêm calculados pela engine sobre o stake gravado
+     * na partida (dobra inclusa) — nada é recalculado aqui.
      */
     const completeRound = (): void => {
       const { result, match, balance, history } = get();
@@ -730,6 +880,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       result: null,
       confirmations: NO_CONFIRMATIONS,
       negotiation: null,
+      doubleBet: NO_DOUBLE_BET,
+      announcement: null,
       history: persisted?.history ?? [],
       countdown: COUNTDOWN_START,
       error: null,
@@ -873,6 +1025,25 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         void applyAction('stand');
       },
 
+      requestDouble: () => {
+        const { phase, match, round, balance, doubleBet, actionPending } = get();
+        if (phase !== 'playerTurn' || !match || !round || actionPending) return;
+        if (round.phase === 'settled' || round.legalActions.length === 0) return;
+        // Uma dobra por mão: pedida (e respondida), o botão não volta.
+        if (doubleBet.status !== 'idle') return;
+        // Dobrar custa outro tanto do que já está na mesa — sem saldo
+        // para cobrir a diferença, o pedido nem sai.
+        if (!validateStake(balance, match.stake).ok) return;
+
+        set({ doubleBet: { status: 'pending', amount: match.stake * 2, open: true } });
+        audioManager.playSfx('stake');
+        vibrate(20);
+        schedule(
+          () => answerDouble(match.id),
+          within(TIMINGS.doubleAnswerMinMs, TIMINGS.doubleAnswerMaxMs),
+        );
+      },
+
       playAgain: () => {
         if (get().phase !== 'completed') return;
         void beginSearch();
@@ -888,6 +1059,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           result: null,
           confirmations: NO_CONFIRMATIONS,
           negotiation: null,
+          doubleBet: NO_DOUBLE_BET,
+          announcement: null,
         });
         // Sem saldo mínimo a nova busca seria inútil: volta ao menu,
         // onde a recarga de créditos mora.
@@ -964,6 +1137,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           result: null,
           confirmations: NO_CONFIRMATIONS,
           negotiation: null,
+          doubleBet: NO_DOUBLE_BET,
+          announcement: null,
           history: [],
           countdown: COUNTDOWN_START,
           error: null,

@@ -29,23 +29,32 @@ export interface GameEngine {
   setStake(params: SetStakeParams): Promise<Match>;
 
   /**
-   * Distribui as cartas de uma nova rodada. Se o jogador receber um
-   * blackjack natural não há o que decidir: a rodada volta já `settled`,
-   * com o `result` completo.
+   * Distribui as cartas de uma nova rodada e abre a PRIMEIRA vez. Um
+   * blackjack natural do jogador fecha a mão dele na distribuição: a
+   * rodada volta na vez do rival (ou já `settled`, se ninguém tiver o
+   * que decidir).
    * @throws {GameEngineError} `match-not-found` se a partida não existir.
    */
   beginRound(params: BeginRoundParams): Promise<BlackjackRoundState>;
 
   /**
-   * Aplica uma ação do jogador à rodada em andamento. Quando a mão do
-   * jogador termina (parou, estourou ou fez 21), a engine joga o bot
-   * adversário e devolve o estado `settled` com o `result` — a UI nunca
-   * calcula totais, vencedor ou payout: apenas exibe.
+   * Joga UM lance do jogador na vez dele. A vez passa em seguida para o
+   * rival (se ele ainda tiver mão viva) — nunca para o próprio jogador
+   * duas vezes seguidas enquanto o outro puder jogar.
    * @throws {GameEngineError} `match-not-found` se a partida não existir.
-   * @throws {GameEngineError} `illegal-action` se não houver rodada em
-   *   andamento ou a rodada já estiver resolvida.
+   * @throws {GameEngineError} `illegal-action` se não for a vez do
+   *   jogador ou a rodada já estiver resolvida.
    */
   act(params: ActParams): Promise<BlackjackRoundState>;
+
+  /**
+   * Joga UM lance do rival na vez dele. É a UI que chama — assim cada
+   * lance do adversário tem o seu beat em cena e é anunciado na mesa,
+   * em vez de a mão inteira dele resolver num sopro invisível.
+   * @throws {GameEngineError} `match-not-found` se a partida não existir.
+   * @throws {GameEngineError} `illegal-action` se não for a vez do rival.
+   */
+  advance(params: AdvanceParams): Promise<BlackjackRoundState>;
 }
 
 export interface FindMatchParams {
@@ -78,6 +87,10 @@ export interface BeginRoundParams {
 export interface ActParams {
   matchId: string;
   action: PlayerAction;
+}
+
+export interface AdvanceParams {
+  matchId: string;
 }
 
 export type GameEngineErrorCode =

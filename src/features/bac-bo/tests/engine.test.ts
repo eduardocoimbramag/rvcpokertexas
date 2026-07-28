@@ -19,15 +19,56 @@ function createTestEngine(seed = 1, allowForcedOutcomes = false) {
   });
 }
 
-/** Joga uma rodada inteira parando na primeira oportunidade. */
+/**
+ * Joga uma rodada inteira parando na primeira oportunidade. A mesa
+ * ALTERNA a vez, então o laço faz o que a UI faz: age quando é do
+ * jogador e manda o rival jogar o lance dele quando é a vez do outro.
+ */
 async function playRoundToEnd(engine: GameEngine, matchId: string): Promise<RoundResult> {
-  let state = await engine.beginRound({ matchId });
-  while (state.phase === 'playerTurn') {
-    state = await engine.act({ matchId, action: 'stand' });
+  return (await playRound(engine, matchId)).result;
+}
+
+/** Fecha a rodada a partir de um estado já aberto (parando na sua vez). */
+async function settleFrom(
+  engine: GameEngine,
+  matchId: string,
+  from: BlackjackRoundState,
+): Promise<RoundResult> {
+  let state = from;
+  for (let guard = 0; state.phase !== 'settled' && guard < 40; guard += 1) {
+    state =
+      state.phase === 'playerTurn'
+        ? await engine.act({ matchId, action: 'stand' })
+        : await engine.advance({ matchId });
   }
   const { result } = state;
   if (!result) throw new Error('rodada resolvida sem resultado — contrato violado');
   return result;
+}
+
+/** A rodada inteira mais o número de lances de cada lado. */
+async function playRound(
+  engine: GameEngine,
+  matchId: string,
+  action: 'hit' | 'stand' = 'stand',
+): Promise<{ result: RoundResult; playerMoves: number; opponentMoves: number }> {
+  let state = await engine.beginRound({ matchId });
+  let playerMoves = 0;
+  let opponentMoves = 0;
+  // Teto de segurança: uma rodada de 21 nunca passa disto, e um laço
+  // infinito num teste de motor é pior do que uma falha clara.
+  for (let guard = 0; state.phase !== 'settled' && guard < 40; guard += 1) {
+    if (state.phase === 'playerTurn') {
+      state = await engine.act({ matchId, action });
+      playerMoves += 1;
+    } else {
+      state = await engine.advance({ matchId });
+      opponentMoves += 1;
+    }
+  }
+  const { result } = state;
+  if (!result) throw new Error('rodada resolvida sem resultado — contrato violado');
+  return { result, playerMoves, opponentMoves };
 }
 
 /** Uma partida já distribuída, achada por varredura de seeds. */
@@ -108,8 +149,8 @@ describe('LocalBlackjackGameEngine.setStake', () => {
 
     const result = await playRoundToEnd(engine, match.id);
     expect(result.stake).toBe(130);
-    expect(result.payout).toBe(payoutFor(result.outcome, 130, result.playerNatural));
-    expect(result.netChange).toBe(netChangeFor(result.outcome, 130, result.playerNatural));
+    expect(result.payout).toBe(payoutFor(result.outcome, 130));
+    expect(result.netChange).toBe(netChangeFor(result.outcome, 130));
   });
 
   it('rejeita partidas inexistentes e stakes inválidos', async () => {
@@ -202,9 +243,9 @@ describe('LocalBlackjackGameEngine.act', () => {
     });
   });
 
-  it('pedir carta acrescenta exatamente uma carta à mão', async () => {
-    // Mão baixa (≤ 9): pedir uma carta nunca alcança 21, então a vez
-    // continua com o jogador e dá para medir o efeito isolado do hit.
+  it('pedir carta acrescenta exatamente uma carta à mão e entrega a vez', async () => {
+    // Mão baixa (≤ 9): pedir uma carta nunca alcança 21, então a mão
+    // continua viva e dá para medir o efeito isolado do hit.
     const { engine, matchId, state } = await findDeal(
       (s) => isPlayerTurn(s) && handValue(s.playerHand).total <= 9,
     );
@@ -212,32 +253,67 @@ describe('LocalBlackjackGameEngine.act', () => {
     const after = await engine.act({ matchId, action: 'hit' });
     expect(after.playerHand).toHaveLength(3);
     expect(after.playerHand.slice(0, 2)).toEqual(state.playerHand);
-    expect(after.phase).toBe('playerTurn');
+    // Um lance por vez: com a mão dele viva, quem joga agora é o rival.
+    expect(after.phase).toBe('opponentTurn');
+    expect(after.legalActions).toEqual([]);
+    expect(after.lastMove).toEqual({ by: 'player', action: 'hit', closed: false, bust: false });
     // O rival continua com a mesma carta aberta e a última escondida.
     expect(after.opponentVisible).toEqual(state.opponentVisible);
     expect(after.opponentHidden).toBe(1);
   });
 
-  it('pedir até 21 ou estourar resolve a rodada sozinho', async () => {
-    const engine = createTestEngine(3);
-    const match = await engine.findMatch({ stake: 50 });
-    let state = await engine.beginRound({ matchId: match.id });
-    while (state.phase === 'playerTurn') {
-      state = await engine.act({ matchId: match.id, action: 'hit' });
+  it('a vez alterna: ninguém joga dois lances seguidos com o outro vivo', async () => {
+    const { engine, matchId } = await findDeal(
+      (s) => isPlayerTurn(s) && handValue(s.playerHand).total <= 9,
+    );
+
+    const afterHit = await engine.act({ matchId, action: 'hit' });
+    expect(afterHit.phase).toBe('opponentTurn');
+    // Fora da vez, a engine recusa — não há como pedir duas cartas.
+    await expect(engine.act({ matchId, action: 'hit' })).rejects.toMatchObject({
+      code: 'illegal-action',
+    });
+
+    const afterOpponent = await engine.advance({ matchId });
+    expect(afterOpponent.lastMove?.by).toBe('opponent');
+    // Se o rival não fechou a mão, a vez volta para o jogador.
+    if (!afterOpponent.opponentClosed) {
+      expect(afterOpponent.phase).toBe('playerTurn');
+      await expect(engine.advance({ matchId })).rejects.toMatchObject({
+        code: 'illegal-action',
+      });
     }
-    expect(state.result).toBeTruthy();
-    expect(handValue(state.playerHand).total).toBeGreaterThanOrEqual(21);
-    expect(state.legalActions).toEqual([]);
   });
 
-  it('parar entrega a vez ao bot, que joga dentro da engine', async () => {
+  it('a mão que fecha sai do rodízio e o outro segue sozinho', async () => {
     const { engine, matchId, state } = await findDeal(isPlayerTurn);
-    const settled = await engine.act({ matchId, action: 'stand' });
+    const afterStand = await engine.act({ matchId, action: 'stand' });
 
-    expect(settled.phase).toBe('settled');
+    expect(afterStand.lastMove).toEqual({
+      by: 'player',
+      action: 'stand',
+      closed: true,
+      bust: false,
+    });
+    expect(afterStand.playerClosed).toBe(true);
     // A mão do jogador não muda depois do stand; a do rival pode crescer.
-    expect(settled.playerHand).toEqual(state.playerHand);
-    expect(settled.result?.opponentHand.length).toBeGreaterThanOrEqual(2);
+    expect(afterStand.playerHand).toEqual(state.playerHand);
+
+    // Com o jogador fora, todo lance restante é do rival — até o showdown.
+    let current = afterStand;
+    while (current.phase === 'opponentTurn') {
+      current = await engine.advance({ matchId });
+      expect(current.lastMove?.by).toBe('opponent');
+    }
+    expect(current.phase).toBe('settled');
+    expect(current.result?.opponentHand.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('pedir até 21 ou estourar fecha a mão do jogador', async () => {
+    const engine = createTestEngine(3);
+    const match = await engine.findMatch({ stake: 50 });
+    const { result } = await playRound(engine, match.id, 'hit');
+    expect(handValue(result.playerHand).total).toBeGreaterThanOrEqual(21);
   });
 
   it('o resultado fecha com totais, estouros, naturais e payout consistentes', async () => {
@@ -253,8 +329,8 @@ describe('LocalBlackjackGameEngine.act', () => {
     expect(result.opponentNatural).toBe(isNaturalBlackjack(result.opponentHand));
 
     expect(result.stake).toBe(100);
-    expect(result.payout).toBe(payoutFor(result.outcome, 100, result.playerNatural));
-    expect(result.netChange).toBe(netChangeFor(result.outcome, 100, result.playerNatural));
+    expect(result.payout).toBe(payoutFor(result.outcome, 100));
+    expect(result.netChange).toBe(netChangeFor(result.outcome, 100));
     expect(result.matchId).toBe(match.id);
     expect(result.completedAt).toBeGreaterThan(0);
   });
@@ -265,10 +341,15 @@ describe('estouro é público', () => {
    * O sigilo da última carta vale para decidir a mão, NÃO para esconder
    * uma derrota já consumada: quem estoura vira as cartas na hora, em
    * qualquer mesa. Sem isso o rival seguiria pedindo contra alguém que
-   * já perdeu, estouraria junto de vez em quando, e o "dois estourados
-   * empatam" devolveria a aposta de quem estourou primeiro.
+   * já perdeu — e estouraria junto de vez em quando, transformando uma
+   * derrota consumada em empate com a aposta de volta.
+   *
+   * O que a alternância de vezes NÃO garante (nem deve) é que ninguém
+   * mais estoure junto: o rival pode ter estourado ANTES de você, no
+   * lance dele, sem ter como saber o que você faria depois. Aí os dois
+   * estouros empatam, como manda a regra da mesa.
    */
-  it('quem estoura nunca empata: a rodada é sempre derrota', async () => {
+  it('depois de você estourar, o rival nunca pede outra carta', async () => {
     let busts = 0;
     // 25 seeds bastam: pedir carta até a mão fechar estoura na maioria
     // das vezes, e cada seed custa uma partida inteira de engine.
@@ -276,16 +357,23 @@ describe('estouro é público', () => {
       const engine = createTestEngine(seed);
       const match = await engine.findMatch({ stake: 50 });
       let state = await engine.beginRound({ matchId: match.id });
-      // Pede até a mão fechar sozinha (estouro ou 21) — é o caminho
-      // mais curto para produzir estouros de verdade.
-      while (state.phase === 'playerTurn') {
-        state = await engine.act({ matchId: match.id, action: 'hit' });
+      let busted = false;
+      for (let guard = 0; state.phase !== 'settled' && guard < 40; guard += 1) {
+        if (state.phase === 'playerTurn') {
+          // Pede até a mão fechar sozinha — o caminho mais curto para
+          // produzir estouros de verdade.
+          state = await engine.act({ matchId: match.id, action: 'hit' });
+          busted = handValue(state.playerHand).total > 21;
+          continue;
+        }
+        const bustedBefore = busted;
+        state = await engine.advance({ matchId: match.id });
+        if (bustedBefore) expect(state.lastMove?.action).toBe('stand');
       }
-      const { result } = state;
-      if (!result || !result.playerBust) continue;
+      if (!state.result?.playerBust) continue;
       busts += 1;
-      expect(result.outcome).toBe('lose');
-      expect(result.payout).toBe(0);
+      // Estourado, você nunca LEVA a rodada.
+      expect(state.result.outcome).not.toBe('win');
     }
     // O laço só prova alguma coisa se realmente houve estouros.
     expect(busts).toBeGreaterThan(0);
@@ -299,7 +387,10 @@ describe('sigilo da última carta do rival', () => {
     expect(state.opponentVisible).toHaveLength(1);
     expect(state.opponentHidden).toBe(1);
 
-    const settled = await engine.act({ matchId, action: 'stand' });
+    let settled = await engine.act({ matchId, action: 'stand' });
+    while (settled.phase === 'opponentTurn') {
+      settled = await engine.advance({ matchId });
+    }
     const result = settled.result;
     if (!result) throw new Error('rodada resolvida sem resultado — contrato violado');
 
@@ -314,18 +405,30 @@ describe('sigilo da última carta do rival', () => {
     expect(state.opponentVisible).not.toContainEqual(result.opponentHand[1]);
   });
 
-  it('nenhuma compra do jogador revela mais cartas do rival', async () => {
+  it('cada lance do rival revela no máximo a carta que ele já tinha aberta', async () => {
     const { engine, matchId, state } = await findDeal(
       (s) => isPlayerTurn(s) && handValue(s.playerHand).total <= 9,
     );
 
     let current = await engine.act({ matchId, action: 'hit' });
-    while (current.phase === 'playerTurn') {
-      expect(current.opponentVisible).toEqual(state.opponentVisible);
-      expect(current.opponentHidden).toBe(1);
-      current = await engine.act({ matchId, action: 'hit' });
+    let openBefore = state.opponentVisible.length;
+    while (current.phase !== 'settled') {
+      if (current.phase === 'playerTurn') {
+        // Uma compra SUA nunca move a mão do rival.
+        expect(current.opponentVisible).toHaveLength(openBefore);
+        expect(current.opponentHidden).toBe(1);
+        current = await engine.act({ matchId, action: 'hit' });
+        continue;
+      }
+      // Um lance DELE abre no máximo uma carta a mais — a que estava
+      // escondida passa a ser a nova.
+      current = await engine.advance({ matchId });
+      if (current.phase !== 'settled') {
+        expect(current.opponentVisible.length).toBeLessThanOrEqual(openBefore + 1);
+        expect(current.opponentHidden).toBe(1);
+        openBefore = current.opponentVisible.length;
+      }
     }
-    expect(current.phase).toBe('settled');
   });
 });
 
@@ -334,23 +437,24 @@ describe('resultados forçados (DevTools)', () => {
     for (const outcome of ['win', 'lose', 'tie'] as const) {
       const engine = createTestEngine(7, true);
       const match = await engine.findMatch({ stake: 50 });
-      let state = await engine.beginRound({ matchId: match.id, forcedOutcome: outcome });
-      while (state.phase === 'playerTurn') {
-        state = await engine.act({ matchId: match.id, action: 'stand' });
-      }
-      expect(state.result?.outcome).toBe(outcome);
+      const state = await engine.beginRound({ matchId: match.id, forcedOutcome: outcome });
+      expect(await settleFrom(engine, match.id, state)).toMatchObject({ outcome });
     }
   });
 
-  it('vitória forçada vem com blackjack natural (paga 3:2)', async () => {
+  it('vitória forçada vem com blackjack natural', async () => {
     const engine = createTestEngine(7, true);
     const match = await engine.findMatch({ stake: 50 });
     const state = await engine.beginRound({ matchId: match.id, forcedOutcome: 'win' });
-    // Natural resolve na distribuição, sem vez do jogador.
-    expect(state.phase).toBe('settled');
-    expect(state.result?.playerNatural).toBe(true);
-    expect(state.result?.payout).toBe(payoutFor('win', 50, true));
-    expect(state.result?.netChange).toBe(netChangeFor('win', 50, true));
+    // O natural já fecha a sua mão na distribuição: não sobra decisão
+    // nenhuma para você — só o rival ainda tem lance a dar.
+    expect(state.phase).toBe('opponentTurn');
+    expect(state.playerClosed).toBe(true);
+
+    const result = await settleFrom(engine, match.id, state);
+    expect(result.playerNatural).toBe(true);
+    expect(result.payout).toBe(payoutFor('win', 50));
+    expect(result.netChange).toBe(netChangeFor('win', 50));
   });
 
   it('derrota forçada dá o natural ao rival e o jogador não escapa', async () => {
@@ -358,6 +462,8 @@ describe('resultados forçados (DevTools)', () => {
     const match = await engine.findMatch({ stake: 50 });
     const state = await engine.beginRound({ matchId: match.id, forcedOutcome: 'lose' });
     expect(state.phase).toBe('playerTurn');
+    // O natural do rival fechou a mão dele: o rodízio já é só seu.
+    expect(state.opponentClosed).toBe(true);
 
     const settled = await engine.act({ matchId: match.id, action: 'stand' });
     expect(settled.result?.opponentNatural).toBe(true);

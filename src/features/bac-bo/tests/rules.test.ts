@@ -9,15 +9,14 @@ import {
   botAction,
   buildDeck,
   dealInitialHands,
+  doubleAcceptChance,
   drawCard,
   forcedDealFor,
   handValue,
   isBust,
   isNaturalBlackjack,
-  naturalProfit,
   netChangeFor,
   payoutFor,
-  playBotHand,
   rankValue,
   resolveOutcome,
   standingOf,
@@ -208,40 +207,6 @@ describe('botAction (estratégia do duelo)', () => {
   });
 });
 
-describe('playBotHand', () => {
-  it('joga a mão do bot até a estratégia mandar parar', () => {
-    const deck = [card('9')];
-    const hand = playBotHand(deck, [card('5'), card('6')], 10);
-    // 11 → +9 = 20: para.
-    expect(handValue(hand).total).toBe(20);
-    expect(hand).toHaveLength(3);
-    expect(deck).toHaveLength(0);
-  });
-
-  it('não toca no baralho quando a mão inicial já segura', () => {
-    const deck = [card('9')];
-    const hand = playBotHand(deck, [card('10'), card('9')], 14);
-    expect(hand).toHaveLength(2);
-    expect(deck).toHaveLength(1);
-  });
-
-  it('para de comprar assim que estoura', () => {
-    const deck = [card('K')];
-    const hand = playBotHand(deck, [card('10'), card('6')], 10);
-    expect(handValue(hand).total).toBe(26);
-    expect(isBust(hand)).toBe(true);
-    expect(deck).toHaveLength(0);
-  });
-
-  it('não altera a mão recebida (devolve uma cópia jogada)', () => {
-    const deck = [card('9')];
-    const original = [card('5'), card('6')];
-    const played = playBotHand(deck, original, 10);
-    expect(original).toHaveLength(2);
-    expect(played).not.toBe(original);
-  });
-});
-
 describe('standingOf', () => {
   it('lê a mão como uma situação de showdown', () => {
     expect(standingOf([card('A'), card('K')])).toEqual({ total: 21, bust: false, natural: true });
@@ -303,32 +268,49 @@ describe('payout e variação líquida', () => {
     expect(netChangeFor('win', 10)).toBe(9);
   });
 
-  it('vitória com blackjack natural paga 3:2, sem comissão', () => {
-    expect(naturalProfit(100)).toBe(150);
-    expect(naturalProfit(25)).toBe(37); // 37,5 → arredonda para baixo
-    expect(payoutFor('win', 100, true)).toBe(250);
-    expect(netChangeFor('win', 50, true)).toBe(75);
+  it('o pote é fechado: nem o blackjack natural leva mais que o stake do rival', () => {
+    // Sem 3:2 nesta mesa — um prêmio de 1,5× criaria crédito que nenhum
+    // dos dois apostou, e ainda deixaria a casa sem a comissão dela.
+    expect(payoutFor('win', 100)).toBe(190);
+    expect(netChangeFor('win', 50)).toBe(45);
   });
 
   it('a casa nunca cria crédito: o ganho é sempre inteiro e para baixo', () => {
     for (const stake of [1, 3, 7, 15, 33, 99]) {
       expect(Number.isInteger(winProfit(stake))).toBe(true);
       expect(winProfit(stake)).toBeLessThanOrEqual(stake * 0.9);
-      expect(Number.isInteger(naturalProfit(stake))).toBe(true);
-      expect(naturalProfit(stake)).toBeLessThanOrEqual(stake * 1.5);
     }
   });
 
-  it('empate devolve exatamente o stake; natural não muda isso', () => {
+  it('empate devolve exatamente o stake', () => {
     expect(payoutFor('tie', 50)).toBe(50);
-    expect(payoutFor('tie', 50, true)).toBe(50);
     expect(netChangeFor('tie', 50)).toBe(0);
   });
 
-  it('derrota perde o stake, com ou sem natural', () => {
+  it('derrota perde o stake', () => {
     expect(payoutFor('lose', 50)).toBe(0);
-    expect(payoutFor('lose', 50, true)).toBe(0);
     expect(netChangeFor('lose', 50)).toBe(-50);
+  });
+});
+
+describe('doubleAcceptChance — o rival diante do pedido de dobra', () => {
+  it('quanto mais forte a sua mesa aberta, menos ele topa subir o valor', () => {
+    const totals = [8, 13, 17, 20];
+    const chances = totals.map(doubleAcceptChance);
+    for (let i = 1; i < chances.length; i += 1) {
+      expect(chances[i]).toBeLessThan(chances[i - 1] as number);
+    }
+  });
+
+  it('contra uma mesa estourada à vista ele sobe quase sempre', () => {
+    expect(doubleAcceptChance(24)).toBeGreaterThan(doubleAcceptChance(8));
+  });
+
+  it('nunca é certeza: o blefe continua de pé nos dois sentidos', () => {
+    for (const total of [4, 10, 15, 18, 21, 26]) {
+      expect(doubleAcceptChance(total)).toBeGreaterThan(0);
+      expect(doubleAcceptChance(total)).toBeLessThan(1);
+    }
   });
 });
 
@@ -345,9 +327,13 @@ describe('forcedDealFor', () => {
     deck.push(...[...forcedDealFor(outcome)].reverse());
 
     const { playerHand, opponentHand } = dealInitialHands(deck);
-    // O bot só enxerga as cartas ABERTAS do jogador, como na engine.
+    // O rival joga lance a lance, como na mesa — e só enxerga as cartas
+    // ABERTAS do jogador.
     const playerVisibleTotal = handValue(visibleCards(playerHand)).total;
-    const played = playBotHand(deck, opponentHand, playerVisibleTotal);
+    const played: Card[] = [...opponentHand];
+    while (!isBust(played) && botAction(played, playerVisibleTotal) === 'hit') {
+      played.push(drawCard(deck));
+    }
 
     expect(resolveOutcome(standingOf(playerHand), standingOf(played))).toBe(outcome);
   });

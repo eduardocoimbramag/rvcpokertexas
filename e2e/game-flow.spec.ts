@@ -11,7 +11,7 @@ import { expect, test } from '@playwright/test';
  * Como o forçar funciona no duelo de 21: a engine empilha o baralho com
  * blackjacks naturais, que decidem sozinhos.
  * - 'win': o jogador recebe o natural → a rodada resolve na
- *   distribuição, sem interação, e a vitória paga 3:2.
+ *   distribuição, sem interação.
  * - 'lose': o rival recebe o natural e o jogador fica com 20 → é preciso
  *   PARAR (action-stand) para a rodada seguir.
  * - 'tie': os dois recebem naturais → resolve sozinho e devolve a aposta.
@@ -92,7 +92,7 @@ async function playRound(page: Page, stake: number, stands = 0) {
   await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'front');
 }
 
-test('primeira jogada: tutorial, negociação e o blackjack paga 3:2', async ({ page }) => {
+test('primeira jogada: tutorial, negociação e a vitória com blackjack', async ({ page }) => {
   await page.goto('/');
 
   // Home → Tutorial (primeira visita) → busca direta por oponente.
@@ -128,8 +128,9 @@ test('primeira jogada: tutorial, negociação e o blackjack paga 3:2', async ({ 
   // sua (o natural) contra a mão do rival.
   await expect(page.getByTestId('player-total')).toHaveText('21');
 
-  // O blackjack paga 3:2: 50 de aposta → +75 de ganho líquido.
-  await expect(page.getByTestId('balance')).toContainText('1.075');
+  // O pote é fechado, natural ou não: 50 de aposta → +45 de ganho
+  // líquido (90% do lance do rival; os 10% ficam com a casa).
+  await expect(page.getByTestId('balance')).toContainText('1.045');
   // ...e a crupiê comemora a vitória do jogador.
   await expect(page.getByTestId('dealer')).toHaveAttribute('data-reaction', 'celebrate');
 });
@@ -181,15 +182,15 @@ test('persistência: saldo e histórico sobrevivem ao reload', async ({ page }) 
   await page.getByTestId('play-button').click();
   await forceOutcome(page, 'win');
   await playRound(page, 50);
-  await expect(page.getByTestId('balance')).toContainText('1.075');
+  await expect(page.getByTestId('balance')).toContainText('1.045');
 
   await page.reload();
 
   // De volta à Home com o saldo persistido.
-  await expect(page.getByTestId('balance')).toContainText('1.075');
+  await expect(page.getByTestId('balance')).toContainText('1.045');
   await page.getByTestId('history-button').click();
   await expect(page.getByTestId('history-list').locator('li')).toHaveCount(1);
-  await expect(page.getByTestId('history-list')).toContainText('+75');
+  await expect(page.getByTestId('history-list')).toContainText('+45');
 });
 
 test('negociação: contraproposta do bot pode ser aceita; desistir volta ao menu', async ({

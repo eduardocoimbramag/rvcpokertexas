@@ -40,6 +40,9 @@ export function GameScreen() {
   const result = useGameStore((state) => state.result);
   const hit = useGameStore((state) => state.hit);
   const stand = useGameStore((state) => state.stand);
+  const doubleBet = useGameStore((state) => state.doubleBet);
+  const requestDouble = useGameStore((state) => state.requestDouble);
+  const announcement = useGameStore((state) => state.announcement);
   const countdown = useGameStore((state) => state.countdown);
   const error = useGameStore((state) => state.error);
   const dismissError = useGameStore((state) => state.dismissError);
@@ -57,6 +60,11 @@ export function GameScreen() {
     phase === 'settle';
   const displayBalance = roundActive && match ? balance + match.stake : balance;
   const balanceDelta = phase === 'completed' && result ? result.netChange : null;
+
+  // Dobrar custa outro tanto do que já está na mesa, e vale uma vez por
+  // mão: sem saldo para cobrir a diferença — ou com o pedido já feito —
+  // o botão fica em cena, apagado, em vez de sumir do nada.
+  const canRequestDouble = doubleBet.status === 'idle' && match !== null && balance >= match.stake;
 
   return (
     // min-h-0: o viewport é fixo (#root overflow hidden) — a fase de
@@ -99,6 +107,10 @@ export function GameScreen() {
                   onHit={hit}
                   onStand={stand}
                   actionPending={actionPending}
+                  onRequestDouble={requestDouble}
+                  doubleBet={doubleBet}
+                  canRequestDouble={canRequestDouble}
+                  announcement={announcement}
                 />
                 {phase === 'completed' && result && <ResultBanner result={result} />}
               </div>

@@ -9,7 +9,7 @@ import {
   CARD_SETTLE_EASE,
   CARD_SETTLE_S,
 } from '../animations/cards';
-import type { Card, CardSuit } from '../engine/types';
+import type { Card, CardRank, CardSuit } from '../engine/types';
 import { audioManager } from '../services/AudioManager';
 
 export interface Card3DProps {
@@ -39,11 +39,19 @@ const SUIT_LABEL: Record<CardSuit, string> = {
 
 const RED_SUITS: readonly CardSuit[] = ['hearts', 'diamonds'];
 
+/** Brasão da casa gravado no verso — o mesmo arquivo da marca da mesa. */
+const CREST_SRC = `${import.meta.env.BASE_URL}brasaorvc.svg`;
+
 /**
  * Carta 3D da mesa: plano de duas faces em preserve-3d. O baralho é um
  * só, então o verso é um só — o vinho borgonha do clube com filete
- * dourado, igual para os dois duelistas (quem é dono da mão se lê pela
- * posição na mesa, não pela cor).
+ * dourado e o brasão da casa no medalhão central.
+ *
+ * A FRENTE segue a anatomia de um baralho francês de verdade: índice de
+ * canto (valor + naipe) nos dois cantos opostos e o campo de pips no
+ * miolo, com a contagem e o arranjo clássicos de cada valor — inclusive
+ * as cartas da metade de baixo de cabeça para baixo, como no baralho
+ * impresso. Ver `PIP_LAYOUT`.
  *
  * O voo de entrada sai do baralho (acima da mesa) com stagger por carta;
  * a virada gira o plano em rotateY. O som de cada carta nasce AQUI, no
@@ -122,60 +130,189 @@ export function Card3D({
         >
           {card && (
             <>
-              <span className="card3d__corner">
-                {card.rank}
-                <SuitGlyph suit={card.suit} width="58%" />
-              </span>
-              <span className="card3d__corner card3d__corner--bottom">
-                {card.rank}
-                <SuitGlyph suit={card.suit} width="58%" />
-              </span>
-              <span className="card3d__pip">
-                <SuitGlyph suit={card.suit} width="100%" />
-              </span>
+              <CornerIndex card={card} />
+              <CornerIndex card={card} bottom />
+              <CardField rank={card.rank} suit={card.suit} />
             </>
           )}
         </div>
         <div className="card3d__face card3d__face--back" aria-hidden="true">
-          <span className="card3d__monogram">RVC</span>
+          <span className="card3d__monogram">
+            <span
+              className="card3d__crest"
+              style={{ '--crest-src': `url("${CREST_SRC}")` } as CSSProperties}
+            />
+          </span>
         </div>
       </motion.div>
     </motion.div>
   );
 }
 
+/** Índice de canto: valor em cima, naipe embaixo — os dois cantos
+ * opostos da carta, o de baixo girado 180°, como num baralho impresso. */
+function CornerIndex({ card, bottom = false }: { card: Card; bottom?: boolean }) {
+  return (
+    <span className={`card3d__corner ${bottom ? 'card3d__corner--bottom' : ''}`}>
+      <span className="card3d__rank">{card.rank}</span>
+      <SuitGlyph suit={card.suit} width="100%" />
+    </span>
+  );
+}
+
+/* ---------- Campo central: os pips ----------
+
+   Coordenadas em fração do campo (0 = topo/esquerda, 1 = base/direita).
+   As colunas são as três clássicas — esquerda, centro, direita — e as
+   linhas saem do arranjo de cada valor. Um pip na METADE DE BAIXO entra
+   de cabeça para baixo, exatamente como no baralho impresso: é o que
+   deixa a carta legível pelos dois lados da mesa. */
+
+const COL = { left: 0.18, center: 0.5, right: 0.82 } as const;
+
+type Pip = readonly [x: number, y: number];
+
+const pipsAt = (x: number, ys: readonly number[]): Pip[] => ys.map((y) => [x, y] as const);
+
 /**
- * Naipes em SVG vetorial próprio (sem fonte, sem emoji): silhuetas
- * clássicas de baralho francês desenhadas em curvas de Bézier, pintadas
- * com o `currentColor` da face (vinho ou grafite).
+ * O arranjo canônico de cada valor. É a mesma contagem e a mesma
+ * disposição de um baralho de verdade: as colunas laterais sobem de 2
+ * para 4 pips conforme o valor cresce, e a coluna do centro recebe o que
+ * sobra — um no 3, dois no 8, e o par intercalado do 10.
  */
-export function SuitGlyph({ suit, width = '1em' }: { suit: CardSuit; width?: string }) {
+const PIP_LAYOUT: Record<Exclude<CardRank, 'A' | 'J' | 'Q' | 'K'>, readonly Pip[]> = {
+  '2': pipsAt(COL.center, [0, 1]),
+  '3': pipsAt(COL.center, [0, 0.5, 1]),
+  '4': [...pipsAt(COL.left, [0, 1]), ...pipsAt(COL.right, [0, 1])],
+  '5': [...pipsAt(COL.left, [0, 1]), ...pipsAt(COL.right, [0, 1]), ...pipsAt(COL.center, [0.5])],
+  '6': [...pipsAt(COL.left, [0, 0.5, 1]), ...pipsAt(COL.right, [0, 0.5, 1])],
+  '7': [
+    ...pipsAt(COL.left, [0, 0.5, 1]),
+    ...pipsAt(COL.right, [0, 0.5, 1]),
+    ...pipsAt(COL.center, [0.25]),
+  ],
+  '8': [
+    ...pipsAt(COL.left, [0, 0.5, 1]),
+    ...pipsAt(COL.right, [0, 0.5, 1]),
+    ...pipsAt(COL.center, [0.25, 0.75]),
+  ],
+  '9': [
+    ...pipsAt(COL.left, [0, 1 / 3, 2 / 3, 1]),
+    ...pipsAt(COL.right, [0, 1 / 3, 2 / 3, 1]),
+    ...pipsAt(COL.center, [0.5]),
+  ],
+  '10': [
+    ...pipsAt(COL.left, [0, 1 / 3, 2 / 3, 1]),
+    ...pipsAt(COL.right, [0, 1 / 3, 2 / 3, 1]),
+    ...pipsAt(COL.center, [1 / 6, 5 / 6]),
+  ],
+};
+
+/** Caixa do campo de pips dentro da carta, em % da face. */
+const FIELD = { x: 22, y: 11, w: 56, h: 78 } as const;
+/** Lado de um pip, em % da largura da FACE. Grande o bastante para o
+ * naipe se ler num pip de carta de celular, e estreito o bastante para
+ * a coluna da esquerda nunca esbarrar no índice de canto. */
+const PIP = 17;
+
+/**
+ * O miolo da carta. Números recebem o arranjo de pips; o Ás, um único
+ * naipe grande no centro (a carta mais reconhecível do baralho); e as
+ * figuras, o painel de corte com a letra e os dois naipes em diagonal —
+ * a leitura de uma figura sem depender de uma ilustração que, no tamanho
+ * de uma carta de celular, viraria borrão.
+ */
+function CardField({ rank, suit }: { rank: CardRank; suit: CardSuit }) {
+  if (rank === 'J' || rank === 'Q' || rank === 'K') {
+    return (
+      <span className="card3d__court">
+        <SuitGlyph suit={suit} className="card3d__court-pip card3d__court-pip--top" />
+        <span className="card3d__court-letter">{rank}</span>
+        <SuitGlyph suit={suit} className="card3d__court-pip card3d__court-pip--bottom" />
+      </span>
+    );
+  }
+
+  if (rank === 'A') {
+    return (
+      <span className="card3d__ace">
+        <SuitGlyph suit={suit} width="100%" />
+      </span>
+    );
+  }
+
+  return (
+    <span className="card3d__pips">
+      {PIP_LAYOUT[rank].map(([x, y], index) => (
+        <span
+          key={index}
+          className="card3d__pip"
+          style={
+            {
+              left: `${FIELD.x + x * FIELD.w}%`,
+              top: `${FIELD.y + y * FIELD.h}%`,
+              width: `${PIP}%`,
+              // A metade de baixo da carta é a de cima girada — é assim
+              // que ela se lê dos dois lados.
+              rotate: y > 0.5 ? '180deg' : undefined,
+            } as CSSProperties
+          }
+        >
+          <SuitGlyph suit={suit} width="100%" />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * Naipes em SVG vetorial próprio (sem fonte, sem emoji): as silhuetas
+ * clássicas do baralho francês em curvas de Bézier, pintadas com o
+ * `currentColor` da face (vinho ou grafite). Desenhadas para aguentar o
+ * tamanho de um pip de carta de celular — lóbulos bem separados e hastes
+ * com peso, para o naipe continuar reconhecível a 10px.
+ */
+export function SuitGlyph({
+  suit,
+  width,
+  className = '',
+}: {
+  suit: CardSuit;
+  width?: string;
+  className?: string;
+}) {
   return (
     <svg
       viewBox="0 0 100 100"
       style={{ width, display: 'block' }}
+      className={className}
       aria-hidden="true"
       focusable="false"
     >
       {suit === 'spades' && (
         <path
           fill="currentColor"
-          d="M50 4 C36 26 13 40 13 60 C13 74 25 83 37 79 C42 77 46 74 48 70 C47 80 43 88 36 95 L64 95 C57 88 53 80 52 70 C54 74 58 77 63 79 C75 83 87 74 87 60 C87 40 64 26 50 4 Z"
+          d="M 50 7 C 44 22 14 36 14 58 C 14 71 24 80 35 80 C 42 80 47 76 49 71 C 49 82 44 91 34 96 L 66 96 C 56 91 51 82 51 71 C 53 76 58 80 65 80 C 76 80 86 71 86 58 C 86 36 56 22 50 7 Z"
         />
       )}
       {suit === 'hearts' && (
         <path
           fill="currentColor"
-          d="M50 93 C22 70 8 53 8 34 C8 20 19 9 32 9 C40 9 47 13 50 20 C53 13 60 9 68 9 C81 9 92 20 92 34 C92 53 78 70 50 93 Z"
+          d="M 50 93 C 20 71 9 55 9 36 C 9 22 19 11 32 11 C 41 11 47 16 50 23 C 53 16 59 11 68 11 C 81 11 91 22 91 36 C 91 55 80 71 50 93 Z"
         />
       )}
-      {suit === 'diamonds' && <path fill="currentColor" d="M50 3 L88 50 L50 97 L12 50 Z" />}
+      {suit === 'diamonds' && (
+        <path
+          fill="currentColor"
+          d="M 50 5 C 54 13 68 35 88 50 C 68 65 54 87 50 95 C 46 87 32 65 12 50 C 32 35 46 13 50 5 Z"
+        />
+      )}
       {suit === 'clubs' && (
         <g fill="currentColor">
-          <circle cx="50" cy="27" r="19" />
-          <circle cx="28" cy="56" r="19" />
-          <circle cx="72" cy="56" r="19" />
-          <path d="M45 60 C47 74 43 85 36 95 L64 95 C57 85 53 74 55 60 Z" />
+          <circle cx="50" cy="30" r="21" />
+          <circle cx="29" cy="62" r="21" />
+          <circle cx="71" cy="62" r="21" />
+          <path d="M 44 57 C 46 74 42 88 32 96 L 68 96 C 58 88 54 74 56 57 Z" />
         </g>
       )}
     </svg>

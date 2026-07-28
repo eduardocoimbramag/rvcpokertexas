@@ -2,7 +2,7 @@ import type { Rng } from '@/shared/lib/random';
 import { randomInt } from '@/shared/lib/random';
 
 import { afterHouseEdge } from './credits';
-import type { Card, CardRank, Hand, PlayerAction, RoundOutcome } from './types';
+import type { Card, CardRank, PlayerAction, RoundOutcome } from './types';
 import { cardRankSchema, cardSuitSchema } from './types';
 
 /**
@@ -23,20 +23,19 @@ import { cardRankSchema, cardSuitSchema } from './types';
  */
 
 /**
- * Ganho líquido de uma vitória comum: 90% do stake do adversário. O
- * próprio stake volta inteiro — quem vence não paga comissão sobre o que
- * já era seu, só sobre o que ganhou.
+ * Ganho líquido de uma vitória: 90% do stake do adversário. O próprio
+ * stake volta inteiro — quem vence não paga comissão sobre o que já era
+ * seu, só sobre o que ganhou.
+ *
+ * A regra vale para TODA vitória, inclusive a selada com blackjack
+ * natural. Não há 3:2 nesta mesa: o duelo é um pote fechado de dois
+ * lances iguais, e ninguém pode levar mais do que o adversário pôs —
+ * um prêmio de 1,5× criaria crédito que nenhum jogador apostou e ainda
+ * deixaria a casa sem a comissão dela. O natural continua decidindo a
+ * rodada (ganha de um 21 montado em três cartas); só não paga a mais.
  */
 export function winProfit(stake: number): number {
   return afterHouseEdge(stake);
-}
-
-/**
- * Ganho de uma vitória selada com blackjack natural: paga 3:2, sem
- * comissão — o prêmio clássico da mesa de blackjack.
- */
-export function naturalProfit(stake: number): number {
-  return Math.floor(stake * 1.5);
 }
 
 /** Um baralho só na mesa (52 cartas), como manda o duelo. */
@@ -188,13 +187,22 @@ export function botAction(hand: readonly Card[], rivalVisibleTotal: number): Pla
   return 'stand';
 }
 
-/** Joga a mão do bot até ele parar ou estourar; retorna a mão final. */
-export function playBotHand(deck: Card[], hand: Hand, rivalVisibleTotal: number): Hand {
-  const played = [...hand];
-  while (!isBust(played) && botAction(played, rivalVisibleTotal) === 'hit') {
-    played.push(drawCard(deck));
-  }
-  return played;
+/**
+ * Chance de o rival topar dobrar a aposta no meio da mão.
+ *
+ * Ele decide com a MESMA informação parcial que tem de você — as suas
+ * cartas ABERTAS, porque a última continua sendo segredo seu (regra de
+ * POV da mesa). Quanto mais fraca a sua mesa parece, mais ele sobe o
+ * valor; contra uma mesa aberta forte ele quase sempre recusa. Nunca é
+ * 0 nem 1: o blefe faz parte do duelo, e uma resposta previsível daria
+ * ao jogador uma leitura da mão do rival que ele não deveria ter.
+ */
+export function doubleAcceptChance(playerVisibleTotal: number): number {
+  if (playerVisibleTotal > 21) return 0.95; // você estourou à vista: ele sobe
+  if (playerVisibleTotal >= 19) return 0.15;
+  if (playerVisibleTotal >= 16) return 0.35;
+  if (playerVisibleTotal >= 12) return 0.6;
+  return 0.8;
 }
 
 /** Situação final de um duelista, pronta para comparação. */
@@ -230,14 +238,15 @@ export function resolveOutcome(player: DuelistStanding, opponent: DuelistStandin
 }
 
 /**
- * Créditos devolvidos ao jogador ao final da rodada. Vitória com
- * blackjack natural paga 3:2 (sem comissão); vitória comum paga o ganho
- * com a comissão da casa; empate devolve o stake; derrota perde tudo.
+ * Créditos devolvidos ao jogador ao final da rodada: a vitória devolve o
+ * stake e leva 90% do stake do adversário (os 10% restantes são a
+ * comissão da casa); o empate devolve o stake; a derrota perde tudo. O
+ * blackjack natural não muda a conta — ver `winProfit`.
  */
-export function payoutFor(outcome: RoundOutcome, stake: number, natural = false): number {
+export function payoutFor(outcome: RoundOutcome, stake: number): number {
   switch (outcome) {
     case 'win':
-      return stake + (natural ? naturalProfit(stake) : winProfit(stake));
+      return stake + winProfit(stake);
     case 'tie':
       return stake;
     case 'lose':
@@ -246,8 +255,8 @@ export function payoutFor(outcome: RoundOutcome, stake: number, natural = false)
 }
 
 /** Variação líquida de saldo da rodada (payout − stake). */
-export function netChangeFor(outcome: RoundOutcome, stake: number, natural = false): number {
-  return payoutFor(outcome, stake, natural) - stake;
+export function netChangeFor(outcome: RoundOutcome, stake: number): number {
+  return payoutFor(outcome, stake) - stake;
 }
 
 /**

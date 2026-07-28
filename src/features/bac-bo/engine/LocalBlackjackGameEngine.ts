@@ -5,6 +5,7 @@ import { CryptoRng, pickRandom, randomInt } from '@/shared/lib/random';
 import { MIN_STAKE, validateStake } from './credits';
 import type {
   ActParams,
+  AdvanceParams,
   BeginRoundParams,
   FindMatchParams,
   GameEngine,
@@ -13,6 +14,7 @@ import type {
 import { GameEngineError } from './GameEngine';
 import {
   DECK_RESHUFFLE_THRESHOLD,
+  botAction,
   buildDeck,
   dealInitialHands,
   drawCard,
@@ -22,12 +24,20 @@ import {
   isNaturalBlackjack,
   netChangeFor,
   payoutFor,
-  playBotHand,
   resolveOutcome,
   standingOf,
   visibleCards,
 } from './rules';
-import type { BlackjackRoundState, Card, Match, Opponent, RoundResult } from './types';
+import type {
+  BlackjackRoundState,
+  Card,
+  Duelist,
+  Match,
+  PlayerAction,
+  RoundResult,
+  TableMove,
+  Opponent,
+} from './types';
 import { blackjackRoundStateSchema, matchSchema } from './types';
 
 /** Perfis de oponentes simulados pelo matchmaking local. O campo
@@ -49,6 +59,12 @@ const OPPONENT_PROFILES: readonly Omit<Opponent, 'id'>[] = [
 interface ActiveRound {
   playerHand: Card[];
   opponentHand: Card[];
+  /** Mãos que já fecharam: quem fechou sai do rodízio da vez. */
+  playerClosed: boolean;
+  opponentClosed: boolean;
+  /** De quem é a vez agora (irrelevante depois de `settled`). */
+  turn: Duelist;
+  lastMove?: TableMove;
   settled: boolean;
 }
 
@@ -167,15 +183,19 @@ export class LocalBlackjackGameEngine implements GameEngine {
     }
 
     const { playerHand, opponentHand } = dealInitialHands(deck);
-    const round: ActiveRound = { playerHand, opponentHand, settled: false };
+    const round: ActiveRound = {
+      playerHand,
+      opponentHand,
+      // Blackjack natural fecha a mão na distribuição: não sobra decisão
+      // nenhuma para tomar, e a vez passa direto para o rival.
+      playerClosed: isNaturalBlackjack(playerHand),
+      opponentClosed: isNaturalBlackjack(opponentHand),
+      turn: 'player',
+      settled: false,
+    };
     this.activeRounds.set(match.id, round);
 
-    // Blackjack natural não deixa decisão na mesa: resolve na hora.
-    if (isNaturalBlackjack(playerHand)) {
-      return this.settleRound(match, round, deck);
-    }
-
-    return this.turnState(match.id, round);
+    return this.openTurn(match, round, 'opponent');
   }
 
   async act(params: ActParams): Promise<BlackjackRoundState> {
@@ -184,48 +204,31 @@ export class LocalBlackjackGameEngine implements GameEngine {
       throw new GameEngineError('match-not-found', `Partida não encontrada: ${params.matchId}`);
     }
     const round = this.activeRounds.get(match.id);
-    if (!round || round.settled) {
-      throw new GameEngineError('illegal-action', 'Não há rodada aguardando ação do jogador.');
+    if (!round || round.settled || round.turn !== 'player' || round.playerClosed) {
+      throw new GameEngineError('illegal-action', 'Não é a vez do jogador.');
     }
 
     await delay(this.dealDelayMs);
 
-    const deck = this.deckFor(match.id);
-    if (params.action === 'hit') {
-      round.playerHand.push(drawCard(deck));
-      // Estourou ou cravou 21: não há mais o que decidir.
-      if (handValue(round.playerHand).total >= 21) {
-        return this.settleRound(match, round, deck);
-      }
-      return this.turnState(match.id, round);
+    this.applyMove(match.id, round, 'player', params.action);
+    return this.openTurn(match, round, 'player');
+  }
+
+  async advance(params: AdvanceParams): Promise<BlackjackRoundState> {
+    const match = this.activeMatches.get(params.matchId);
+    if (!match) {
+      throw new GameEngineError('match-not-found', `Partida não encontrada: ${params.matchId}`);
+    }
+    const round = this.activeRounds.get(match.id);
+    if (!round || round.settled || round.turn !== 'opponent' || round.opponentClosed) {
+      throw new GameEngineError('illegal-action', 'Não é a vez do rival.');
     }
 
-    return this.settleRound(match, round, deck);
-  }
+    await delay(this.dealDelayMs);
 
-  /** Estado da vez do jogador, já filtrado pelo POV dele. */
-  private turnState(matchId: string, round: ActiveRound): BlackjackRoundState {
-    return blackjackRoundStateSchema.parse({
-      matchId,
-      phase: 'playerTurn',
-      playerHand: round.playerHand,
-      // A última carta do rival não sai daqui: o jogador decide com a
-      // mesma informação parcial que o rival tem sobre ele.
-      opponentVisible: visibleCards(round.opponentHand),
-      opponentHidden: 1,
-      legalActions: ['hit', 'stand'],
-    });
-  }
-
-  /**
-   * Showdown: o bot joga a mão dele (enxergando só as cartas abertas do
-   * jogador — a última fica oculta para ele também) e as duas mãos são
-   * comparadas. É aqui, e só aqui, que tudo vira para cima.
-   */
-  private settleRound(match: Match, round: ActiveRound, deck: Card[]): BlackjackRoundState {
-    // O que o bot enxerga da sua mão: tudo menos a última carta — SALVO
-    // quando você estoura. Estouro é público em qualquer mesa (a mão
-    // vira na hora), e esconder isso abriria uma brecha real: o bot
+    // O que o rival enxerga da sua mão: tudo menos a última carta —
+    // SALVO quando você estoura. Estouro é público em qualquer mesa (a
+    // mão vira na hora), e esconder isso abriria uma brecha real: ele
     // seguiria pedindo contra um adversário que já perdeu, estouraria
     // junto de vez em quando, e o empate devolveria a aposta de quem
     // estourou primeiro.
@@ -233,13 +236,82 @@ export class LocalBlackjackGameEngine implements GameEngine {
     const playerVisibleTotal = playerBusted
       ? handValue(round.playerHand).total
       : handValue(visibleCards(round.playerHand)).total;
-    const opponentHand = playBotHand(deck, round.opponentHand, playerVisibleTotal);
 
+    this.applyMove(match.id, round, 'opponent', botAction(round.opponentHand, playerVisibleTotal));
+    return this.openTurn(match, round, 'opponent');
+  }
+
+  /**
+   * Aplica UM lance à mão de quem está na vez e registra o anúncio. Uma
+   * mão fecha ao parar, ao estourar ou ao cravar 21 — dali em diante ela
+   * sai do rodízio.
+   */
+  private applyMove(matchId: string, round: ActiveRound, by: Duelist, action: PlayerAction): void {
+    const hand = by === 'player' ? round.playerHand : round.opponentHand;
+    let bust = false;
+    let closed = true;
+
+    if (action === 'hit') {
+      hand.push(drawCard(this.deckFor(matchId)));
+      const { total } = handValue(hand);
+      bust = total > 21;
+      closed = total >= 21;
+    }
+
+    if (by === 'player') round.playerClosed = closed;
+    else round.opponentClosed = closed;
+    round.lastMove = { by, action, closed, bust };
+  }
+
+  /**
+   * Passa a vez depois de um lance (ou abre a primeira, na distribuição).
+   *
+   * A regra do rodízio: um lance de cada lado, alternando. Quem já
+   * fechou a mão sai do rodízio e o outro segue sozinho; com as duas
+   * fechadas, a mesa vai ao showdown.
+   */
+  private openTurn(match: Match, round: ActiveRound, justMoved: Duelist): BlackjackRoundState {
+    if (round.playerClosed && round.opponentClosed) {
+      return this.settleRound(match, round);
+    }
+    round.turn = round.playerClosed
+      ? 'opponent'
+      : round.opponentClosed
+        ? 'player'
+        : justMoved === 'player'
+          ? 'opponent'
+          : 'player';
+    return this.turnState(match.id, round);
+  }
+
+  /** Estado da vez corrente, já filtrado pelo POV do jogador. */
+  private turnState(matchId: string, round: ActiveRound): BlackjackRoundState {
+    const playerTurn = round.turn === 'player';
+    return blackjackRoundStateSchema.parse({
+      matchId,
+      phase: playerTurn ? 'playerTurn' : 'opponentTurn',
+      playerHand: round.playerHand,
+      // A última carta do rival não sai daqui: o jogador decide com a
+      // mesma informação parcial que o rival tem sobre ele.
+      opponentVisible: visibleCards(round.opponentHand),
+      opponentHidden: 1,
+      legalActions: playerTurn ? ['hit', 'stand'] : [],
+      lastMove: round.lastMove,
+      playerClosed: round.playerClosed,
+      opponentClosed: round.opponentClosed,
+    });
+  }
+
+  /**
+   * Showdown: as duas mãos já foram jogadas lance a lance e agora se
+   * comparam. É aqui, e só aqui, que tudo vira para cima.
+   */
+  private settleRound(match: Match, round: ActiveRound): BlackjackRoundState {
+    const opponentHand = round.opponentHand;
     const player = standingOf(round.playerHand);
     const opponent = standingOf(opponentHand);
     const outcome = resolveOutcome(player, opponent);
 
-    round.opponentHand = opponentHand;
     round.settled = true;
 
     const result: RoundResult = {
@@ -255,8 +327,8 @@ export class LocalBlackjackGameEngine implements GameEngine {
       opponentNatural: opponent.natural,
       outcome,
       stake: match.stake,
-      payout: payoutFor(outcome, match.stake, player.natural),
-      netChange: netChangeFor(outcome, match.stake, player.natural),
+      payout: payoutFor(outcome, match.stake),
+      netChange: netChangeFor(outcome, match.stake),
       completedAt: Date.now(),
     };
 
@@ -267,6 +339,9 @@ export class LocalBlackjackGameEngine implements GameEngine {
       opponentVisible: opponentHand,
       opponentHidden: 0,
       legalActions: [],
+      lastMove: round.lastMove,
+      playerClosed: true,
+      opponentClosed: true,
       result,
     });
   }

@@ -47,8 +47,32 @@ export const TIMINGS = {
    * painel de ações recolhe) antes de a vez do rival começar.
    */
   actionResolveMs: 700,
+  /**
+   * Beat de um LANCE na mesa: da carta assentar (ou do "parou" sair) até
+   * a vez trocar de lado. É o tempo de ler o anúncio — a mesa alterna um
+   * lance de cada vez, e cada um precisa ser visto antes do próximo.
+   */
+  moveAnnounceMs: 1100,
+  /** Quanto o anúncio do lance fica em cena (um pouco além do beat). */
+  announceHoldMs: 1600,
+  /**
+   * Janela em que o rival "pensa" antes de jogar a vez dele. Sorteada
+   * dentro do intervalo: um adversário que responde sempre no mesmo
+   * tempo denuncia que é máquina.
+   */
+  opponentThinkMinMs: 700,
+  opponentThinkMaxMs: 1500,
   /** Cada carta que o rival pede na vez dele é um beat próprio. */
   opponentHitMs: 950,
+  /**
+   * Janela em que o rival responde ao pedido de dobra: ele lê a mesa,
+   * pesa o lance e bate o martelo. A mão do jogador fica travada nesse
+   * intervalo — nada acontece na mesa enquanto a dobra está no ar.
+   */
+  doubleAnswerMinMs: 1300,
+  doubleAnswerMaxMs: 2600,
+  /** Quanto a resposta (o ✓ ou o ✗ aceso) fica em cena antes de sair. */
+  doubleAnswerHoldMs: 1500,
   /**
    * Piso da vez do rival: mesmo sem pedir carta, ele "pensa" por um
    * instante — a vez dele nunca é um corte seco.
