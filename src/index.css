@@ -3454,46 +3454,36 @@ h2 {
 
 /* ==================== Mesa de negociação ==================== */
 
-/* Esta fase é a ÚNICA que sobe além do couro: a conversa precisa de
-   janela, e o vidro é translúcido o bastante para a dealer continuar
-   legível atrás dele. A margem negativa devolve metade do
-   `dealer-spacer` (que reserva o corpo da dealer em todas as outras
-   fases) ao conteúdo — em `--dealer-h`, então o ganho acompanha a
-   altura da tela em vez de ser um número fixo. O corte fica na altura
-   do peito: o rosto, que é o que dá presença à cena, segue livre. */
+/* Esta fase sobe além do couro: o centro do feltro é o palco do título
+   e das fichas. A margem negativa devolve metade do `dealer-spacer`
+   (que reserva o corpo da dealer em todas as outras fases) ao conteúdo
+   — em `--dealer-h`, então o ganho acompanha a altura da tela em vez
+   de ser um número fixo. O corte fica na altura do peito: o rosto, que
+   é o que dá presença à cena, segue livre. */
 .nego-stage {
   margin-top: calc(var(--dealer-h) * -0.5);
 }
 
-/* Vidro vinho translúcido sobre o couro: a conversa acontece POR CIMA
-   do salão, sem escondê-lo — mesmo gesto do .confirm-waiting, aqui em
-   painel inteiro com blur. O aro âmbar discreto e o filete de luz no
-   topo são a mesma lapidação dos cards do clube. */
-.nego-chat {
-  position: relative;
-  isolation: isolate;
-  border-radius: 1.25rem;
-  background: rgba(42, 8, 16, 0.55);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 0 0 1px rgba(245, 183, 111, 0.28),
-    0 14px 34px rgba(0, 0, 0, 0.38);
-  overflow: hidden;
-}
-
-/* Cabeçalho do chat: identidade do oponente + presença. */
-.nego-chat__head {
+/* A cabeceira do rival: pílula de vidro discreta com identidade e
+   situação da mesa — o resto da fase pertence ao feltro. */
+.nego-head {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.65rem 0.9rem;
-  background: rgba(20, 4, 4, 0.35);
-  border-bottom: 1px solid rgba(245, 183, 111, 0.18);
+  width: min(100%, 92vw);
+  max-width: 27rem;
+  margin-inline: auto;
+  padding: 0.5rem 0.85rem;
+  border-radius: 9999px;
+  background: rgba(20, 4, 4, 0.42);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(245, 183, 111, 0.22);
 }
 
-.nego-chat__status {
+.nego-head__status {
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -3501,8 +3491,8 @@ h2 {
   color: var(--color-lavender);
 }
 
-/* Ponto de presença: âmbar negociando, esmeralda com o acordo selado. */
-.nego-chat__presence {
+/* Ponto de presença: âmbar negociando, esmeralda com o duelo fechado. */
+.nego-head__presence {
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 9999px;
@@ -3510,232 +3500,357 @@ h2 {
   box-shadow: 0 0 8px rgba(245, 183, 111, 0.8);
 }
 
-.nego-chat__presence--ready {
+.nego-head__presence--ready {
   background: #34d399;
   box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
 }
 
-/* Rolagem interna da conversa, com barra fina no tom do clube. */
-.nego-chat__log {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0.8rem 0.8rem 0.6rem;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(245, 183, 111, 0.4) transparent;
-}
+/* ---------- Anúncio de mesa em ouro (GoldAnnounce) ---------- */
 
-.nego-chat__log::-webkit-scrollbar {
-  width: 5px;
-}
-
-.nego-chat__log::-webkit-scrollbar-thumb {
-  border-radius: 9999px;
-  background: rgba(245, 183, 111, 0.35);
-}
-
-/* Aviso da mesa: pastilha central em caixa alta, tinta taupe. */
-.nego-system {
-  align-self: center;
-  max-width: 90%;
-  padding: 0.3rem 0.8rem;
-  border-radius: 9999px;
-  background: rgba(20, 4, 4, 0.45);
-  box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.22);
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  text-align: center;
-  color: var(--color-lavender);
-}
-
-/* Bolha de fala: vinho lapidado, canto "de origem" reto como nos
-   mensageiros. O lado do jogador leva o aro azul; o do oponente, o
-   vermelho — a mesma semântica de cor dos dados. */
-.nego-bubble {
-  max-width: 82%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 1rem;
-  font-size: 0.82rem;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--color-ivory);
-}
-
-.nego-bubble--opponent {
-  align-self: flex-start;
-  border-bottom-left-radius: 0.3rem;
-  background: rgba(76, 10, 21, 0.82);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 0 0 1px rgba(239, 68, 68, 0.28);
-}
-
-.nego-bubble--player {
-  align-self: flex-end;
-  border-bottom-right-radius: 0.3rem;
-  background: rgba(30, 41, 90, 0.66);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 0 0 1px rgba(59, 130, 246, 0.35);
-}
-
-/* Bolha "digitando…": só os três pontos pulsando. */
-.nego-typing {
-  padding-block: 0.55rem;
-}
-
-.nego-typing .waiting-dot {
-  font-size: 0.5rem;
-  color: var(--color-lavender);
-  margin-inline: 1px;
-}
-
-/* Cartão de proposta: um lance formal sobre a mesa — kicker, valor e a
-   situação (aguardando/aceita/superada). Enxuto de propósito: só um
-   degrau acima de uma bolha de fala (0,82rem), o suficiente para o lance
-   se destacar da conversa sem tomar meia janela de chat. */
-.nego-proposal {
+/* Overlay absoluto no centro do feltro: entra e sai sem empurrar um
+   milímetro do layout. O conteúdo (anel, filetes, palavras) é animado
+   por transform/opacity no framer — nada repinta o feltro. */
+.gold-announce {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.15rem;
-  max-width: 78%;
-  padding: 0.4rem 0.7rem 0.45rem;
-  border-radius: 0.9rem;
-  background: linear-gradient(180deg, rgba(95, 20, 32, 0.92) 0%, rgba(42, 8, 16, 0.92) 100%);
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  padding-inline: 1rem;
+  pointer-events: none;
+  text-align: center;
+}
+
+/* O anel de impacto que abre o beat — o mesmo gesto do carimbo "VS". */
+.gold-announce__ring {
+  position: absolute;
+  width: 7rem;
+  height: 7rem;
+  border-radius: 9999px;
+  border: 2px solid var(--color-gold);
+}
+
+/* O letreiro: display condensado da casa, gigante, em caixa alta. A
+   tinta de segurança é o âmbar sólido; onde há recorte de texto entra
+   o degradê de metal (marfim → champagne → âmbar → terracota), o mesmo
+   do "VS" e do title-royal. O drop-shadow fica no CONTÊINER: sombra
+   por fora do recorte, sem vazar por dentro das letras. */
+.gold-announce__text {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 0.32em;
+  max-width: 100%;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2rem, 9.5vw, 3.3rem);
+  line-height: 1.08;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-gold);
+  filter: drop-shadow(0 2px 0 rgba(40, 18, 6, 0.85)) drop-shadow(0 10px 26px rgba(0, 0, 0, 0.55));
+}
+
+.gold-announce__word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .gold-announce__word {
+    background-image: linear-gradient(
+      178deg,
+      #fff4e8 12%,
+      #fcd9a0 34%,
+      #f5b76f 58%,
+      #e2a052 76%,
+      #cb7349 92%
+    );
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+/* Filetes de letreiro: uma linha de luz com o losango no meio, acima e
+   abaixo do título — moldura de marquise de cassino. */
+.gold-announce__rule {
+  position: relative;
+  width: min(64%, 16rem);
+  height: 2px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent, rgba(245, 183, 111, 0.9), transparent);
+}
+
+.gold-announce__rule::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  translate: -50% -50%;
+  rotate: 45deg;
+  background: var(--color-gold);
+  box-shadow: 0 0 10px rgba(245, 183, 111, 0.9);
+}
+
+/* Alto contraste: sem imagens de fundo, o recorte viraria texto
+   invisível — volta a tinta comum. */
+@media (forced-colors: active) {
+  .gold-announce__word {
+    -webkit-text-fill-color: currentColor;
+    background-image: none;
+  }
+
+  .gold-announce__ring,
+  .gold-announce__rule {
+    display: none;
+  }
+}
+
+/* ---------- Fichas na mesa (ChipStack) ---------- */
+
+/* Tamanho de uma ficha: acompanha a carta da mesa (mesma família de
+   clamp), então a pilha nunca briga com o feltro em tela nenhuma. */
+.chip-stack {
+  --chip-size: clamp(3.4rem, 15vw, 4.3rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* O poço da pilha: as fichas são absolutas na base e sobem degrau a
+   degrau (7px por ficha, via transform no framer). A altura reserva o
+   curso inteiro da pilha — nada salta quando fichas entram. */
+.chip-stack__pile {
+  position: relative;
+  width: var(--chip-size);
+  height: calc(var(--chip-size) + 3.6rem);
+  display: grid;
+  align-items: end;
+  justify-items: center;
+}
+
+/* Uma ficha de cassino vista de cima: disco vinho lapidado, marcas de
+   borda (o truque clássico do border dashed circular) e o miolo com aro
+   âmbar. Tudo em CSS — nenhuma imagem entra na mesa. */
+.chip {
+  position: absolute;
+  bottom: 0;
+  width: var(--chip-size);
+  height: var(--chip-size);
+  border-radius: 9999px;
+  background: radial-gradient(circle at 32% 26%, #8d2130 0%, #6f1220 48%, #4b0a14 100%);
+  box-shadow:
+    inset 0 2px 2px rgba(255, 255, 255, 0.18),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(20, 4, 4, 0.8),
+    0 8px 16px rgba(0, 0, 0, 0.55);
+}
+
+/* As marcas de borda: um anel tracejado que gira levemente de ficha
+   para ficha (via rotate no framer, herdado do contêiner). */
+.chip::before {
+  content: '';
+  position: absolute;
+  inset: 7%;
+  border-radius: 9999px;
+  border: 0.3rem dashed rgba(255, 244, 232, 0.82);
+  opacity: 0.9;
+}
+
+/* O miolo: disco interno com aro âmbar — onde uma ficha real leva o
+   valor gravado. */
+.chip::after {
+  content: '';
+  position: absolute;
+  inset: 24%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #a03040 0%, #5b0d18 78%);
+  box-shadow:
+    inset 0 0 0 2px rgba(245, 183, 111, 0.55),
+    inset 0 1px 2px rgba(255, 255, 255, 0.2);
+}
+
+/* A ficha de ouro: pontua a pilha como as de valor alto de um rack. */
+.chip--gold {
+  background: radial-gradient(circle at 32% 26%, #fcd9a0 0%, #e2a052 48%, #a3641f 100%);
+}
+
+.chip--gold::before {
+  border-color: rgba(74, 42, 16, 0.55);
+}
+
+.chip--gold::after {
+  background: radial-gradient(circle at 35% 30%, #f7c281 0%, #c07a33 78%);
+  box-shadow:
+    inset 0 0 0 2px rgba(74, 42, 16, 0.5),
+    inset 0 1px 2px rgba(255, 255, 255, 0.35);
+}
+
+/* A placa do valor: a mesma tinta da pílula de saldo — ficha e
+   algarismos leem como VALOR EM CRÉDITOS, não como ornamento. */
+.chip-stack__plate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  padding: 0.35rem 1.1rem 0.4rem;
+  border-radius: 9999px;
+  background: rgba(20, 4, 4, 0.5);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 0 0 1px rgba(245, 183, 111, 0.4),
-    0 6px 16px rgba(0, 0, 0, 0.35);
-  transition:
-    opacity 0.25s ease,
-    filter 0.25s ease;
+    inset 0 0 0 1px rgba(245, 183, 111, 0.4),
+    0 6px 14px rgba(0, 0, 0, 0.35);
 }
 
-.nego-proposal--player {
-  align-self: flex-end;
-  align-items: flex-end;
-  border-bottom-right-radius: 0.3rem;
-}
-
-.nego-proposal--opponent {
-  align-self: flex-start;
-  border-bottom-left-radius: 0.3rem;
-}
-
-/* Lance superado: continua no histórico, mas apagado — a mesa só tem
-   UMA proposta viva por vez. */
-.nego-proposal--superseded {
-  opacity: 0.55;
-  filter: saturate(0.6);
-}
-
-.nego-proposal__kicker {
-  font-size: 0.55rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-lavender);
-}
-
-/* Marfim, não ouro: a mesma tinta da pílula de saldo — ficha e
-   algarismos leem como VALOR EM CRÉDITOS, não como ornamento. Como o
-   ícone é currentColor, a cor no contêiner pinta os dois de uma vez. */
-.nego-proposal__amount {
+.chip-stack__value {
   display: inline-flex;
-  align-items: baseline;
-  gap: 0.3rem;
-  font-size: 1.05rem;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 1.35rem;
+  line-height: 1.15;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   color: var(--color-ivory);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 
-.nego-proposal__amount svg {
-  align-self: center;
-  /* Mesma proporção ícone/número da pílula de saldo. */
-  width: 1.05em;
-  height: 1.05em;
-}
-
-.nego-proposal__amount small {
-  font-size: 0.55rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+.chip-stack__label {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--color-lavender);
 }
 
-/* Selo de situação da proposta. */
-.nego-tag {
+/* ---------- Balão de proposta (ProposalBubble) ---------- */
+
+/* O mesmo vinho lapidado da nuvem de dobra, no alto do feltro e com o
+   bico para cima (a conversa atravessa a mesa). Absoluto dentro do
+   palco central: entra e sai sem mexer nas fichas. */
+.prop-bubble {
+  position: absolute;
+  top: 0.25rem;
+  left: 50%;
+  z-index: 7;
+  display: flex;
+  min-width: 12rem;
+  translate: -50%;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.6rem 1rem 0.5rem;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(76, 10, 21, 0.95) 0%, rgba(30, 6, 12, 0.95) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(245, 183, 111, 0.5),
+    0 10px 24px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
+/* O bico, como na nuvem de dobra: quadrado girado com o filete âmbar
+   só nas arestas de fora. */
+.prop-bubble::before {
+  content: '';
+  position: absolute;
+  top: -0.4rem;
+  left: 50%;
+  width: 0.85rem;
+  height: 0.85rem;
+  translate: -50%;
+  rotate: 45deg;
+  border-radius: 0.15rem;
+  background: rgba(76, 10, 21, 0.95);
+  box-shadow: -1px -1px 0 0 rgba(245, 183, 111, 0.5);
+}
+
+/* Lance do jogador: o aro azul do seu lado da mesa. */
+.prop-bubble--player {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(59, 130, 246, 0.55),
+    0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Lance do rival: o aro vermelho dele. */
+.prop-bubble--opponent {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(239, 68, 68, 0.55),
+    0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.prop-bubble__title {
+  max-width: 15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-gold-bright);
+}
+
+.prop-bubble__amount {
   display: inline-flex;
   align-items: center;
-  gap: 0.22rem;
-  padding: 0.12rem 0.45rem;
-  border-radius: 9999px;
-  font-size: 0.55rem;
+  gap: 0.35rem;
+  font-size: 1.35rem;
+  line-height: 1.15;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ivory);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.prop-bubble__answers {
+  display: flex;
+  gap: 0.6rem;
+  margin: 0.15rem 0 0.1rem;
+}
+
+.prop-bubble__hint {
+  font-size: 0.6rem;
   font-weight: 800;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: rgba(243, 230, 216, 0.7);
 }
 
-.nego-tag--wait {
-  color: var(--color-lavender);
-  box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.35);
+/* Enquanto o rival pesa o SEU lance, o retrato das duas respostas
+   pulsa fora de fase — a mesma espera da nuvem de dobra. */
+.prop-bubble[data-status='pending'][data-from='player'] .double-answer {
+  animation: double-answer-wait 1.4s ease-in-out infinite;
 }
 
-.nego-tag--muted {
-  color: #a08472;
-  box-shadow: inset 0 0 0 1px rgba(160, 132, 114, 0.3);
-  text-decoration: line-through;
+.prop-bubble[data-status='pending'][data-from='player'] .double-answer--no {
+  animation-delay: 0.22s;
 }
 
-.nego-tag--ok {
-  color: #34d399;
-  box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.5);
+/* Quando o lance é DELE, o ✓ e o ✗ são botões na sua mão: acesos,
+   com premente convite de toque. */
+.prop-bubble__choice {
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    scale 0.2s ease;
 }
 
-/* Botão de aceite dentro do cartão do oponente: ouro maciço compacto,
-   o mesmo metal dos CTAs. */
-.nego-accept {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  margin-top: 0.12rem;
-  padding: 0.28rem 0.72rem;
-  border-radius: 0.6rem;
-  font-size: 0.64rem;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  color: #2a1206;
-  background: linear-gradient(180deg, #fcd9a0 0%, #f5b76f 42%, #e2a052 78%, #c67e38 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    inset 0 -2px 0 rgba(74, 42, 16, 0.5),
-    0 0 0 1px #8a5a28,
-    0 0 14px rgba(245, 183, 111, 0.45);
-  transition: filter 0.15s ease;
+.prop-bubble__choice:active {
+  filter: brightness(1.2);
 }
 
-.nego-accept:active {
-  filter: brightness(1.12);
-}
-
-.nego-accept:focus-visible {
+.prop-bubble__choice:focus-visible {
   outline: 2px solid #f5b76f;
   outline-offset: 2px;
-}
-
-/* Composer de lances: o campo de valor + o enviar, na base do vidro.
-   A linha em si é do .amount-stepper; aqui ficam só o forro e o filete
-   que separam o composer da conversa. */
-.nego-composer {
-  padding: 0.6rem 0.7rem;
-  border-top: 1px solid rgba(245, 183, 111, 0.18);
-  background: rgba(20, 4, 4, 0.35);
 }
 
 /* ---------- Campo de créditos com atalhos (AmountStepper) ---------- */
@@ -3806,53 +3921,9 @@ h2 {
   outline-offset: 2px;
 }
 
-/* Enviar proposta: o mesmo ouro dos CTAs, compacto. Desabilitado (valor
-   inválido ou relógio de 10 s) apaga para o vinho neutro. */
-.nego-send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  min-width: 5.5rem;
-  padding: 0.55rem 0.8rem;
-  border-radius: 0.8rem;
-  font-size: 0.74rem;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  color: #2a1206;
-  background: linear-gradient(180deg, #fcd9a0 0%, #f5b76f 42%, #e2a052 78%, #c67e38 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    inset 0 -2px 0 rgba(74, 42, 16, 0.5),
-    0 0 0 1px #8a5a28;
-  transition: filter 0.15s ease;
-}
-
-.nego-send:active:not(:disabled) {
-  filter: brightness(1.12);
-}
-
-.nego-send:disabled {
-  background: #3a1218;
-  color: #a08472;
-  box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.22);
-}
-
-.nego-send:focus-visible {
-  outline: 2px solid #f5b76f;
-  outline-offset: 2px;
-}
-
-.nego-send__cooldown {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Dica sob o composer (limites, relógio, saldo insuficiente). */
+/* Dica sob o composer (limites, saldo insuficiente). */
 .nego-hint {
-  padding: 0 0.9rem 0.55rem;
+  padding: 0 0.9rem;
   font-size: 0.64rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -3860,40 +3931,92 @@ h2 {
   color: var(--color-lavender);
 }
 
-/* Com o acordo selado, o CTA de início ganha um halo respirando —
-   animado em box-shadow (só a luz pulsa; a caixa não se move). */
-.nego-start--ready {
-  animation: nego-start-glow 1.6s ease-in-out infinite;
+/* ---------- Relógio da rodada de negociação ---------- */
+
+/* Os 20 s da mesa: a mesma gramática do relógio da vez (trilha que
+   esvazia + valor tabular), compacta, sobre o composer. */
+.nego-clock {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  color: var(--color-lavender);
+  transition: opacity 0.3s ease;
 }
 
-@keyframes nego-start-glow {
+.nego-clock__track {
+  flex: 1;
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: rgba(20, 4, 4, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.25);
+  overflow: hidden;
+}
+
+.nego-clock__fill {
+  display: block;
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #cb7349, #f5b76f, #fcd9a0);
+  box-shadow: 0 0 10px rgba(245, 183, 111, 0.5);
+  transition: width 0.9s linear;
+}
+
+.nego-clock__value {
+  min-width: 2.6ch;
+  font-size: 0.78rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--color-gold-bright);
+}
+
+/* Últimos segundos: tudo vira brasa — o aviso de que a mesa vai fechar
+   sozinha no valor que estiver nela. */
+.nego-clock.is-urgent .nego-clock__fill {
+  background: linear-gradient(90deg, #8f1616, #d24747, #ff8a5c);
+  box-shadow: 0 0 12px rgba(210, 71, 71, 0.7);
+  animation: nego-clock-ember 0.9s ease-in-out infinite;
+}
+
+.nego-clock.is-urgent .nego-clock__value {
+  color: #ff9d9d;
+}
+
+@keyframes nego-clock-ember {
   0%,
   100% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.6),
-      inset 0 -2px 0 rgba(74, 42, 16, 0.5),
-      0 0 0 1px #8a5a28,
-      0 0 14px rgba(245, 183, 111, 0.35);
+    opacity: 1;
   }
   50% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.6),
-      inset 0 -2px 0 rgba(74, 42, 16, 0.5),
-      0 0 0 1px #8a5a28,
-      0 0 30px rgba(245, 183, 111, 0.75);
+    opacity: 0.65;
   }
+}
+
+/* Pausado (um lance seu no ar): o relógio respira apagado — o tempo é
+   do rival agora. */
+.nego-clock.is-paused {
+  opacity: 0.55;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nego-chat {
+  .nego-head {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background: rgba(42, 8, 16, 0.88);
   }
 
-  .nego-start--ready {
+  .nego-clock.is-urgent .nego-clock__fill {
     animation: none;
-    box-shadow: 0 0 26px rgba(245, 183, 111, 0.55);
+  }
+
+  .nego-clock__fill {
+    transition: none;
+  }
+
+  .prop-bubble[data-status='pending'][data-from='player'] .double-answer {
+    animation: none;
+    opacity: 0.85;
   }
 }
 

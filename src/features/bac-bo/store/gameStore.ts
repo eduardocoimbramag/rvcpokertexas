@@ -6,13 +6,20 @@ import { createId } from '@/shared/lib/ids';
 import {
   COUNTDOWN_START,
   HISTORY_LIMIT,
-  PROPOSAL_COOLDOWN_SECONDS,
+  NEGOTIATION_SECONDS,
   TIMINGS,
 } from '../animations/timings';
 import type { GameEngine } from '../engine/GameEngine';
 import { GameEngineError } from '../engine/GameEngine';
 import { createGameEngine } from '../engine/createGameEngine';
-import { creditPayout, debitStake, isBroke, validateStake } from '../engine/credits';
+import {
+  DEFAULT_STAKE,
+  MIN_STAKE,
+  creditPayout,
+  debitStake,
+  isBroke,
+  validateStake,
+} from '../engine/credits';
 import { doubleAcceptChance, handValue, visibleCards } from '../engine/rules';
 import type {
   BlackjackRoundState,
@@ -31,8 +38,8 @@ import type {
   SceneQualitySetting,
 } from '../services/GameStorageService';
 import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageService';
-import type { NegotiationMessage, Negotiator, NegotiatorReply } from './negotiation';
-import { BOT_BEATS, NEGOTIATION_INTRO, createBotNegotiator } from './negotiation';
+import type { Negotiator, NegotiatorReply, ProposalAuthor, ProposalStatus } from './negotiation';
+import { BOT_BEATS, createBotNegotiator } from './negotiation';
 
 /**
  * Máquina de estados do fluxo de jogo (seção 12 da especificação).
@@ -95,31 +102,39 @@ export interface MatchConfirmations {
 
 const NO_CONFIRMATIONS: MatchConfirmations = { player: false, opponent: false };
 
-/** Proposta viva na mesa de negociação (a última ainda não superada). */
-export interface NegotiationProposalRef {
-  messageId: string;
-  from: 'player' | 'opponent';
+/**
+ * Um lance na mesa de negociação: o balão de proposta em cena. `open`
+ * governa apenas a presença do balão — a resposta (o ✓ ou o ✗ aceso)
+ * fica um beat em cena antes de ele sair, como a nuvem da dobra.
+ */
+export interface NegotiationProposal {
+  id: string;
+  from: ProposalAuthor;
   amount: number;
+  status: ProposalStatus;
+  /** O balão do lance está em cena. */
+  open: boolean;
 }
 
 /**
- * Mesa de negociação (fase `negotiate`): os dois lados trocam lances no
- * chat até um aceitar o valor do outro. Só o acordo (`agreedStake`)
- * libera o "Iniciar partida"; o débito do stake continua acontecendo
+ * Mesa de negociação (fase `negotiate`) — fichas na mesa, sem chat.
+ *
+ * A aposta padrão já está no feltro quando a rodada abre; os lados
+ * empurram lances (balões de proposta) e o outro cobre ou recusa. Um
+ * aceite fecha a mesa no valor coberto; o relógio da rodada zerando
+ * fecha no que estiver na mesa. O débito do stake continua acontecendo
  * apenas na virada para o countdown.
  */
 export interface NegotiationState {
-  /** Linha do tempo do chat (avisos, falas, propostas e o aperto de mãos). */
-  messages: NegotiationMessage[];
-  /** Proposta em aberto; `null` sem lance vivo (ou após o acordo). */
-  activeProposal: NegotiationProposalRef | null;
-  /** Valor acordado; `null` enquanto não há aperto de mãos. */
+  /** Valor vivo na mesa (nasce na aposta padrão de 100). */
+  tableStake: number;
+  /** Segundos restantes da rodada de negociação (20 → 0). */
+  secondsLeft: number;
+  /** Último lance (vivo ou recém-respondido, enquanto o balão fica). */
+  proposal: NegotiationProposal | null;
+  /** Valor selado quando a mesa fecha; `null` enquanto se negocia. */
   agreedStake: number | null;
-  /** Segundos até o jogador poder propor de novo (0 = livre). */
-  proposalCooldown: number;
-  /** O oponente está "digitando" no chat. */
-  opponentTyping: boolean;
-  /** Beat de início em andamento — trava as ações da mesa. */
+  /** Beat "HORA DO DUELO" em andamento — trava as ações da mesa. */
   starting: boolean;
 }
 
@@ -219,12 +234,12 @@ export interface GameStoreState {
   cancelSearch: () => void;
   confirmMatch: () => void;
   declineMatch: () => void;
-  /** Envia um lance de créditos na mesa de negociação. */
+  /** Empurra um lance de créditos ao centro da mesa de negociação. */
   sendProposal: (amount: number) => void;
-  /** Aceita a proposta viva do oponente (fecha o acordo). */
+  /** Cobre o lance vivo do oponente (fecha a mesa no valor dele). */
   acceptProposal: () => void;
-  /** Acordo fechado: fixa o stake na engine e abre o countdown. */
-  startDuel: () => void;
+  /** Recusa o lance vivo do oponente (a mesa segue valendo o mesmo). */
+  declineProposal: () => void;
   /** Abandona a mesa de negociação e volta ao menu. */
   abandonNegotiation: () => void;
   /** Trava "pedir carta" como a sua escolha da vez. */
@@ -290,9 +305,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
   let turnSeq = 0;
   /**
    * Geração das jogadas agendadas do bot: cada nova ação do jogador
-   * (proposta, aceite, desistência) incrementa a sequência e as jogadas
-   * antigas — cumprimento, contraproposta a um lance já superado —
-   * morrem no guard sem efeito.
+   * (lance, aceite, recusa, desistência) incrementa a sequência e as
+   * jogadas antigas — abertura espontânea, contraproposta a um lance já
+   * superado — morrem no guard sem efeito.
    */
   let botSeq = 0;
 
@@ -376,75 +391,87 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       }, TIMINGS.confirmLockInMs);
     };
 
-    /* ---------- Mesa de negociação ---------- */
+    /* ---------- Mesa de negociação (fichas na mesa) ---------- */
 
-    /** Ajusta a negociação corrente sem perder o que já foi conversado. */
+    /** Ajusta a negociação corrente preservando o resto da mesa. */
     const patchNegotiation = (patch: Partial<NegotiationState>): void => {
       const { negotiation } = get();
       if (!negotiation) return;
       set({ negotiation: { ...negotiation, ...patch } });
     };
 
-    const pushNegotiationMessage = (message: NegotiationMessage): void => {
-      const { negotiation } = get();
-      if (!negotiation) return;
-      set({ negotiation: { ...negotiation, messages: [...negotiation.messages, message] } });
-    };
-
-    /**
-     * Guard das jogadas agendadas do bot: a jogada só vale se ainda for
-     * da geração corrente, na mesma partida, com a mesa aberta e sem
-     * acordo fechado.
-     */
-    const botTurnAlive = (matchId: string, seq: number): boolean => {
+    /** A mesa ainda está aberta para esta partida (sem fechar/começar). */
+    const negotiationAlive = (matchId: string): boolean => {
       const { phase, match, negotiation } = get();
       return (
-        seq === botSeq &&
         phase === 'negotiate' &&
         match?.id === matchId &&
         negotiation !== null &&
-        negotiation.agreedStake === null &&
         !negotiation.starting
       );
     };
 
-    /** Um lance novo tira o anterior da mesa (fica no chat como "superada"). */
-    const supersedeActiveProposal = (): void => {
-      const { negotiation } = get();
-      if (!negotiation?.activeProposal) return;
-      const { messageId } = negotiation.activeProposal;
-      set({
-        negotiation: {
-          ...negotiation,
-          activeProposal: null,
-          messages: negotiation.messages.map((message) =>
-            message.id === messageId ? { ...message, status: 'superseded' as const } : message,
-          ),
-        },
-      });
+    /**
+     * Fecha a mesa: sela o valor vivo, anuncia a HORA DO DUELO e conduz
+     * ao countdown. O valor acordado vira a verdade da engine ANTES do
+     * débito (payout e histórico derivam do stake gravado na partida), e
+     * o débito só acontece na virada de fase — como sempre foi.
+     */
+    const finishNegotiation = (matchId: string): void => {
+      if (!negotiationAlive(matchId)) return;
+      const { negotiation, match } = get();
+      if (!negotiation || !match) return;
+      const stake = negotiation.tableStake;
+      botSeq += 1; // nenhuma jogada pendente do bot sobrevive ao fim da mesa
+      set({ negotiation: { ...negotiation, starting: true, agreedStake: stake } });
+      audioManager.playSfx('locked');
+      vibrate([30, 40, 60]);
+
+      void (async () => {
+        try {
+          const updated = await engine.setStake({ matchId: match.id, stake });
+          if (get().phase !== 'negotiate' || get().match?.id !== match.id) return;
+          set({ match: updated });
+          schedule(() => {
+            const { phase: current, balance: currentBalance } = get();
+            if (current !== 'negotiate') return;
+            let nextBalance: number;
+            try {
+              nextBalance = debitStake(currentBalance, stake);
+            } catch {
+              failWith('Saldo insuficiente para esta aposta.');
+              return;
+            }
+            if (!transitionTo('countdown')) return;
+            set({ balance: nextBalance });
+            persist();
+            runCountdown(COUNTDOWN_START);
+          }, TIMINGS.negotiationStartMs);
+        } catch {
+          failWith('Não foi possível iniciar a partida. Tente novamente.');
+        }
+      })();
     };
 
-    /** Lance do oponente, com fala opcional antes da proposta. */
-    const botPropose = (amount: number, quip: string | null): void => {
-      supersedeActiveProposal();
+    /** O balão respondido fica um beat em cena e sai sozinho. */
+    const closeProposalLater = (matchId: string, proposalId: string): void => {
+      schedule(() => {
+        if (!negotiationAlive(matchId)) return;
+        const { negotiation } = get();
+        const proposal = negotiation?.proposal;
+        if (!proposal || proposal.id !== proposalId) return;
+        patchNegotiation({ proposal: { ...proposal, open: false } });
+      }, TIMINGS.negoAnswerHoldMs);
+    };
+
+    /** Um lance novo entra na mesa — o balão abre com as fichas. */
+    const openProposal = (from: ProposalAuthor, amount: number): void => {
       const { negotiation } = get();
       if (!negotiation) return;
-      const messageId = createId();
-      const messages: NegotiationMessage[] = [...negotiation.messages];
-      if (quip) messages.push({ id: createId(), author: 'opponent', kind: 'text', text: quip });
-      messages.push({
-        id: messageId,
-        author: 'opponent',
-        kind: 'proposal',
-        amount,
-        status: 'pending',
-      });
       set({
         negotiation: {
           ...negotiation,
-          opponentTyping: false,
-          messages,
-          activeProposal: { messageId, from: 'opponent', amount },
+          proposal: { id: createId(), from, amount, status: 'pending', open: true },
         },
       });
       audioManager.playSfx('stake');
@@ -452,129 +479,144 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     /**
-     * Aperto de mãos: sela a proposta viva como o valor do duelo. Vale
-     * para os dois sentidos — o bot aceitando o lance do jogador e o
-     * jogador aceitando o lance do bot.
-     *
-     * O chat NÃO ganha mensagem nova: quem anuncia o acordo é o próprio
-     * cartão do lance (que recebe o selo "aceita"), o cabeçalho do vidro
-     * e o CTA de início destravando. A conversa fica como estava.
+     * Aperto de mãos: o lance vivo é coberto e vira o valor da mesa —
+     * as fichas novas deslizam ao centro. Vale para os dois sentidos (o
+     * bot cobrindo o seu lance e você cobrindo o dele). Depois do beat
+     * do balão, a mesa fecha sozinha: cobrir É o acordo.
      */
-    const settleAgreement = (): void => {
+    const settleProposal = (matchId: string): void => {
       const { negotiation } = get();
-      const proposal = negotiation?.activeProposal;
-      if (!negotiation || !proposal) return;
-      botSeq += 1; // nenhuma jogada pendente do bot sobrevive ao acordo
+      const proposal = negotiation?.proposal;
+      if (!negotiation || !proposal || proposal.status !== 'pending') return;
+      botSeq += 1; // nenhuma jogada pendente do bot sobrevive ao aceite
       set({
         negotiation: {
           ...negotiation,
-          opponentTyping: false,
-          proposalCooldown: 0,
-          agreedStake: proposal.amount,
-          activeProposal: null,
-          messages: negotiation.messages.map((message) =>
-            message.id === proposal.messageId
-              ? { ...message, status: 'accepted' as const }
-              : message,
-          ),
+          tableStake: proposal.amount,
+          proposal: { ...proposal, status: 'accepted' },
         },
       });
-      audioManager.playSfx('locked');
+      audioManager.playSfx('stake');
       vibrate([30, 40, 60]);
+      schedule(() => finishNegotiation(matchId), TIMINGS.negoAnswerHoldMs);
     };
 
-    /** Relógio de 10 s entre propostas do jogador (anti-spam de lances). */
-    const runProposalCooldown = (matchId: string, value: number): void => {
-      const { phase, match, negotiation } = get();
-      if (phase !== 'negotiate' || match?.id !== matchId || !negotiation) return;
-      patchNegotiation({ proposalCooldown: value });
-      if (value <= 0) return;
-      schedule(() => runProposalCooldown(matchId, value - 1), 1000);
+    /** Recusa do lance vivo: a mesa segue valendo o que valia. */
+    const declineCurrentProposal = (matchId: string): void => {
+      const { negotiation } = get();
+      const proposal = negotiation?.proposal;
+      if (!negotiation || !proposal || proposal.status !== 'pending') return;
+      patchNegotiation({ proposal: { ...proposal, status: 'declined' } });
+      audioManager.playSfx('tap');
+      closeProposalLater(matchId, proposal.id);
     };
 
-    /** Resposta do bot a um lance do jogador (ler → digitar → decidir). */
+    /** Resposta do bot a um lance do jogador (olhar a mesa → decidir). */
     const scheduleBotReply = (matchId: string, amount: number, seq: number): void => {
-      schedule(
-        () => {
-          if (!botTurnAlive(matchId, seq)) return;
-          patchNegotiation({ opponentTyping: true });
-          schedule(
-            () => {
-              if (!botTurnAlive(matchId, seq)) return;
-              const reply: NegotiatorReply = get().devNegotiationAutoAccept
-                ? { action: 'accept' }
-                : (negotiator?.respond(amount, { balance: get().balance }) ?? {
-                    action: 'accept',
-                  });
-              if (reply.action === 'accept') {
-                settleAgreement();
-              } else {
-                botPropose(reply.amount, reply.quip);
-              }
-            },
-            within(BOT_BEATS.replyTypingMinMs, BOT_BEATS.replyTypingMaxMs),
-          );
-        },
-        within(BOT_BEATS.replyDelayMinMs, BOT_BEATS.replyDelayMaxMs),
-      );
+      // Com o auto-aceite do DevTools o bot cobre na hora — só o beat
+      // mínimo para o balão entrar em cena antes do ✓.
+      const delay = get().devNegotiationAutoAccept
+        ? 350
+        : within(BOT_BEATS.replyDelayMinMs, BOT_BEATS.replyDelayMaxMs);
+      schedule(() => {
+        if (seq !== botSeq || !negotiationAlive(matchId)) return;
+        const { negotiation, balance } = get();
+        const proposal = negotiation?.proposal;
+        if (!proposal || proposal.from !== 'player' || proposal.status !== 'pending') return;
+
+        const reply: NegotiatorReply = get().devNegotiationAutoAccept
+          ? { action: 'accept' }
+          : (negotiator?.respond(amount, { balance, tableStake: negotiation.tableStake }) ?? {
+              action: 'accept',
+            });
+        if (reply.action === 'accept') {
+          settleProposal(matchId);
+          return;
+        }
+
+        declineCurrentProposal(matchId);
+        // A recusa pode vir com uma contraproposta: o lance DELE entra
+        // na mesa um beat depois do ✗, virado para você decidir.
+        const counter = reply.counter;
+        if (counter === null || counter === get().negotiation?.tableStake) return;
+        schedule(
+          () => {
+            if (seq !== botSeq || !negotiationAlive(matchId)) return;
+            if (get().negotiation?.proposal?.status === 'pending') return;
+            openProposal('opponent', counter);
+          },
+          within(BOT_BEATS.counterDelayMinMs, BOT_BEATS.counterDelayMaxMs),
+        );
+      }, delay);
     };
 
     /**
-     * Abre a mesa: aviso do sistema e a abertura do bot em beats de
-     * conversa real (cumprimento digitado, pausa, proposta inicial).
-     * Se o jogador propuser antes, a geração muda e a abertura morre —
-     * o bot passa a responder ao lance dele.
+     * Relógio da rodada de negociação, um segundo por vez. Ele PARA
+     * enquanto um lance SEU espera a resposta do rival (o martelo está
+     * do outro lado — seria injusto o seu tempo correr). Um lance do
+     * RIVAL não pausa nada: decidir sob o relógio é pressão de mesa.
+     * Zerou: um lance sem resposta morre recusado e o duelo abre
+     * valendo o que estiver na mesa — a garantia de término da fase.
+     */
+    const runNegotiationClock = (matchId: string, value: number): void => {
+      if (!negotiationAlive(matchId)) return;
+      const { negotiation } = get();
+      const proposal = negotiation?.proposal;
+      if (proposal?.from === 'player' && proposal.status === 'pending') {
+        schedule(() => runNegotiationClock(matchId, value), 250);
+        return;
+      }
+      patchNegotiation({ secondsLeft: value });
+      if (value > 0) {
+        schedule(() => runNegotiationClock(matchId, value - 1), 1000);
+        return;
+      }
+      const dying = get().negotiation?.proposal;
+      if (dying?.status === 'pending') {
+        patchNegotiation({ proposal: { ...dying, status: 'declined', open: false } });
+      }
+      finishNegotiation(matchId);
+    };
+
+    /**
+     * Abre a mesa: a aposta padrão já está no feltro (nunca acima do
+     * saldo do jogador), o relógio da rodada corre e o bot pode empurrar
+     * um lance espontâneo se o alvo dele estiver longe da mesa. Se o
+     * jogador propuser antes, a abertura do bot morre no guard.
      */
     const beginNegotiation = (matchId: string): void => {
       negotiator = createNegotiator();
       const seq = ++botSeq;
+      const affordable = Math.floor(get().balance / 10) * 10;
+      const tableStake = Math.max(MIN_STAKE, Math.min(DEFAULT_STAKE, affordable));
       set({
         negotiation: {
-          messages: [{ id: createId(), author: 'system', kind: 'text', text: NEGOTIATION_INTRO }],
-          activeProposal: null,
+          tableStake,
+          secondsLeft: NEGOTIATION_SECONDS,
+          proposal: null,
           agreedStake: null,
-          proposalCooldown: 0,
-          opponentTyping: false,
           starting: false,
         },
       });
+      audioManager.playSfx('stake'); // as fichas da aposta padrão assentam
+      schedule(() => runNegotiationClock(matchId, NEGOTIATION_SECONDS - 1), 1000);
 
+      // Com o auto-aceite (DevTools/e2e) o bot não abre lance nenhum:
+      // a fase atravessa com um único toque do jogador.
+      if (get().devNegotiationAutoAccept) return;
       schedule(
         () => {
-          if (!botTurnAlive(matchId, seq)) return;
-          patchNegotiation({ opponentTyping: true });
-          schedule(
-            () => {
-              if (!botTurnAlive(matchId, seq)) return;
-              const opening = negotiator?.opening({ balance: get().balance });
-              if (!opening) return;
-              patchNegotiation({ opponentTyping: false });
-              pushNegotiationMessage({
-                id: createId(),
-                author: 'opponent',
-                kind: 'text',
-                text: opening.greeting,
-              });
-              audioManager.playSfx('tap');
-              schedule(
-                () => {
-                  if (!botTurnAlive(matchId, seq)) return;
-                  patchNegotiation({ opponentTyping: true });
-                  schedule(
-                    () => {
-                      if (!botTurnAlive(matchId, seq)) return;
-                      botPropose(opening.amount, null);
-                    },
-                    within(BOT_BEATS.openTypingMinMs, BOT_BEATS.openTypingMaxMs),
-                  );
-                },
-                within(BOT_BEATS.openDelayMinMs, BOT_BEATS.openDelayMaxMs),
-              );
-            },
-            within(BOT_BEATS.greetTypingMinMs, BOT_BEATS.greetTypingMaxMs),
-          );
+          if (seq !== botSeq || !negotiationAlive(matchId)) return;
+          const current = get().negotiation;
+          if (!current || current.proposal !== null) return; // a mesa já tem conversa
+          const amount = negotiator?.opening({
+            balance: get().balance,
+            tableStake: current.tableStake,
+          });
+          if (amount == null || amount === current.tableStake) return;
+          openProposal('opponent', amount);
         },
-        within(BOT_BEATS.greetDelayMinMs, BOT_BEATS.greetDelayMaxMs),
+        within(BOT_BEATS.openDelayMinMs, BOT_BEATS.openDelayMaxMs),
       );
     };
 
@@ -1014,95 +1056,57 @@ export function createGameStore(deps: GameStoreDeps = {}) {
 
       sendProposal: (amount) => {
         const { phase, negotiation, match, balance } = get();
-        if (phase !== 'negotiate' || !negotiation || !match) return;
-        if (negotiation.agreedStake !== null || negotiation.starting) return;
+        if (phase !== 'negotiate' || !negotiation || !match || negotiation.starting) return;
         if (!validateStake(balance, amount).ok) return;
 
-        // Propor exatamente o valor na mesa do oponente é um aperto de
-        // mãos — não conta como lance novo (nem entra no cooldown).
+        const proposal = negotiation.proposal;
+        // O seu lance no ar tem o martelo do rival: espere a resposta.
+        if (proposal?.status === 'pending' && proposal.from === 'player') return;
+
+        // Cobrir o lance vivo do rival propondo o MESMO valor é um
+        // aperto de mãos, não um lance novo.
         if (
-          negotiation.activeProposal?.from === 'opponent' &&
-          negotiation.activeProposal.amount === amount
+          proposal?.status === 'pending' &&
+          proposal.from === 'opponent' &&
+          proposal.amount === amount
         ) {
           get().acceptProposal();
           return;
         }
 
-        if (negotiation.proposalCooldown > 0) return;
-
         const seq = ++botSeq; // há lance novo: jogadas antigas do bot caducam
-        supersedeActiveProposal();
-        const fresh = get().negotiation;
-        if (!fresh) return;
-        const messageId = createId();
-        set({
-          negotiation: {
-            ...fresh,
-            messages: [
-              ...fresh.messages,
-              { id: messageId, author: 'player', kind: 'proposal', amount, status: 'pending' },
-            ],
-            activeProposal: { messageId, from: 'player', amount },
-            proposalCooldown: PROPOSAL_COOLDOWN_SECONDS,
-          },
-        });
-        audioManager.playSfx('stake');
-        vibrate(20);
-        schedule(() => runProposalCooldown(match.id, PROPOSAL_COOLDOWN_SECONDS - 1), 1000);
+
+        // Propor o valor que JÁ está na mesa é confirmá-la: o balão
+        // entra coberto e a mesa fecha nesse valor.
+        if (amount === negotiation.tableStake) {
+          openProposal('player', amount);
+          settleProposal(match.id);
+          return;
+        }
+
+        // Um lance seu por cima do lance vivo do rival é a contraproposta:
+        // o dele sai da mesa e o balão passa a ser o seu.
+        openProposal('player', amount);
         scheduleBotReply(match.id, amount, seq);
       },
 
       acceptProposal: () => {
-        const { phase, negotiation, balance } = get();
-        if (phase !== 'negotiate' || !negotiation || negotiation.starting) return;
-        if (negotiation.agreedStake !== null) return;
-        const proposal = negotiation.activeProposal;
-        if (!proposal || proposal.from !== 'opponent') return;
+        const { phase, negotiation, match, balance } = get();
+        if (phase !== 'negotiate' || !negotiation || !match || negotiation.starting) return;
+        const proposal = negotiation.proposal;
+        if (!proposal || proposal.from !== 'opponent' || proposal.status !== 'pending') return;
         if (!validateStake(balance, proposal.amount).ok) return;
-        settleAgreement();
+        botSeq += 1;
+        settleProposal(match.id);
       },
 
-      startDuel: () => {
-        const { phase, negotiation, match, balance } = get();
-        if (phase !== 'negotiate' || !negotiation || !match) return;
-        const stake = negotiation.agreedStake;
-        if (stake === null || negotiation.starting) return;
-        if (!validateStake(balance, stake).ok) {
-          failWith('Saldo insuficiente para esta aposta.');
-          return;
-        }
-
+      declineProposal: () => {
+        const { phase, negotiation, match } = get();
+        if (phase !== 'negotiate' || !negotiation || !match || negotiation.starting) return;
+        const proposal = negotiation.proposal;
+        if (!proposal || proposal.from !== 'opponent' || proposal.status !== 'pending') return;
         botSeq += 1;
-        set({ negotiation: { ...negotiation, starting: true, opponentTyping: false } });
-        audioManager.playSfx('ready');
-        vibrate(30);
-
-        void (async () => {
-          try {
-            // O valor acordado vira a verdade da engine ANTES do débito:
-            // payout e histórico derivam do stake gravado na partida.
-            const updated = await engine.setStake({ matchId: match.id, stake });
-            if (get().phase !== 'negotiate' || get().match?.id !== match.id) return;
-            set({ match: updated });
-            schedule(() => {
-              const { phase: current, balance: currentBalance } = get();
-              if (current !== 'negotiate') return;
-              let nextBalance: number;
-              try {
-                nextBalance = debitStake(currentBalance, stake);
-              } catch {
-                failWith('Saldo insuficiente para esta aposta.');
-                return;
-              }
-              if (!transitionTo('countdown')) return;
-              set({ balance: nextBalance });
-              persist();
-              runCountdown(COUNTDOWN_START);
-            }, TIMINGS.negotiationStartMs);
-          } catch {
-            failWith('Não foi possível iniciar a partida. Tente novamente.');
-          }
-        })();
+        declineCurrentProposal(match.id);
       },
 
       abandonNegotiation: () => {

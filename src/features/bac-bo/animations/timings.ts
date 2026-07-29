@@ -28,10 +28,16 @@ export const TIMINGS = {
    */
   confirmLockInMs: 1600,
   /**
-   * Beat entre o toque em "Iniciar partida" (acordo fechado) e o
-   * countdown: o selo de início respira antes do corte de cena.
+   * Beat entre o fim da negociação e o countdown: é o tempo do título
+   * "HORA DO DUELO" entrar, assentar e respirar antes do corte de cena.
    */
-  negotiationStartMs: 1000,
+  negotiationStartMs: 2400,
+  /**
+   * Quanto o balão de proposta respondido (o ✓ ou o ✗ aceso) fica em
+   * cena antes de a mesa seguir — no aceite, é também o beat em que as
+   * fichas novas assentam no centro do feltro.
+   */
+  negoAnswerHoldMs: 1400,
   /** Intervalo entre os ticks do countdown (5 → 1). */
   countdownTickMs: 900,
   /** Intervalo entre cada carta da distribuição inicial. */
@@ -100,10 +106,12 @@ export const TIMINGS = {
 export const COUNTDOWN_START = 5;
 
 /**
- * Intervalo mínimo entre propostas do jogador na mesa de negociação,
- * em segundos: cada proposta é um lance ponderado, não spam de valores.
+ * Duração da rodada de negociação, em segundos. O relógio zera e o
+ * duelo abre valendo o que estiver na mesa — a garantia de término da
+ * fase. Ele PAUSA enquanto um lance SEU espera a resposta do rival
+ * (seria injusto o seu tempo correr com o martelo do outro lado).
  */
-export const PROPOSAL_COOLDOWN_SECONDS = 10;
+export const NEGOTIATION_SECONDS = 20;
 
 /** Máximo de partidas mantidas no histórico persistido. */
 export const HISTORY_LIMIT = 50;

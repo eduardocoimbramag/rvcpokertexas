@@ -24,6 +24,13 @@ export function afterHouseEdge(amount: number): number {
  */
 export const MIN_STAKE = 10;
 
+/**
+ * Aposta padrão do 1v1: o valor que já está na mesa quando a rodada de
+ * negociação abre — e o que vale se ninguém mexer nela até o relógio
+ * zerar. A mesa nunca abre acima do saldo do jogador (ver gameStore).
+ */
+export const DEFAULT_STAKE = 100;
+
 export type StakeValidation =
   { ok: true } | { ok: false; reason: 'invalid-stake' | 'insufficient-balance' };
 

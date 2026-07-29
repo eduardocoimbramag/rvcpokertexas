@@ -56,15 +56,16 @@ async function forceNegoAutoAccept(page: Page) {
 }
 
 /**
- * Atravessa a mesa de negociação propondo `stake` (bot em auto-aceite)
- * e inicia a partida.
+ * Atravessa a rodada de negociação propondo `stake` (bot em
+ * auto-aceite). Não há botão de iniciar: o aceite fecha a mesa sozinho
+ * — HORA DO DUELO → countdown — e a partida começa.
  */
 async function negotiateStake(page: Page, stake: number) {
   // Matchmaking (1,2–2,6 s) → splash → confirmação dupla → negociação.
   await page.getByTestId('nego-input').fill(String(stake), { timeout: 15_000 });
   await page.getByTestId('nego-send').click();
-  // O aceite do bot chega em ~2–4 s; o clique espera o CTA destravar.
-  await page.getByTestId('nego-start').click({ timeout: 15_000 });
+  // O aceite fecha a mesa sozinho: HORA DO DUELO → countdown.
+  await expect(page.getByTestId('countdown-value')).toBeVisible({ timeout: 15_000 });
 }
 
 /**
@@ -107,22 +108,25 @@ test('primeira jogada: tutorial, negociação e a vitória com blackjack', async
 
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
 
-  // Mesa de negociação sobre o mesmo salão; a crupiê apresenta a mesa
-  // (docs/scenario.md §9.1).
+  // Rodada de negociação sobre o próprio feltro; a crupiê apresenta a
+  // mesa (docs/scenario.md §9.1) e o título de ouro carimba a abertura.
   await expect(page.getByTestId('negotiation-panel')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('dealer')).toHaveAttribute('data-reaction', 'present');
+  await expect(page.getByTestId('nego-open-announce')).toHaveText(/rodada de negociação/i);
 
-  // Sem acordo, o início fica bloqueado.
-  await expect(page.getByTestId('nego-start')).toBeDisabled();
-
-  // Proposta de 50: o lance entra no chat e o bot aceita.
+  // Proposta de 50: o balão do lance entra e o bot cobre — o aceite
+  // fecha a mesa sozinho (não existe botão de iniciar).
   await page.getByTestId('nego-input').fill('50');
   await page.getByTestId('nego-send').click();
-  await expect(page.getByTestId('nego-proposal-player')).toBeVisible();
-  // O acordo não vira mensagem: o próprio cartão do lance ganha o selo.
-  await expect(page.getByTestId('nego-accepted')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('nego-proposal')).toHaveAttribute('data-from', 'player');
+  await expect(page.getByTestId('nego-proposal')).toHaveAttribute('data-status', 'accepted', {
+    timeout: 15_000,
+  });
 
-  await page.getByTestId('nego-start').click();
+  // A mesa passa a valer o acordo e a HORA DO DUELO abre a partida.
+  await expect(page.getByTestId('nego-duel-announce')).toHaveText(/hora do duelo/i, {
+    timeout: 10_000,
+  });
 
   // O natural não fecha a mão: a vez abre normal, com relógio e botões —
   // é isso que impede o 21 de denunciar a si mesmo.
@@ -199,30 +203,43 @@ test('persistência: saldo e histórico sobrevivem ao reload', async ({ page }) 
   await expect(page.getByTestId('history-list')).toContainText('+45');
 });
 
-test('negociação: contraproposta do bot pode ser aceita; desistir volta ao menu', async ({
-  page,
-}) => {
+test('negociação: sair da mesa não debita nada e volta ao menu', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');
 
   await page.getByTestId('play-button').click();
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
 
-  // Lance mínimo (10): o alvo do bot é sempre maior, então a resposta é
-  // garantidamente uma CONTRAPROPOSTA — que traz o botão de aceitar.
+  // A rodada abre com a aposta padrão de 100 já nas fichas da mesa.
+  await expect(page.getByTestId('negotiation-panel')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('nego-table-stake')).toContainText('100', { timeout: 10_000 });
+
+  // Sair da mesa abandona a rodada sem debitar nada.
+  await page.getByTestId('nego-quit').click();
+  await expect(page.getByTestId('play-button')).toBeVisible();
+  await expect(page.getByTestId('balance')).toContainText('1.000');
+});
+
+test('negociação: a contraproposta do bot pode ser coberta e vira a mesa', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByTestId('play-button').click();
+  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
+
+  // Lance mínimo (10): com saldo de 1.000 o alvo do bot é sempre maior,
+  // então a resposta é garantidamente uma RECUSA com contraproposta —
+  // que chega como um balão dele, com o ✓ e o ✗ na sua mão.
   await page.getByTestId('nego-input').fill('10', { timeout: 15_000 });
   await page.getByTestId('nego-send').click();
   await expect(page.getByTestId('nego-accept')).toBeVisible({ timeout: 15_000 });
 
-  // Aceitar fecha o acordo e destrava o início.
+  // Cobrir fecha a mesa no valor dele e o duelo abre sozinho.
   await page.getByTestId('nego-accept').click();
-  await expect(page.getByTestId('nego-accepted')).toBeVisible();
-  await expect(page.getByTestId('nego-start')).toBeEnabled();
-
-  // Desistir abandona a mesa sem debitar nada.
-  await page.getByTestId('nego-quit').click();
-  await expect(page.getByTestId('play-button')).toBeVisible();
-  await expect(page.getByTestId('balance')).toContainText('1.000');
+  await expect(page.getByTestId('nego-duel-announce')).toHaveText(/hora do duelo/i, {
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId('countdown-value')).toBeVisible({ timeout: 10_000 });
 });
 
 test('cancelar a busca não debita créditos e volta ao menu', async ({ page }) => {

@@ -82,18 +82,10 @@ describe('NegotiationPanel — mesa de negociação', () => {
   };
 
   const baseNegotiation: NegotiationState = {
-    messages: [
-      {
-        id: 's1',
-        author: 'system',
-        kind: 'text',
-        text: 'Proponham valores e cheguem a um acordo.',
-      },
-    ],
-    activeProposal: null,
+    tableStake: 100,
+    secondsLeft: 20,
+    proposal: null,
     agreedStake: null,
-    proposalCooldown: 0,
-    opponentTyping: false,
     starting: false,
   };
 
@@ -105,6 +97,17 @@ describe('NegotiationPanel — mesa de negociação', () => {
       negotiation: { ...baseNegotiation, ...patch },
     });
   };
+
+  it('a rodada abre com o título, a aposta padrão nas fichas e o relógio', () => {
+    openNegotiation();
+    render(<NegotiationPanel match={match} />);
+
+    // O título carimba o centro do feltro na abertura…
+    expect(screen.getByTestId('nego-open-announce')).toHaveTextContent(/rodada de negociação/i);
+    // …e o relógio da mesa já corre com o composer pronto.
+    expect(screen.getByTestId('nego-clock')).toHaveTextContent('20s');
+    expect(screen.getByTestId('nego-send')).toBeDisabled();
+  });
 
   it('composer: +10/+100 somam ao lance e o enviar exige valor válido', async () => {
     const user = userEvent.setup();
@@ -143,41 +146,53 @@ describe('NegotiationPanel — mesa de negociação', () => {
     expect(screen.getByTestId('nego-hint')).toHaveTextContent(/lance mínimo é 10/i);
   });
 
-  it('durante o relógio de 10 s o envio mostra a contagem e bloqueia', async () => {
-    const user = userEvent.setup();
-    openNegotiation({ proposalCooldown: 7 });
-    render(<NegotiationPanel match={match} />);
-
-    await user.type(screen.getByTestId('nego-input'), '50');
-    expect(screen.getByTestId('nego-send')).toBeDisabled();
-    expect(screen.getByTestId('nego-cooldown')).toHaveTextContent('7s');
-    expect(screen.getByTestId('nego-hint')).toHaveTextContent(/nova proposta em 7s/i);
-  });
-
-  it('proposta viva do oponente traz o ACEITAR, que fecha o acordo', async () => {
-    const user = userEvent.setup();
+  it('um lance seu no ar pausa o composer até a resposta do rival', () => {
     openNegotiation({
-      messages: [
-        ...baseNegotiation.messages,
-        { id: 'p1', author: 'opponent', kind: 'proposal', amount: 60, status: 'pending' },
-      ],
-      activeProposal: { messageId: 'p1', from: 'opponent', amount: 60 },
+      proposal: { id: 'p1', from: 'player', amount: 80, status: 'pending', open: true },
     });
     render(<NegotiationPanel match={match} />);
 
-    // Antes do acordo, iniciar fica bloqueado.
-    expect(screen.getByTestId('nego-start')).toBeDisabled();
+    // O balão do SEU lance mostra o retrato da decisão dele (sem botões).
+    const bubble = screen.getByTestId('nego-proposal');
+    expect(bubble).toHaveAttribute('data-from', 'player');
+    expect(screen.queryByTestId('nego-accept')).not.toBeInTheDocument();
+
+    // E o enviar espera: o martelo está do outro lado da mesa.
+    expect(screen.getByTestId('nego-send')).toBeDisabled();
+    expect(screen.getByTestId('nego-send')).toHaveTextContent(/aguardando resposta/i);
+  });
+
+  it('o lance do rival põe o ✓ e o ✗ na sua mão — cobrir fecha a mesa nele', async () => {
+    const user = userEvent.setup();
+    openNegotiation({
+      proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
+    });
+    render(<NegotiationPanel match={match} />);
 
     await user.click(screen.getByTestId('nego-accept'));
-    expect(useGameStore.getState().negotiation?.agreedStake).toBe(60);
+    expect(useGameStore.getState().negotiation?.proposal?.status).toBe('accepted');
+    expect(useGameStore.getState().negotiation?.tableStake).toBe(60);
+  });
 
-    // A conversa não ganha mensagem: o cartão do lance recebe o selo e o
-    // iniciar destrava. Nada de faixa de "acordo fechado" no chat.
-    expect(await screen.findByTestId('nego-accepted')).toBeInTheDocument();
-    expect(screen.getByTestId('nego-start')).toBeEnabled();
-    expect(screen.getByTestId('nego-chat').textContent).not.toMatch(/acordo fechado/i);
-    // Com a mesa selada, o composer sai de cena.
+  it('recusar o lance do rival mantém a mesa valendo o mesmo', async () => {
+    const user = userEvent.setup();
+    openNegotiation({
+      proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
+    });
+    render(<NegotiationPanel match={match} />);
+
+    await user.click(screen.getByTestId('nego-decline'));
+    expect(useGameStore.getState().negotiation?.proposal?.status).toBe('declined');
+    expect(useGameStore.getState().negotiation?.tableStake).toBe(100);
+  });
+
+  it('na HORA DO DUELO o composer sai e o título entra', () => {
+    openNegotiation({ starting: true, agreedStake: 100 });
+    render(<NegotiationPanel match={match} />);
+
+    expect(screen.getByTestId('nego-duel-announce')).toHaveTextContent(/hora do duelo/i);
     expect(screen.queryByTestId('nego-send')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nego-quit')).not.toBeInTheDocument();
   });
 
   it('desistir abandona a mesa e volta ao menu', async () => {
@@ -188,12 +203,6 @@ describe('NegotiationPanel — mesa de negociação', () => {
     await user.click(screen.getByTestId('nego-quit'));
     expect(useGameStore.getState().phase).toBe('idle');
     expect(useGameStore.getState().negotiation).toBeNull();
-  });
-
-  it('indicador de digitação aparece com o oponente escrevendo', () => {
-    openNegotiation({ opponentTyping: true });
-    render(<NegotiationPanel match={match} />);
-    expect(screen.getByTestId('nego-typing')).toBeInTheDocument();
   });
 });
 
