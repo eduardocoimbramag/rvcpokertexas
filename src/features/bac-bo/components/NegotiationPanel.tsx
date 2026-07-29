@@ -1,5 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
@@ -18,12 +19,57 @@ export interface NegotiationPanelProps {
   match: Match;
 }
 
-/** Quanto o título "RODADA DE NEGOCIAÇÃO" segura o centro do feltro
- *  antes de ceder o palco às fichas da aposta padrão. */
-const ANNOUNCE_MS = 2600;
-
 /** Altura de um degrau da pilha de fichas, em px. */
 const CHIP_STEP_PX = 7;
+
+/**
+ * Situação do rival na mesa, na ordem de precedência em que ela é lida
+ * — o rótulo curto da pílula de HUD e a cor do ponto saem daqui.
+ */
+const HUD_LABELS = {
+  ready: 'Fechado',
+  offer: 'Proposta',
+  thinking: 'Decidindo',
+  idle: 'Esperando',
+} as const;
+
+/**
+ * A pílula do rival no ALTO da tela, ao lado do saldo — acima da
+ * dealer, que fica livre em cena. Uma linha só: medalhão e nome à
+ * esquerda, situação e ponto de presença à direita.
+ *
+ * Ela vive no HUD (o GameScreen a monta no cabeçalho) e não no feltro:
+ * a mesa é do letreiro, das fichas e dos balões. O nome trunca; a
+ * situação nunca quebra linha.
+ */
+export function NegotiationHud({ match }: NegotiationPanelProps) {
+  const negotiation = useGameStore((state) => state.negotiation);
+  if (!negotiation) return null;
+
+  const { proposal, starting } = negotiation;
+  const state =
+    starting || proposal?.status === 'accepted'
+      ? 'ready'
+      : proposal?.status !== 'pending'
+        ? 'idle'
+        : proposal.from === 'opponent'
+          ? 'offer'
+          : 'thinking';
+
+  return (
+    <div
+      className="nego-hud"
+      data-state={state}
+      data-testid="nego-hud"
+      aria-label={`${match.opponent.name}: ${HUD_LABELS[state]}`}
+    >
+      <AvatarBadge name={match.opponent.name} className="nego-hud__badge" />
+      <span className="nego-hud__name">{match.opponent.name}</span>
+      <span className="nego-hud__state">{HUD_LABELS[state]}</span>
+      <span className="nego-hud__dot" aria-hidden="true" />
+    </div>
+  );
+}
 
 /**
  * A pilha de fichas no centro do feltro: o retrato físico do valor que
@@ -36,7 +82,16 @@ const CHIP_STEP_PX = 7;
  * bagunça natural de uma pilha real, sem Math.random — os testes e o
  * reduced motion veem sempre a mesma mesa.
  */
-function ChipStack({ stake, instant }: { stake: number; instant: boolean }) {
+function ChipStack({
+  stake,
+  instant,
+  backstage,
+}: {
+  stake: number;
+  instant: boolean;
+  /** A HORA DO DUELO está em cena: a pilha recua atrás do título. */
+  backstage: boolean;
+}) {
   const chips = useMemo(() => {
     const count = Math.min(9, Math.max(3, 2 + Math.round(stake / 50)));
     return Array.from({ length: count }, (_, index) => ({
@@ -48,11 +103,19 @@ function ChipStack({ stake, instant }: { stake: number; instant: boolean }) {
 
   return (
     <div
-      className="chip-stack"
+      className={`chip-stack ${backstage ? 'chip-stack--backstage' : ''}`}
       data-testid="nego-table"
-      aria-label={`Aposta na mesa: ${stake} créditos`}
+      role="group"
+      aria-label={`Aposta na mesa: ${formatCredits(stake)} créditos`}
     >
-      <div className="chip-stack__pile" aria-hidden="true">
+      {/* --chip-count: a caixa da pilha abraça as fichas que existem
+          (ver .chip-stack__pile) — sem espaço morto no topo, o conjunto
+          assenta de fato no centro do feltro. */}
+      <div
+        className="chip-stack__pile"
+        aria-hidden="true"
+        style={{ '--chip-count': chips.length } as CSSProperties}
+      >
         {chips.map((chip, index) => (
           <motion.span
             key={index}
@@ -72,7 +135,9 @@ function ChipStack({ stake, instant }: { stake: number; instant: boolean }) {
           />
         ))}
       </div>
-      <div className="chip-stack__plate">
+      {/* aria-hidden: o rótulo do grupo já conta o valor — sem ele o
+          leitor de tela ouviria a mesma cifra duas vezes. */}
+      <div className="chip-stack__plate" aria-hidden="true">
         <motion.span
           className="chip-stack__value"
           data-testid="nego-table-stake"
@@ -115,9 +180,18 @@ function ProposalBubble({
   onAccept,
   onDecline,
 }: ProposalBubbleProps) {
+  const bubbleRef = useRef<HTMLDivElement>(null);
   const own = proposal.from === 'player';
   const accepted = proposal.status === 'accepted';
   const answered = accepted || proposal.status === 'declined';
+
+  /* Responder troca os botões pelo retrato da decisão no mesmo render:
+     sem isto, o elemento focado morre e o foco de teclado cai no body.
+     O balão (tabIndex -1) segura o foco durante o beat da resposta. */
+  const answer = (action: () => void) => {
+    action();
+    bubbleRef.current?.focus();
+  };
 
   const title = accepted
     ? 'PROPOSTA ACEITA'
@@ -132,6 +206,8 @@ function ProposalBubble({
 
   return (
     <motion.div
+      ref={bubbleRef}
+      tabIndex={-1}
       className={`prop-bubble ${own ? 'prop-bubble--player' : 'prop-bubble--opponent'}`}
       data-testid="nego-proposal"
       data-status={proposal.status}
@@ -165,9 +241,9 @@ function ProposalBubble({
           <motion.button
             type="button"
             className="double-answer double-answer--yes prop-bubble__choice"
-            onClick={onAccept}
+            onClick={() => answer(onAccept)}
             data-testid="nego-accept"
-            aria-label={`Cobrir a proposta de ${proposal.amount} créditos`}
+            aria-label={`Cobrir a proposta de ${formatCredits(proposal.amount)} créditos`}
             whileTap={instant ? undefined : { scale: 0.88 }}
           >
             <Icon name="check" size={18} strokeWidth={2.6} />
@@ -175,7 +251,7 @@ function ProposalBubble({
           <motion.button
             type="button"
             className="double-answer double-answer--no prop-bubble__choice"
-            onClick={onDecline}
+            onClick={() => answer(onDecline)}
             data-testid="nego-decline"
             aria-label="Recusar a proposta"
             whileTap={instant ? undefined : { scale: 0.88 }}
@@ -246,17 +322,14 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
   const instant = useReducedMotion() ?? false;
 
   const [draft, setDraft] = useState('');
-  const [announcing, setAnnouncing] = useState(true);
-
-  // O título abre a rodada e cede o centro às fichas.
-  useEffect(() => {
-    const timer = setTimeout(() => setAnnouncing(false), instant ? 1200 : ANNOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [instant]);
+  const amountRef = useRef<HTMLInputElement>(null);
 
   if (!negotiation) return null;
 
-  const { tableStake, secondsLeft, proposal, starting } = negotiation;
+  // Quem manda no letreiro é o STORE: é o mesmo beat que segura o
+  // relógio da rodada, então a contagem nunca começa por baixo do
+  // título (e o balão nunca abre sobre um feltro sem fichas).
+  const { tableStake, announcing, secondsLeft, proposal, starting } = negotiation;
 
   const amount = draft === '' ? null : Number.parseInt(draft, 10);
   const overBalance = amount !== null && amount > balance;
@@ -264,7 +337,9 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
   const validAmount = amount !== null && !overBalance && !belowMin;
   /** Um lance seu no ar: o martelo está com o rival. */
   const waitingReply = proposal?.status === 'pending' && proposal.from === 'player';
-  const canSend = validAmount && !starting && !waitingReply;
+  /** Lance coberto = mesa selada: o aperto de mãos vale desde o ✓. */
+  const sealed = proposal?.status === 'accepted';
+  const canSend = validAmount && !starting && !waitingReply && !sealed;
 
   const hint = overBalance
     ? `Saldo insuficiente: você tem ${formatCredits(balance)} créditos.`
@@ -272,39 +347,25 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
       ? `O lance mínimo é ${MIN_STAKE} créditos.`
       : null;
 
-  const status = starting
-    ? 'duelo fechado'
-    : waitingReply
-      ? 'pensando…'
-      : proposal?.status === 'pending'
-        ? 'esperando você'
-        : 'na mesa';
-
   const submit = () => {
     if (!canSend || amount === null) return;
     sendProposal(amount);
     setDraft('');
+    // O botão de enviar desabilita no mesmo tick — o foco volta ao
+    // campo em vez de cair no body.
+    amountRef.current?.focus();
   };
 
   return (
     <div className="nego-stage flex min-h-0 flex-1 flex-col" data-testid="negotiation-panel">
-      {/* O rival na cabeceira: identidade + situação da mesa. */}
-      <header className="nego-head" aria-label={`Mesa de negociação com ${match.opponent.name}`}>
-        <AvatarBadge name={match.opponent.name} className="text-sm" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-black text-ivory">{match.opponent.name}</p>
-          <p className="nego-head__status">{status}</p>
-        </div>
-        <span
-          className={`nego-head__presence ${starting ? 'nego-head__presence--ready' : ''}`}
-          aria-hidden="true"
-        />
-      </header>
-
       {/* O centro do feltro: o título carimba, as fichas assumem e os
           balões de proposta entram por cima — tudo absoluto ou centrado,
           sem empurrar o layout. */}
-      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center">
+      <div className="nego-felt relative flex min-h-0 flex-1 flex-col items-center justify-center">
+        {/* Viés de centragem: leva as fichas ao eixo do brasão (e cede
+            primeiro quando a tela é baixa) — ver .nego-felt__bias. */}
+        <span className="nego-felt__bias" aria-hidden="true" />
+
         <AnimatePresence mode="wait">
           {starting ? (
             <GoldAnnounce key="duel" text="Hora do duelo" data-testid="nego-duel-announce" />
@@ -319,7 +380,14 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
 
         {/* key={tableStake}: cada valor novo re-monta a pilha — as
             fichas do acordo deslizam ao centro de novo. */}
-        {!announcing && <ChipStack key={tableStake} stake={tableStake} instant={instant} />}
+        {!announcing && (
+          <ChipStack
+            key={tableStake}
+            stake={tableStake}
+            instant={instant}
+            backstage={starting}
+          />
+        )}
 
         <AnimatePresence>
           {proposal?.open && !starting && (
@@ -346,7 +414,7 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
             exit={instant ? { opacity: 0 } : { opacity: 0, y: 18, transition: { duration: 0.25 } }}
             transition={instant ? { duration: 0 } : { delay: 0.2, duration: 0.35, ease: 'easeOut' }}
           >
-            <NegoClock seconds={secondsLeft} paused={waitingReply} />
+            <NegoClock seconds={secondsLeft} paused={waitingReply || sealed} />
 
             <form
               className="flex flex-col gap-1.5"
@@ -361,9 +429,12 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
                 label="Valor da proposta em créditos"
                 placeholder={`Mín. ${MIN_STAKE}`}
                 max={balance}
-                disabled={starting}
+                disabled={starting || sealed}
                 data-testid="nego-input"
                 stepTestIdPrefix="nego-plus"
+                inputRef={amountRef}
+                describedBy={hint ? 'nego-hint' : undefined}
+                invalid={overBalance || belowMin}
               />
               <Button
                 type="submit"
@@ -372,7 +443,11 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
                 disabled={!canSend}
                 data-testid="nego-send"
               >
-                {waitingReply ? (
+                {sealed ? (
+                  <>
+                    <Icon name="check" /> ACORDO FECHADO
+                  </>
+                ) : waitingReply ? (
                   <>
                     <Icon name="timer" /> AGUARDANDO RESPOSTA…
                   </>
@@ -384,8 +459,11 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
               </Button>
             </form>
 
+            {/* role="status": o motivo do bloqueio é ANUNCIADO quando
+                entra — sem ele o leitor de tela só ouviria o enviar
+                esmaecido, sem explicação. */}
             {hint && (
-              <p className="nego-hint" data-testid="nego-hint">
+              <p className="nego-hint" id="nego-hint" role="status" data-testid="nego-hint">
                 {hint}
               </p>
             )}
@@ -395,6 +473,7 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
               onClick={abandonNegotiation}
               size="md"
               fullWidth
+              disabled={sealed}
               data-testid="nego-quit"
             >
               SAIR DA MESA

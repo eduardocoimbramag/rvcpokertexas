@@ -1606,13 +1606,15 @@ h2 {
   left: 50%;
   z-index: 2;
   display: flex;
-  min-width: 11.5rem;
+  /* Mesma escala do balão de proposta da negociação: uma nuvem de mesa
+     só, do mesmo tamanho, nas duas fases do duelo. */
+  min-width: 10.25rem;
   translate: -50%;
   flex-direction: column;
   align-items: center;
-  gap: 0.15rem;
-  padding: 0.6rem 1rem 0.5rem;
-  border-radius: 1rem;
+  gap: 0.1rem;
+  padding: 0.45rem 0.85rem 0.4rem;
+  border-radius: 0.9rem;
   background: linear-gradient(180deg, rgba(76, 10, 21, 0.95) 0%, rgba(30, 6, 12, 0.95) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
@@ -1638,9 +1640,9 @@ h2 {
 }
 
 .double-bubble__title {
-  font-size: 0.62rem;
+  font-size: 0.56rem;
   font-weight: 900;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-gold-bright);
 }
@@ -1648,8 +1650,8 @@ h2 {
 .double-bubble__amount {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 1.35rem;
+  gap: 0.3rem;
+  font-size: 1.12rem;
   line-height: 1.15;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
@@ -1658,7 +1660,7 @@ h2 {
 }
 
 .double-bubble__hint {
-  font-size: 0.6rem;
+  font-size: 0.55rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   color: rgba(243, 230, 216, 0.7);
@@ -1666,15 +1668,15 @@ h2 {
 
 .double-bubble__answers {
   display: flex;
-  gap: 0.6rem;
-  margin: 0.15rem 0 0.1rem;
+  gap: 0.5rem;
+  margin: 0.1rem 0 0.05rem;
 }
 
 /* As duas respostas que o rival tem na mão: o ✓ verde e o ✗ vermelho. */
 .double-answer {
   display: grid;
-  width: 2.125rem;
-  height: 2.125rem;
+  width: 1.85rem;
+  height: 1.85rem;
   place-items: center;
   border-radius: 9999px;
   transition:
@@ -3454,55 +3456,124 @@ h2 {
 
 /* ==================== Mesa de negociação ==================== */
 
-/* Esta fase sobe além do couro: o centro do feltro é o palco do título
-   e das fichas. A margem negativa devolve metade do `dealer-spacer`
-   (que reserva o corpo da dealer em todas as outras fases) ao conteúdo
-   — em `--dealer-h`, então o ganho acompanha a altura da tela em vez
-   de ser um número fixo. O corte fica na altura do peito: o rosto, que
-   é o que dá presença à cena, segue livre. */
+/* O palco da fase é O FELTRO: a fase começa onde o couro começa (sem a
+   margem negativa que a versão de chat usava para roubar meia dealer),
+   e o conteúdo se centra na mesa — as fichas caem no MIOLO do verde, não
+   encostadas no trilho. Quem fala pela cabeceira agora é a pílula de HUD
+   lá em cima, ao lado do saldo. */
 .nego-stage {
-  margin-top: calc(var(--dealer-h) * -0.5);
+  margin-top: 0;
 }
 
-/* A cabeceira do rival: pílula de vidro discreta com identidade e
-   situação da mesa — o resto da fase pertence ao feltro. */
-.nego-head {
+/* O palco do feltro: o conteúdo é centrado nele, mas o EIXO da mesa não
+   é o meio geométrico deste box — o brasão é gravado mais abaixo (a
+   marca deita no couro em perspectiva, com o centro em `top: 48%` de
+   uma .scene-table que já começa em `--dealer-h * 0.6`). Quem corrige
+   isso é o viés abaixo. */
+
+/* Peso morto no topo do palco que empurra a centragem para baixo (por
+   METADE da própria altura, já que o conjunto viés+fichas é que fica
+   centrado) até a pilha assentar no miolo da marca d'água. Deriva de
+   --dealer-h, como toda a geometria da cena.
+
+   `flex-shrink: 1` com o .chip-stack em `flex: none` é o mesmo contrato
+   do .dealer-spacer: numa tela baixa quem cede é ESTE espaço, nunca as
+   fichas — elas encostam no eixo geométrico e nada invade o composer. */
+.nego-felt__bias {
+  height: calc(var(--dealer-h) * 0.76);
+  min-height: 0;
+  flex-shrink: 1;
+}
+
+/* ---------- Pílula do rival no HUD (acima da dealer) ---------- */
+
+/* Uma linha só, na altura do saldo: medalhão e nome à esquerda,
+   situação e ponto à direita. Mesma família do .balance-pill (vinho
+   lapidado, aro discreto, cantos redondos) numa escala menor — é
+   informação de contexto, não o assunto da tela. */
+.nego-hud {
   display: flex;
+  flex: 1;
+  min-width: 0;
+  max-width: 15rem;
   align-items: center;
-  gap: 0.6rem;
-  width: min(100%, 92vw);
-  max-width: 27rem;
-  margin-inline: auto;
-  padding: 0.5rem 0.85rem;
+  gap: 0.4rem;
+  height: 2.15rem;
+  padding: 0 0.55rem 0 0.35rem;
   border-radius: 9999px;
-  background: rgba(20, 4, 4, 0.42);
+  background: rgba(20, 4, 4, 0.5);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 0 0 1px rgba(245, 183, 111, 0.22);
+    inset 0 0 0 1px rgba(245, 183, 111, 0.24);
 }
 
-.nego-head__status {
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+.nego-hud__badge {
+  flex: none;
+  font-size: 0.82rem;
+}
+
+/* O nome cede primeiro: a situação e o ponto nunca quebram linha. */
+.nego-hud__name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--color-ivory);
+}
+
+.nego-hud__state {
+  flex: none;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--color-lavender);
 }
 
-/* Ponto de presença: âmbar negociando, esmeralda com o duelo fechado. */
-.nego-head__presence {
-  width: 0.55rem;
-  height: 0.55rem;
+/* Ponto de presença: âmbar na espera, aceso e pulsando quando o lance é
+   DELE (é a sua vez de responder), esmeralda com o duelo fechado. */
+.nego-hud__dot {
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
   border-radius: 9999px;
   background: var(--color-gold);
-  box-shadow: 0 0 8px rgba(245, 183, 111, 0.8);
+  box-shadow: 0 0 6px rgba(245, 183, 111, 0.7);
 }
 
-.nego-head__presence--ready {
+.nego-hud[data-state='offer'] .nego-hud__state {
+  color: var(--color-gold-bright);
+}
+
+.nego-hud[data-state='offer'] .nego-hud__dot {
+  animation: nego-hud-call 1.4s ease-in-out infinite;
+}
+
+.nego-hud[data-state='ready'] .nego-hud__state {
+  color: #6ee7b7;
+}
+
+.nego-hud[data-state='ready'] .nego-hud__dot {
   background: #34d399;
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.85);
+}
+
+@keyframes nego-hud-call {
+  0%,
+  100% {
+    opacity: 0.55;
+    scale: 0.85;
+  }
+  50% {
+    opacity: 1;
+    scale: 1.15;
+  }
 }
 
 /* ---------- Anúncio de mesa em ouro (GoldAnnounce) ---------- */
@@ -3513,7 +3584,9 @@ h2 {
 .gold-announce {
   position: absolute;
   inset: 0;
-  z-index: 6;
+  /* Acima das fichas da pilha (que usam z-index 0–8 por degrau) e do
+     balão de proposta: o anúncio é sempre a voz mais alta da mesa. */
+  z-index: 10;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3616,13 +3689,28 @@ h2 {
 /* ---------- Fichas na mesa (ChipStack) ---------- */
 
 /* Tamanho de uma ficha: acompanha a carta da mesa (mesma família de
-   clamp), então a pilha nunca briga com o feltro em tela nenhuma. */
+   clamp, com o MESMO guard de altura dvh — fallback só-largura em
+   navegadores sem dvh), então a pilha nunca briga com o feltro nem
+   estoura o palco em telas baixas.
+
+   `isolation: isolate` é obrigatório: as fichas usam z-index 0–8 por
+   degrau (via style no TSX) e, sem um stacking context próprio, os
+   degraus altos venceriam o balão de proposta (z 7) no contexto do
+   palco. Isolada, a pilha vira UMA camada — balão e anúncio sempre por
+   cima. */
 .chip-stack {
   --chip-size: clamp(3.4rem, 15vw, 4.3rem);
+  --chip-size: clamp(3.4rem, min(15vw, 8.5dvh), 4.3rem);
+  /* Degrau entre uma ficha e a de baixo. Vive aqui porque a ALTURA da
+     pilha deriva dele: a caixa abraça exatamente as fichas que existem. */
+  --chip-step: 7px;
+  isolation: isolate;
   display: flex;
+  /* As fichas não cedem: quem encolhe numa tela baixa é o viés do palco. */
+  flex: none;
   flex-direction: column;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.55rem;
 }
 
 /* O poço da pilha: as fichas são absolutas na base e sobem degrau a
@@ -3631,10 +3719,30 @@ h2 {
 .chip-stack__pile {
   position: relative;
   width: var(--chip-size);
-  height: calc(var(--chip-size) + 3.6rem);
+  /* A caixa mede a PILHA QUE EXISTE (a ficha de baixo + um degrau por
+     ficha acima dela), não o teto de 9 fichas: com uma altura fixa
+     sobrava vazio no topo e o conjunto assentava alto no feltro, sem
+     nunca estar de fato centrado no que se vê. */
+  height: calc(var(--chip-size) + (var(--chip-count, 1) - 1) * var(--chip-step));
   display: grid;
   align-items: end;
   justify-items: center;
+  /* A pilha é cenário, não controle: nunca intercepta um toque que
+     mira o ✓/✗ de um balão por cima dela. */
+  pointer-events: none;
+  transition:
+    opacity 0.4s ease,
+    filter 0.4s ease,
+    scale 0.4s ease;
+}
+
+/* Com a HORA DO DUELO em cena a pilha recua ao fundo do palco: apaga e
+   desborra atrás do título, sem sair da mesa — a placa do valor segue
+   acesa, porque o número acordado é a notícia do momento. */
+.chip-stack--backstage .chip-stack__pile {
+  opacity: 0.3;
+  filter: blur(2px) saturate(0.8);
+  scale: 0.92;
 }
 
 /* Uma ficha de cassino vista de cima: disco vinho lapidado, marcas de
@@ -3696,12 +3804,19 @@ h2 {
 
 /* A placa do valor: a mesma tinta da pílula de saldo — ficha e
    algarismos leem como VALOR EM CRÉDITOS, não como ornamento. */
+/* A placa do valor: compacta, UMA linha — cifra e legenda lado a lado.
+   O número é a informação; a placa é só o engaste dele.
+
+   Centragem: `center` (não `baseline`) com line-height 1 nos dois
+   textos. Alinhados pela base, o número grande e a legenda miúda
+   empurravam o conteúdo para o topo da pastilha e sobrava couro
+   embaixo — a placa parecia torta. Com as duas caixas colapsadas no
+   próprio glifo, o eixo do conteúdo É o eixo da pastilha. */
 .chip-stack__plate {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.05rem;
-  padding: 0.35rem 1.1rem 0.4rem;
+  gap: 0.4rem;
+  padding: 0.34rem 0.8rem;
   border-radius: 9999px;
   background: rgba(20, 4, 4, 0.5);
   box-shadow:
@@ -3713,9 +3828,9 @@ h2 {
 .chip-stack__value {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 1.35rem;
-  line-height: 1.15;
+  gap: 0.28rem;
+  font-size: 1.05rem;
+  line-height: 1;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   color: var(--color-ivory);
@@ -3723,11 +3838,16 @@ h2 {
 }
 
 .chip-stack__label {
-  font-size: 0.58rem;
+  font-size: 0.52rem;
+  line-height: 1;
   font-weight: 800;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--color-lavender);
+  /* Compensação ótica: a legenda é toda de maiúsculas (sem descendente),
+     então a mancha dela fica alta no próprio bloco — o fio a devolve ao
+     eixo do número. */
+  padding-top: 0.05rem;
 }
 
 /* ---------- Balão de proposta (ProposalBubble) ---------- */
@@ -3737,17 +3857,22 @@ h2 {
    palco central: entra e sai sem mexer nas fichas. */
 .prop-bubble {
   position: absolute;
-  top: 0.25rem;
+  /* Desce até o FELTRO: encostado no topo do palco, o balão nascia em
+     cima do trilho e o bico esbarrava no peito da crupiê. Aqui a nuvem
+     é da mesa, não dela — o vão deriva de --dealer-h para o
+     afastamento acompanhar a escala da cena. */
+  top: calc(var(--dealer-h) * 0.13);
   left: 50%;
   z-index: 7;
   display: flex;
-  min-width: 12rem;
+  /* Mesma escala da nuvem de dobra (.double-bubble): um gesto só. */
+  min-width: 10.25rem;
   translate: -50%;
   flex-direction: column;
   align-items: center;
-  gap: 0.15rem;
-  padding: 0.6rem 1rem 0.5rem;
-  border-radius: 1rem;
+  gap: 0.1rem;
+  padding: 0.45rem 0.85rem 0.4rem;
+  border-radius: 0.9rem;
   background: linear-gradient(180deg, rgba(76, 10, 21, 0.95) 0%, rgba(30, 6, 12, 0.95) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
@@ -3789,13 +3914,13 @@ h2 {
 }
 
 .prop-bubble__title {
-  max-width: 15rem;
+  max-width: 13rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.62rem;
+  font-size: 0.56rem;
   font-weight: 900;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-gold-bright);
 }
@@ -3803,8 +3928,8 @@ h2 {
 .prop-bubble__amount {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 1.35rem;
+  gap: 0.3rem;
+  font-size: 1.12rem;
   line-height: 1.15;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
@@ -3814,12 +3939,12 @@ h2 {
 
 .prop-bubble__answers {
   display: flex;
-  gap: 0.6rem;
-  margin: 0.15rem 0 0.1rem;
+  gap: 0.5rem;
+  margin: 0.1rem 0 0.05rem;
 }
 
 .prop-bubble__hint {
-  font-size: 0.6rem;
+  font-size: 0.55rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   color: rgba(243, 230, 216, 0.7);
@@ -3849,7 +3974,7 @@ h2 {
 }
 
 .prop-bubble__choice:focus-visible {
-  outline: 2px solid #f5b76f;
+  outline: 2px solid var(--color-gold);
   outline-offset: 2px;
 }
 
@@ -3917,7 +4042,7 @@ h2 {
 }
 
 .amount-stepper__bump:focus-visible {
-  outline: 2px solid #f5b76f;
+  outline: 2px solid var(--color-gold);
   outline-offset: 2px;
 }
 
@@ -3957,9 +4082,16 @@ h2 {
   display: block;
   height: 100%;
   border-radius: 9999px;
-  background: linear-gradient(90deg, #cb7349, #f5b76f, #fcd9a0);
+  background: linear-gradient(
+    90deg,
+    var(--color-copper),
+    var(--color-gold),
+    var(--color-gold-bright)
+  );
   box-shadow: 0 0 10px rgba(245, 183, 111, 0.5);
-  transition: width 0.9s linear;
+  /* Acompanha o tique de 1 s sem pular — o mesmo acerto documentado no
+     .turn-clock__fill: a barra desce contínua, não em degraus. */
+  transition: width 1s linear;
 }
 
 .nego-clock__value {
@@ -3972,15 +4104,16 @@ h2 {
 }
 
 /* Últimos segundos: tudo vira brasa — o aviso de que a mesa vai fechar
-   sozinha no valor que estiver nela. */
+   sozinha no valor que estiver nela. A MESMA brasa do relógio da vez
+   (.turn-clock.is-urgent): um único vermelho de urgência na casa. */
 .nego-clock.is-urgent .nego-clock__fill {
-  background: linear-gradient(90deg, #8f1616, #d24747, #ff8a5c);
+  background: linear-gradient(90deg, #8f1616, #ff6b3d);
   box-shadow: 0 0 12px rgba(210, 71, 71, 0.7);
   animation: nego-clock-ember 0.9s ease-in-out infinite;
 }
 
 .nego-clock.is-urgent .nego-clock__value {
-  color: #ff9d9d;
+  color: #ff9d6b;
 }
 
 @keyframes nego-clock-ember {
@@ -4000,10 +4133,14 @@ h2 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nego-head {
+  .nego-hud {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background: rgba(42, 8, 16, 0.88);
+  }
+
+  .nego-hud[data-state='offer'] .nego-hud__dot {
+    animation: none;
   }
 
   .nego-clock.is-urgent .nego-clock__fill {
@@ -4011,6 +4148,12 @@ h2 {
   }
 
   .nego-clock__fill {
+    transition: none;
+  }
+
+  /* O recuo "backstage" da pilha é transição de CSS (troca de classe),
+     fora do alcance do useReducedMotion do framer — desliga aqui. */
+  .chip-stack__pile {
     transition: none;
   }
 

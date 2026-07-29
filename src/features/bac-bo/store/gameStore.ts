@@ -128,6 +128,11 @@ export interface NegotiationProposal {
 export interface NegotiationState {
   /** Valor vivo na mesa (nasce na aposta padrão de 100). */
   tableStake: number;
+  /**
+   * O título de abertura está em cena. Enquanto ele estiver, o relógio
+   * da rodada NÃO corre: a contagem começa quando o letreiro sai.
+   */
+  announcing: boolean;
   /** Segundos restantes da rodada de negociação (20 → 0). */
   secondsLeft: number;
   /** Último lance (vivo ou recém-respondido, enquanto o balão fica). */
@@ -310,6 +315,12 @@ export function createGameStore(deps: GameStoreDeps = {}) {
    * superado — morrem no guard sem efeito.
    */
   let botSeq = 0;
+  /**
+   * O relógio da rodada de negociação já está correndo. Uma mesa tem UM
+   * relógio: o beat do letreiro e um lance do jogador podem abrir a mesa
+   * (o que vier primeiro), mas só o primeiro liga a contagem.
+   */
+  let negotiationClockOn = false;
 
   const store = create<GameStoreState>()((set, get) => {
     const schedule = (fn: () => void, ms: number): void => {
@@ -536,9 +547,11 @@ export function createGameStore(deps: GameStoreDeps = {}) {
 
         declineCurrentProposal(matchId);
         // A recusa pode vir com uma contraproposta: o lance DELE entra
-        // na mesa um beat depois do ✗, virado para você decidir.
+        // na mesa um beat depois do ✗, virado para você decidir. Vale
+        // até uma contraproposta NO VALOR da mesa — é o bot dizendo
+        // "fecho no que está aí", e cobri-la sela a mesa na hora.
         const counter = reply.counter;
-        if (counter === null || counter === get().negotiation?.tableStake) return;
+        if (counter === null) return;
         schedule(
           () => {
             if (seq !== botSeq || !negotiationAlive(matchId)) return;
@@ -562,6 +575,10 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       if (!negotiationAlive(matchId)) return;
       const { negotiation } = get();
       const proposal = negotiation?.proposal;
+      // Lance coberto = mesa selada: o relógio MORRE aqui. O fim da fase
+      // já está agendado pelo settleProposal — deixá-lo correr zeraria
+      // no meio do beat do ✓ e atropelaria a HORA DO DUELO.
+      if (proposal?.status === 'accepted') return;
       if (proposal?.from === 'player' && proposal.status === 'pending') {
         schedule(() => runNegotiationClock(matchId, value), 250);
         return;
@@ -579,6 +596,20 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     /**
+     * O letreiro de abertura sai e a MESA ABRE: é aqui que o relógio da
+     * rodada começa a correr — nunca antes, para o título não comer
+     * segundos de negociação. Chamado pelo beat do anúncio e, mais cedo,
+     * por um lance do jogador (propor dispensa o letreiro).
+     */
+    const openTable = (matchId: string): void => {
+      if (!negotiationAlive(matchId)) return;
+      if (get().negotiation?.announcing) patchNegotiation({ announcing: false });
+      if (negotiationClockOn) return;
+      negotiationClockOn = true;
+      runNegotiationClock(matchId, NEGOTIATION_SECONDS);
+    };
+
+    /**
      * Abre a mesa: a aposta padrão já está no feltro (nunca acima do
      * saldo do jogador), o relógio da rodada corre e o bot pode empurrar
      * um lance espontâneo se o alvo dele estiver longe da mesa. Se o
@@ -587,11 +618,13 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     const beginNegotiation = (matchId: string): void => {
       negotiator = createNegotiator();
       const seq = ++botSeq;
+      negotiationClockOn = false;
       const affordable = Math.floor(get().balance / 10) * 10;
       const tableStake = Math.max(MIN_STAKE, Math.min(DEFAULT_STAKE, affordable));
       set({
         negotiation: {
           tableStake,
+          announcing: true,
           secondsLeft: NEGOTIATION_SECONDS,
           proposal: null,
           agreedStake: null,
@@ -599,7 +632,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         },
       });
       audioManager.playSfx('stake'); // as fichas da aposta padrão assentam
-      schedule(() => runNegotiationClock(matchId, NEGOTIATION_SECONDS - 1), 1000);
+      // O letreiro abre a fase; o relógio só começa quando ele sai.
+      schedule(() => openTable(matchId), TIMINGS.negoAnnounceMs);
 
       // Com o auto-aceite (DevTools/e2e) o bot não abre lance nenhum:
       // a fase atravessa com um único toque do jogador.
@@ -1060,8 +1094,16 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         if (!validateStake(balance, amount).ok) return;
 
         const proposal = negotiation.proposal;
+        // Lance coberto = mesa SELADA: o aperto de mãos vale desde o ✓,
+        // não só quando a HORA DO DUELO entra — nada de lance por cima
+        // de um acordo fechado.
+        if (proposal?.status === 'accepted') return;
         // O seu lance no ar tem o martelo do rival: espere a resposta.
         if (proposal?.status === 'pending' && proposal.from === 'player') return;
+
+        // Propor dispensa o letreiro: a mesa abre na hora (e o relógio
+        // com ela) em vez de esperar o beat inteiro do título.
+        openTable(match.id);
 
         // Cobrir o lance vivo do rival propondo o MESMO valor é um
         // aperto de mãos, não um lance novo.
@@ -1112,6 +1154,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       abandonNegotiation: () => {
         const { phase, negotiation } = get();
         if (phase !== 'negotiate' || negotiation?.starting) return;
+        // O aperto de mãos vale desde o ✓: com um lance coberto na mesa
+        // não há mais o que abandonar — o duelo vai abrir.
+        if (negotiation?.proposal?.status === 'accepted') return;
         audioManager.playSfx('tap');
         resetToIdle();
       },

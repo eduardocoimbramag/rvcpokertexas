@@ -878,9 +878,45 @@ describe('mesa de negociação', () => {
     expect(negotiation?.proposal).toBeNull();
     expect(negotiation?.agreedStake).toBeNull();
     expect(negotiation?.starting).toBe(false);
-    // O relógio já pode ter batido alguns segundos durante o lock-in da
-    // confirmação — mas nunca mais que isso.
-    expect(negotiation?.secondsLeft).toBeGreaterThanOrEqual(NEGOTIATION_SECONDS - 3);
+    expect(negotiation?.announcing).toBe(true);
+    expect(negotiation?.secondsLeft).toBe(NEGOTIATION_SECONDS);
+  });
+
+  it('o relógio da rodada só começa quando o título de abertura sai', async () => {
+    const store = createTestStore('win');
+    await reachNegotiation(store);
+
+    // Durante o letreiro a contagem fica parada nos 20 s cheios.
+    await vi.advanceTimersByTimeAsync(200);
+    expect(store.getState().negotiation?.announcing).toBe(true);
+    expect(store.getState().negotiation?.secondsLeft).toBe(NEGOTIATION_SECONDS);
+
+    // Avança em passos curtos até o letreiro sair: no instante em que
+    // ele cede, a rodada tem os 20 s INTEIROS — o título não comeu
+    // segundo nenhum de negociação.
+    for (let step = 0; step < 60 && store.getState().negotiation?.announcing; step += 1) {
+      await vi.advanceTimersByTimeAsync(100);
+    }
+    expect(store.getState().negotiation?.announcing).toBe(false);
+    expect(store.getState().negotiation?.secondsLeft).toBe(NEGOTIATION_SECONDS);
+
+    // E só a partir daí ela corre.
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(store.getState().negotiation?.secondsLeft).toBe(NEGOTIATION_SECONDS - 2);
+  });
+
+  it('propor durante o título dispensa o letreiro e abre a mesa na hora', async () => {
+    const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
+    await reachNegotiation(store);
+    expect(store.getState().negotiation?.announcing).toBe(true);
+
+    store.getState().sendProposal(50);
+    expect(store.getState().negotiation?.announcing).toBe(false);
+    expect(store.getState().negotiation?.proposal).toMatchObject({
+      from: 'player',
+      amount: 50,
+      status: 'pending',
+    });
   });
 
   it('a mesa nunca abre acima do saldo do jogador', async () => {
@@ -900,7 +936,8 @@ describe('mesa de negociação', () => {
     const store = createTestStore('win');
     await reachNegotiation(store);
 
-    await vi.advanceTimersByTimeAsync(NEGOTIATION_SECONDS * 1000);
+    // O beat do letreiro + os 20 s cheios da rodada.
+    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnnounceMs + NEGOTIATION_SECONDS * 1000);
     const negotiation = store.getState().negotiation;
     expect(negotiation?.starting).toBe(true);
     expect(negotiation?.agreedStake).toBe(100);
@@ -952,6 +989,8 @@ describe('mesa de negociação', () => {
     // exatamente em BOT_REPLY_MAX_MS e a linha do tempo é exata.
     const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
     await reachNegotiation(store);
+    // Deixa o letreiro sair para o relógio estar de fato correndo.
+    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnnounceMs);
     const before = store.getState().negotiation?.secondsLeft ?? 0;
 
     store.getState().sendProposal(50);
@@ -1044,11 +1083,86 @@ describe('mesa de negociação', () => {
     await vi.advanceTimersByTimeAsync(BOT_OPENING_MAX_MS);
     expect(store.getState().negotiation?.proposal?.status).toBe('pending');
 
-    await vi.advanceTimersByTimeAsync(NEGOTIATION_SECONDS * 1000);
+    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnnounceMs + NEGOTIATION_SECONDS * 1000);
     const negotiation = store.getState().negotiation;
     expect(negotiation?.proposal?.status).toBe('declined');
     expect(negotiation?.starting).toBe(true);
     expect(negotiation?.agreedStake).toBe(100);
+  });
+
+  it('o aceite SELA a mesa: lance novo e desistência morrem no beat do ✓', async () => {
+    const store = createTestStore('win');
+    await reachNegotiation(store);
+
+    store.getState().sendProposal(80);
+    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS);
+    expect(store.getState().negotiation?.proposal?.status).toBe('accepted');
+
+    // Dentro do hold do balão aceito, o aperto de mãos já vale: nem um
+    // lance novo nem a desistência passam.
+    store.getState().sendProposal(300);
+    expect(store.getState().negotiation?.proposal).toMatchObject({
+      amount: 80,
+      status: 'accepted',
+    });
+    store.getState().abandonNegotiation();
+    expect(store.getState().phase).toBe('negotiate');
+
+    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnswerHoldMs);
+    expect(store.getState().negotiation?.agreedStake).toBe(80);
+  });
+
+  it('abandonar durante a HORA DO DUELO é ignorado e o duelo abre normal', async () => {
+    const store = createTestStore('win');
+    await reachNegotiation(store);
+
+    store.getState().sendProposal(80);
+    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS + TIMINGS.negoAnswerHoldMs);
+    expect(store.getState().negotiation?.starting).toBe(true);
+
+    store.getState().abandonNegotiation();
+    expect(store.getState().phase).toBe('negotiate');
+
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(TIMINGS.negotiationStartMs);
+    expect(store.getState().phase).toBe('countdown');
+    expect(store.getState().balance).toBe(420);
+  });
+
+  it('um segundo lance seu com o primeiro no ar é ignorado', async () => {
+    const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
+    await reachNegotiation(store);
+
+    store.getState().sendProposal(50);
+    store.getState().sendProposal(80);
+    expect(store.getState().negotiation?.proposal).toMatchObject({
+      from: 'player',
+      amount: 50,
+      status: 'pending',
+    });
+  });
+
+  it('um lance impagável do rival não pode ser coberto (só recusado)', async () => {
+    // Cabeça fora da régua: propõe acima do saldo do jogador. O aceite
+    // precisa barrar — cobrir um lance impagável travaria o débito.
+    const store = createTestStore('win', createMemoryStorage(), () => 1, () => ({
+      opening: () => 4000,
+      respond: () => ({ action: 'accept' }),
+    }));
+    await reachNegotiation(store);
+    await vi.advanceTimersByTimeAsync(BOT_OPENING_MAX_MS);
+    expect(store.getState().negotiation?.proposal).toMatchObject({
+      from: 'opponent',
+      amount: 4000,
+      status: 'pending',
+    });
+
+    store.getState().acceptProposal();
+    expect(store.getState().negotiation?.proposal?.status).toBe('pending');
+
+    store.getState().declineProposal();
+    expect(store.getState().negotiation?.proposal?.status).toBe('declined');
+    expect(store.getState().negotiation?.tableStake).toBe(100);
   });
 
   it('lances inválidos são ignorados (abaixo do mínimo, acima do saldo, quebrado)', async () => {

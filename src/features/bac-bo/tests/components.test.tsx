@@ -9,7 +9,7 @@ import { ConfirmPanel } from '../components/ConfirmPanel';
 import type { HandsArenaProps } from '../components/HandsArena';
 import { HandsArena } from '../components/HandsArena';
 import { HistorySheet } from '../components/HistorySheet';
-import { NegotiationPanel } from '../components/NegotiationPanel';
+import { NegotiationHud, NegotiationPanel } from '../components/NegotiationPanel';
 import { ResultBanner } from '../components/ResultBanner';
 import { RoundEndBanner } from '../components/RoundEndBanner';
 import type {
@@ -74,15 +74,19 @@ afterEach(() => {
 });
 
 describe('NegotiationPanel — mesa de negociação', () => {
-  const match: Match = {
-    id: 'm1',
-    stake: 10,
-    opponent: { id: 'o1', name: 'Luna', avatar: 'L', rating: 1420 },
-    createdAt: 1700000000000,
-  };
+  /* Cada teste abre a mesa com um match de id ÚNICO: os timers REAIS
+     que as ações do store agendam (finishNegotiation, o beat do balão)
+     carregam o matchId, e um id novo por teste faz qualquer timer
+     vazado de um teste anterior morrer nos guards do store em vez de
+     corromper o teste corrente. */
+  let matchSeq = 0;
+  let match: Match;
 
   const baseNegotiation: NegotiationState = {
     tableStake: 100,
+    // O caso comum é a mesa JÁ aberta: o letreiro de abertura é um beat
+    // do store, testado à parte.
+    announcing: false,
     secondsLeft: 20,
     proposal: null,
     agreedStake: null,
@@ -90,6 +94,13 @@ describe('NegotiationPanel — mesa de negociação', () => {
   };
 
   const openNegotiation = (patch: Partial<NegotiationState> = {}) => {
+    matchSeq += 1;
+    match = {
+      id: `m-nego-${matchSeq}`,
+      stake: 10,
+      opponent: { id: 'o1', name: 'Luna', avatar: 'L', rating: 1420 },
+      createdAt: 1700000000000,
+    };
     useGameStore.setState({
       phase: 'negotiate',
       match,
@@ -98,15 +109,41 @@ describe('NegotiationPanel — mesa de negociação', () => {
     });
   };
 
-  it('a rodada abre com o título, a aposta padrão nas fichas e o relógio', () => {
-    openNegotiation();
-    render(<NegotiationPanel match={match} />);
+  it('o título de abertura segura o feltro; as fichas entram quando ele sai', () => {
+    openNegotiation({ announcing: true });
+    const view = render(<NegotiationPanel match={match} />);
 
-    // O título carimba o centro do feltro na abertura…
+    // Enquanto o letreiro carimba o centro, a mesa não mostra fichas.
     expect(screen.getByTestId('nego-open-announce')).toHaveTextContent(/rodada de negociação/i);
-    // …e o relógio da mesa já corre com o composer pronto.
+    expect(screen.queryByTestId('nego-table')).not.toBeInTheDocument();
+
+    // Vencido o beat (quem o solta é o store), as fichas assumem o
+    // centro. O letreiro ainda pode estar em cena por um quadro: quem o
+    // desmonta é a animação de saída, não este render.
+    useGameStore.setState({
+      negotiation: { ...baseNegotiation, announcing: false },
+    });
+    view.rerender(<NegotiationPanel match={match} />);
+    expect(screen.getByTestId('nego-table-stake')).toHaveTextContent('100');
     expect(screen.getByTestId('nego-clock')).toHaveTextContent('20s');
     expect(screen.getByTestId('nego-send')).toBeDisabled();
+  });
+
+  it('a pílula do rival resume a mesa numa linha: nome + situação', () => {
+    openNegotiation();
+    const view = render(<NegotiationHud match={match} />);
+    expect(screen.getByTestId('nego-hud')).toHaveTextContent(/Luna\s*Esperando/i);
+
+    // O lance do rival chama a sua resposta na própria pílula.
+    useGameStore.setState({
+      negotiation: {
+        ...baseNegotiation,
+        proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
+      },
+    });
+    view.rerender(<NegotiationHud match={match} />);
+    expect(screen.getByTestId('nego-hud')).toHaveTextContent(/Proposta/i);
+    expect(screen.getByTestId('nego-hud')).toHaveAttribute('data-state', 'offer');
   });
 
   it('composer: +10/+100 somam ao lance e o enviar exige valor válido', async () => {
@@ -184,6 +221,18 @@ describe('NegotiationPanel — mesa de negociação', () => {
     await user.click(screen.getByTestId('nego-decline'));
     expect(useGameStore.getState().negotiation?.proposal?.status).toBe('declined');
     expect(useGameStore.getState().negotiation?.tableStake).toBe(100);
+  });
+
+  it('lance coberto SELA a mesa: composer e saída travam durante o beat do ✓', () => {
+    openNegotiation({
+      proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'accepted', open: true },
+    });
+    render(<NegotiationPanel match={match} />);
+
+    // O aperto de mãos vale desde o ✓ — nada de repropor nem desistir.
+    expect(screen.getByTestId('nego-send')).toBeDisabled();
+    expect(screen.getByTestId('nego-send')).toHaveTextContent(/acordo fechado/i);
+    expect(screen.getByTestId('nego-quit')).toBeDisabled();
   });
 
   it('na HORA DO DUELO o composer sai e o título entra', () => {

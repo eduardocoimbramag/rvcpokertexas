@@ -14,7 +14,7 @@ import { CountdownOverlay } from './CountdownOverlay';
 import { FoundSplash } from './FoundSplash';
 import { HandsArena } from './HandsArena';
 import { MatchmakingOverlay } from './MatchmakingOverlay';
-import { NegotiationPanel } from './NegotiationPanel';
+import { NegotiationHud, NegotiationPanel } from './NegotiationPanel';
 import { ResultBanner } from './ResultBanner';
 
 /** Fases em que a rodada está sobre a mesa (grupo arena). */
@@ -63,8 +63,15 @@ export function GameScreen() {
     <main className="flex min-h-0 flex-1 flex-col px-6 py-4">
       {/* relative z-20: na câmera vertical a mesa toma a tela inteira
           (o recorte da cena sobe além do header) — o HUD flutua acima. */}
-      <header className="relative z-20 mb-4 flex items-center justify-between">
-        <span className="h-11 w-11" aria-hidden="true" />
+      {/* HUD: à esquerda quem está do outro lado da mesa (só enquanto a
+          aposta se negocia), à direita o seu saldo. A faixa fica ACIMA
+          da dealer — nada da negociação cobre a cena. */}
+      <header className="relative z-20 mb-4 flex items-center justify-between gap-3">
+        {phase === 'negotiate' && match ? (
+          <NegotiationHud match={match} />
+        ) : (
+          <span className="h-11 w-11" aria-hidden="true" />
+        )}
         <BalancePill balance={displayBalance} delta={balanceDelta} />
       </header>
 

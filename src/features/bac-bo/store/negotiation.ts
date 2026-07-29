@@ -52,9 +52,11 @@ export interface Negotiator {
  * store sorteia dentro delas; os testes avançam os timers pelo máximo.
  */
 export const BOT_BEATS = {
-  /** Da abertura da mesa até o lance espontâneo do bot (se houver). */
-  openDelayMinMs: 2600,
-  openDelayMaxMs: 4600,
+  /** Da abertura da mesa até o lance espontâneo do bot (se houver). O
+   *  piso fica ACIMA do título de abertura da fase (~2,6s + o beat de
+   *  montagem): o balão dele nunca atropela o letreiro. */
+  openDelayMinMs: 3400,
+  openDelayMaxMs: 5200,
   /** De um lance do jogador até a resposta do bot. */
   replyDelayMinMs: 700,
   replyDelayMaxMs: 1600,

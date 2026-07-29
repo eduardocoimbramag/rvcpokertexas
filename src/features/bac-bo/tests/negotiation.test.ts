@@ -25,13 +25,16 @@ describe('createBotNegotiator', () => {
     const amount = rich.opening({ balance: 5000, tableStake: 100 });
     expect(amount).toBe(500);
 
-    // Saldo curto: o alvo desce junto — nada de lance impagável.
+    // Saldo curto: o alvo desce junto — nada de lance impagável. O
+    // shape é assertado ANTES do narrow: se o bot mudar e aceitar aqui,
+    // o teste FALHA em vez de passar vazio sem checar o clamp.
     const humble = createBotNegotiator(flatRng(0.999));
     const reply = humble.respond(MIN_STAKE, { balance: 40, tableStake: 40 });
-    if (reply.action === 'decline' && reply.counter !== null) {
-      expect(reply.counter).toBeLessThanOrEqual(40);
-      expect(reply.counter).toBeGreaterThanOrEqual(MIN_STAKE);
-    }
+    expect(reply.action).toBe('decline');
+    if (reply.action !== 'decline') return;
+    expect(reply.counter).not.toBeNull();
+    expect(reply.counter ?? 0).toBeLessThanOrEqual(40);
+    expect(reply.counter ?? 0).toBeGreaterThanOrEqual(MIN_STAKE);
   });
 
   it('cobre lances no alvo ou acima', () => {

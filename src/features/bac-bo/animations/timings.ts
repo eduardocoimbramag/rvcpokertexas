@@ -28,6 +28,13 @@ export const TIMINGS = {
    */
   confirmLockInMs: 1600,
   /**
+   * Beat do título "RODADA DE NEGOCIAÇÃO" no centro do feltro. É ele que
+   * abre a fase: as fichas assentam e o relógio da rodada SÓ COMEÇA
+   * quando este beat vence — ninguém perde tempo de mesa lendo o
+   * letreiro.
+   */
+  negoAnnounceMs: 2600,
+  /**
    * Beat entre o fim da negociação e o countdown: é o tempo do título
    * "HORA DO DUELO" entrar, assentar e respirar antes do corte de cena.
    */

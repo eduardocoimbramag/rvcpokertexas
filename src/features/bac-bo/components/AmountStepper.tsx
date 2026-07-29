@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 
 /**
  * Campo de créditos com atalhos de incremento (+10 / +100) — o padrão
@@ -29,6 +29,12 @@ export interface AmountStepperProps {
   'data-testid'?: string;
   /** Prefixo dos testids dos atalhos: `nego-plus` → `nego-plus-10`. */
   stepTestIdPrefix?: string;
+  /** Ref do input — quem consome devolve o foco aqui após enviar. */
+  inputRef?: Ref<HTMLInputElement>;
+  /** id do texto que explica um valor inválido (aria-describedby). */
+  describedBy?: string;
+  /** O valor corrente viola algum limite (aria-invalid). */
+  invalid?: boolean;
 }
 
 const DEFAULT_STEPS = [10, 100] as const;
@@ -48,6 +54,9 @@ export function AmountStepper({
   className = '',
   'data-testid': testId,
   stepTestIdPrefix = 'amount-plus',
+  inputRef,
+  describedBy,
+  invalid = false,
 }: AmountStepperProps) {
   const instant = useReducedMotion() ?? false;
 
@@ -59,10 +68,13 @@ export function AmountStepper({
   return (
     <div className={`amount-stepper ${className}`}>
       <input
+        ref={inputRef}
         className="amount-stepper__input"
         inputMode="numeric"
         autoComplete="off"
         aria-label={label}
+        aria-describedby={describedBy}
+        aria-invalid={invalid || undefined}
         placeholder={placeholder}
         value={value}
         disabled={disabled}
