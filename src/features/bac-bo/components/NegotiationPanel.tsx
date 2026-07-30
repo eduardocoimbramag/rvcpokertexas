@@ -14,6 +14,7 @@ import { useGameStore } from '../store/gameStore';
 import { AmountStepper } from './AmountStepper';
 import { AvatarBadge } from './AvatarBadge';
 import { GoldAnnounce } from './GoldAnnounce';
+import { HudPill } from './HudPill';
 
 export interface NegotiationPanelProps {
   match: Match;
@@ -57,17 +58,21 @@ export function NegotiationHud({ match }: NegotiationPanelProps) {
           : 'thinking';
 
   return (
-    <div
-      className="nego-hud"
-      data-state={state}
+    <HudPill
+      variant="rival"
+      state={state}
       data-testid="nego-hud"
       aria-label={`${match.opponent.name}: ${HUD_LABELS[state]}`}
+      leading={<AvatarBadge name={match.opponent.name} />}
+      trailing={
+        <>
+          <span className="hud-pill__state">{HUD_LABELS[state]}</span>
+          <span className="hud-pill__dot" aria-hidden="true" />
+        </>
+      }
     >
-      <AvatarBadge name={match.opponent.name} className="nego-hud__badge" />
-      <span className="nego-hud__name">{match.opponent.name}</span>
-      <span className="nego-hud__state">{HUD_LABELS[state]}</span>
-      <span className="nego-hud__dot" aria-hidden="true" />
-    </div>
+      {match.opponent.name}
+    </HudPill>
   );
 }
 

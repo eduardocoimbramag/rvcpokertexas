@@ -243,6 +243,66 @@ test('negociação: a contraproposta do bot pode ser coberta e vira a mesa', asy
   await expect(page.getByTestId('countdown-value')).toBeVisible({ timeout: 10_000 });
 });
 
+/**
+ * Lê o anel de foco de quem está focado AGORA. `outlineStyle: 'none'`
+ * denuncia um controle que ficou de fora do bloco compartilhado.
+ */
+async function focusRing(page: Page) {
+  return page.evaluate(() => {
+    const el = document.activeElement;
+    if (!el || el === document.body) return null;
+    const style = getComputedStyle(el);
+    return {
+      who: el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 24) ?? el.tagName,
+      tag: el.tagName,
+      width: Number.parseFloat(style.outlineWidth),
+      style: style.outlineStyle,
+    };
+  });
+}
+
+/**
+ * Dá `steps` Tabs e cobra o anel de cada controle que receber o foco.
+ * Devolve quem foi conferido — o chamador exige um mínimo, senão um
+ * Tab que não sai do lugar faria o teste passar sem testar nada.
+ */
+async function tabThrough(page: Page, steps: number) {
+  const checked: string[] = [];
+  for (let i = 0; i < steps; i += 1) {
+    await page.keyboard.press('Tab');
+    const ring = await focusRing(page);
+    if (!ring) continue;
+    if (ring.tag !== 'BUTTON' && ring.tag !== 'INPUT') continue;
+    expect(ring, `sem anel de foco: ${ring.who}`).toMatchObject({ style: 'solid' });
+    expect(ring.width, `anel fino demais em ${ring.who}`).toBeGreaterThanOrEqual(2);
+    checked.push(ring.who);
+  }
+  return checked;
+}
+
+test('foco de teclado: todo controle acende o anel âmbar', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+  await expect(page.getByTestId('play-button')).toBeVisible();
+
+  // Sem clicar em nada antes: o Tab estabelece a modalidade de teclado,
+  // que é o gatilho de `:focus-visible`. Um clique antes deixaria o
+  // navegador na modalidade de ponteiro e o anel não acenderia — o teste
+  // passaria a medir a heurística do Chromium, não o nosso CSS.
+  const homeChecked = await tabThrough(page, 6);
+  // Guarda contra o pior desfecho de um teste como este: passar sem ter
+  // visitado nada. A Home tem ajustes, jogar, torneio e histórico.
+  expect(homeChecked.length, `visitou só ${homeChecked.join(', ')}`).toBeGreaterThanOrEqual(4);
+
+  // A folha de ajustes carrega os controles que mais ficaram de fora: o
+  // × redondo de fechar, os toggles e o segmentado de cenário.
+  await page.getByRole('button', { name: 'Ajustes' }).click();
+  await expect(page.getByRole('dialog', { name: 'Ajustes' })).toBeVisible();
+
+  const sheetChecked = await tabThrough(page, 8);
+  expect(sheetChecked.length, `visitou só ${sheetChecked.join(', ')}`).toBeGreaterThanOrEqual(4);
+});
+
 test('cancelar a busca não debita créditos e volta ao menu', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');

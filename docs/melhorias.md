@@ -8,8 +8,10 @@
 > Os números citados (contagens, tamanhos, medidas) foram medidos no
 > código e no app rodando, não estimados.
 >
-> **Estado da implementação:** apenas o item **1.1** foi implementado
-> (30/07/2026). Todo o resto continua sendo proposta — nada mais foi
+> **Estado da implementação (30/07/2026):** foram implementados os itens
+> **1.1**, **4.1** e a **seção 3 inteira** (3.1, 3.2 e 3.3). O item
+> **1.2** saiu junto, de graça, porque era a mesma divergência que 3.1
+> resolve na origem. Todo o resto continua sendo proposta — nada mais foi
 > tocado.
 
 ---
@@ -20,12 +22,12 @@
 | --- | --- | :-: | :-: | :-: |
 | 1 | [Tutorial fala de um chat que não existe mais](#11-o-tutorial-descrevia-uma-tela-que-não-existe-mais--feito) | 🔴 Alto | 5 min | ✅ Feito |
 | 2 | [Escala tipográfica: 52 tamanhos diferentes](#21-tipografia-52-tamanhos-para-105-declarações) | 🔴 Alto | 3–4 h | — |
-| 3 | [Foco de teclado ausente em metade dos controles](#41-metade-dos-controles-não-tem-anel-de-foco) | 🔴 Alto | 1 h | — |
-| 4 | [Três vereditos de fim de partida, três desenhos](#31-três-telas-de-desfecho-com-três-tipografias) | 🟡 Médio | 1–2 h | — |
+| 3 | [Foco de teclado ausente em metade dos controles](#41-metade-dos-controles-não-tinha-anel-de-foco--feito) | 🔴 Alto | 1 h | ✅ Feito |
+| 4 | [Três vereditos de fim de partida, três desenhos](#31-três-telas-de-desfecho-com-três-tipografias--feito) | 🟡 Médio | 1–2 h | ✅ Feito |
 | 5 | [Tipos de 7,7px ilegíveis na mesa única](#22-tipo-abaixo-do-legível) | 🟡 Médio | 30 min | — |
 | 6 | [Tokens de cor contornados em 216 lugares](#23-a-paleta-existe-mas-quase-ninguém-usa) | 🟡 Médio | 2–3 h | — |
 | 7 | [Histórico e ajustes não têm a identidade do clube](#51-o-histórico-é-a-tela-mais-pobre-do-jogo) | 🟢 Beleza | 2 h | — |
-| 8 | [CSS morto e um arquivo de 4.762 linhas](#61-índexcss-tem-4762-linhas-e-um-pouco-de-código-morto) | 🟢 Saúde | 1–3 h | — |
+| 8 | [CSS morto e um arquivo de 4.885 linhas](#61-indexcss-tem-4885-linhas--e-um-pouco-de-código-morto) | 🟢 Saúde | 1–3 h | — |
 
 ---
 
@@ -75,23 +77,22 @@ invisível: quem só jogava 1v1 agora sabe que existe uma sala com mais
 gente. E, como o texto passou a derivar das constantes, essa classe de
 erro (documentação interna desatualizada) não volta pela mesma porta.
 
-### 1.2 O veredito da mesa única não usa a tipografia dos outros
+### 1.2 O veredito da mesa única não usava a tipografia dos outros — ✅ RESOLVIDO POR 3.1
 
-**Onde:** `src/index.css` → `.table-over__title` (2,5 rem fixo) contra
-`.result-title` (`clamp(2.75rem, 12vw, 3.75rem)`).
+`.table-over__title` era 2,5 rem fixo contra o `clamp(2.75rem, 12vw,
+3.75rem)` dos outros dois modos: o mesmo momento do jogo ("ganhei ou
+perdi") tinha dois pesos conforme o modo.
 
-O 1v1 e a partida do torneio já compartilham `.result-title`. A mesa única
-tem um título próprio, menor e sem a escala fluida — o mesmo momento do
-jogo ("ganhei ou perdi") tem dois pesos diferentes conforme o modo.
+Este item era um sintoma, não a doença. Ao extrair o `<ResultStage>`
+(item 3.1) a mesa única passou a usar o MESMO título dos outros dois, e
+`.table-over__title` deixou de existir — não sobrou nada para corrigir
+aqui.
 
-**Como resolver:** aplicar `.result-title` no `.table-over__title`.
-
-**Impacto depois de pronto.** O clímax do jogo passa a ter o mesmo peso
-nos três modos: a mesa única para de parecer a tela "de segunda" do
-produto. Como bônus técnico, a troca do tamanho fixo pelo `clamp` faz o
-título sobreviver a telas de 320 px sem quebrar linha e crescer em telas
-largas — hoje ele fica pequeno demais no celular grande e apertado no
-pequeno.
+**Impacto (já em produção).** O clímax do jogo tem o mesmo peso nos três
+modos: a mesa única parou de parecer a tela "de segunda" do produto. E a
+troca do tamanho fixo pelo `clamp` faz o título sobreviver a telas de
+320 px sem quebrar linha e crescer nas largas — antes ele ficava pequeno
+demais no celular grande e apertado no pequeno.
 
 ### 1.3 CSS morto
 
@@ -139,10 +140,11 @@ identidade forte (Art Déco, vinho e âmbar) mas **não tem um sistema**: os
 valores são decididos caso a caso, e é isso que produz as pequenas
 dissonâncias que se percebem sem saber nomear.
 
-### 2.1 Tipografia: 52 tamanhos para 105 declarações
+### 2.1 Tipografia: 52 tamanhos para 104 declarações
 
-**Medido:** o `index.css` declara `font-size` 105 vezes, com **52 valores
-distintos**. Só entre 0,48 rem e 0,95 rem existem **vinte e um** valores:
+**Medido** (renumerado depois da seção 3): o `index.css` declara
+`font-size` 104 vezes, com **52 valores distintos**. Só entre 0,48 rem e
+0,95 rem existem **vinte e um** valores:
 
 ```
 0.48  0.5  0.52  0.55  0.56  0.58  0.6  0.62  0.64  0.66  0.68
@@ -207,8 +209,8 @@ enxerga essa camada.
 
 ### 2.3 A paleta existe, mas quase ninguém usa
 
-**Medido:** o `@theme` define 12 tokens de cor. O CSS tem **216
-ocorrências de hexadecimal literal** (83 distintos) e **322 `rgba()`
+**Medido:** o `@theme` define 12 tokens de cor. O CSS tem **220
+ocorrências de hexadecimal literal** (91 distintos) e **321 `rgba()`
 escritos à mão**. Os mais repetidos são exatamente os tokens:
 
 ```
@@ -284,96 +286,182 @@ tratado componente a componente.
 
 ---
 
-## 3. Consistência entre telas
+## 3. Consistência entre telas — ✅ SEÇÃO INTEIRA IMPLEMENTADA
 
-### 3.1 Três telas de desfecho com três tipografias
+### 3.1 Três telas de desfecho com três tipografias — ✅ FEITO
 
-O jogo termina uma partida de três jeitos diferentes:
+**O que estava errado.** O jogo terminava uma partida de três jeitos:
 
-| Tela | Componente | Título |
+| Tela | Componente | Título (antes) |
 | --- | --- | --- |
 | 1v1 | `ResultBanner` | `.result-title` (fluido, 44–60 px) |
 | Torneio (1v1) | `TournamentMatchScreen` | `.result-title` ✔ |
 | Mesa única | `TableMatchScreen` | `.table-over__title` (40 px fixo) |
 
-Além do tamanho, os três têm estruturas próprias de espaçador e de
-contagem regressiva. O bloco do torneio usa uma técnica engenhosa de
-"cópias invisíveis" para centrar o título; a mesa única não usa nada
-disso.
+Além do tamanho, cada um tinha estrutura própria de espaçador e de
+contagem. O bloco do torneio usava uma técnica engenhosa de "cópias
+invisíveis" para centrar o título; a mesa única não usava nada disso.
 
-**Como resolver:** extrair um `<ResultStage>` compartilhado (título,
-subtítulo, linha de débito, contagem, ações) e deixar cada modo passar só
-o conteúdo. Elimina a divergência na origem.
+**O que foi implementado.** Um `<ResultStage>` compartilhado
+(`components/ResultStage.tsx`) que os três modos consomem passando só o
+conteúdo — veredito, subtítulo, linha de débito, contagem e ações.
 
-**Impacto depois de pronto.** O momento mais emocional do jogo passa a
-ter um lugar só para ser melhorado — qualquer refino (uma entrada mais
-dramática, o brasão ao fundo, o placar animado) chega aos três modos de
-uma vez, em vez de exigir três implementações e virar duas na prática.
-Foi exatamente isso que aconteceu com o ajuste de centralização do
-veredito: ele valeu para o 1v1 e não para a mesa única. Com o
-`ResultStage`, a mesa única herda de graça a técnica de centragem que já
-funciona no torneio.
+1. **A centragem por espelho virou máquina, não artesanato.** O veredito
+   precisa cair no meio EXATO da faixa entre o que está acima (as placas
+   de placar, ou a mesa) e o botão — e isso não sai de um
+   `justify-content: center`, porque o grupo é assimétrico: tem subtítulo
+   e débito embaixo do título e nada em cima. O palco resolve gerando
+   CÓPIAS INVISÍVEIS de cada linha de baixo, acima do título. Antes elas
+   eram escritas à mão, só no torneio, e tinham de repetir as classes da
+   linha visível — desalinhavam na primeira vez que alguém mexesse numa
+   e esquecesse da outra. Agora saem do mesmo JSX.
+2. **Duas superfícies, uma tipografia.** `felt` é o couro claro (tinta
+   gravada, e o respiro que desconta a faixa das placas); `overlay` é a
+   cortina escura da mesa única (tinta luminosa, sem placa a descontar).
+   O que muda entre elas é só a TINTA — tamanho de título, subtítulo,
+   débito e contagem são os mesmos.
+3. **Uma entrada só**: o mesmo `spring(260, 22)` a partir de `y: 24`,
+   onde antes eram dois gestos ligeiramente diferentes.
+4. **Token `--engraved-shadow`** para o realce branco do baixo-relevo,
+   que estava escrito literal no `.text-engraved` e agora serve as duas
+   coisas.
+5. `.table-over*` deixou de existir (era ~45 linhas de CSS paralelo).
+6. **Testes novos**: dois unitários que travam a máquina de centragem —
+   cada linha existe duas vezes, a cópia é `invisible` + `aria-hidden` e
+   tem o MESMO texto (senão não teria a mesma altura); e sem subtítulo
+   nem débito, o palco não inventa cópia nenhuma. O e2e que mede o
+   veredito centrado no torneio continua passando, o que prova que a
+   máquina sobreviveu à extração.
 
-### 3.2 Três "pílulas de estado" com desenhos diferentes
+**Impacto (já em produção).** O momento mais emocional do jogo passou a
+ter um lugar só para ser melhorado: qualquer refino daqui em diante (uma
+entrada mais dramática, o brasão ao fundo, o placar animado) chega aos
+três modos de uma vez, em vez de exigir três implementações e virar duas
+na prática. Foi exatamente isso que tinha acontecido com o ajuste de
+centralização do veredito, que valeu para o 1v1 e não para a mesa única —
+e que a mesa única agora herdou de graça. O item 1.2 morreu junto, porque
+era o mesmo problema visto de outro ângulo.
 
-- `.nego-hud` — o rival na negociação (topo, ao lado do saldo).
+*Uma mudança visível vale registro:* o "Aposta devolvida" do empate no
+1v1 era `1,125 rem` e passou a `0,875 rem`, o tamanho de subtítulo dos
+outros dois modos. É a consistência sendo cobrada de quem estava fora da
+régua.
+
+### 3.2 Três "pílulas de estado" com desenhos diferentes — ✅ FEITO
+
+**O que estava errado.** Quatro peças com a mesma ideia (identidade +
+rótulo + estado) e quatro desenhos:
+
+- `.nego-hud` — o rival na negociação, no topo ao lado do saldo.
 - `.table-hud` — a rodada e o bolo na mesa única.
-- `.rival-seat__head` — o assento na mesa única.
+- `.rival-seat__head` — a cabeça do assento na mesa única.
+- `BalancePill` — o saldo, em Tailwind inline, sem classe nenhuma.
 
-São a mesma ideia (identidade + estado) em três desenhos. A pílula do
-saldo (`BalancePill`) é uma quarta variação, em Tailwind inline.
+**O que foi implementado.** Um `<HudPill>` (`components/HudPill.tsx`) com
+a casca única e quatro variantes de DENSIDADE — `rival`, `tag`, `value` e
+`seat` —, com slots de `leading` (medalhão ou ícone), rótulo e `trailing`
+(estado, ponto de presença, coroa).
 
-**Como resolver:** um componente `<HudPill>` com variantes. Ganho duplo:
-consistência e um lugar só para o foco de teclado (ver 4.1).
+- O `trailing` entra **cru**, sem embrulho: são quase sempre dois
+  elementos que precisam do gap da própria pílula entre si, e um
+  contêiner no meio quebraria esse ritmo.
+- A variante `seat` é a única **sem casca**: ela já mora dentro do cartão
+  do assento, e pílula dentro de pílula leria como caixa dupla. O que ela
+  herda é o ritmo (gap, truncagem do nome, slot de estado).
+- O `BalancePill` continua sendo o único que anima (a pílula pulsa e a
+  ficha de variação voa para dentro dela); por isso o `HudPill` é um
+  `motion.div` que aceita `animate`/`transition` — sem eles, é um div.
+- Sumiram do CSS: `.nego-hud*` (12 regras), `.table-hud*` e
+  `.rival-seat__head/__badge/__name`. O keyframe do ponto virou
+  `hud-pill-call`.
 
-**Impacto depois de pronto.** O topo da tela para de parecer montado por
+**Impacto (já em produção).** O topo da tela parou de parecer montado por
 quatro pessoas diferentes: o jogador atravessa negociação, duelo e mesa
 única sem que a "linguagem do HUD" mude embaixo dele, o que reduz o
-esforço de reaprender cada tela. Do lado do código, vira o lugar único
-onde aplicar o anel de foco (4.1), os tokens de cor (2.3) e o tamanho de
-fonte da escala (2.1) — três itens deste documento resolvidos de uma vez
-nessa família de componentes.
+esforço de reaprender cada tela. Do lado do código, virou o lugar único
+onde aplicar os tokens de cor (2.3) e o tamanho de fonte da escala (2.1)
+— dois itens deste documento que ficaram bem mais baratos nessa família.
 
-### 3.3 Dois "arenas" com código paralelo
+### 3.3 Dois "arenas" com código paralelo — ✅ FEITO
 
-`HandsArena` (1v1 e torneio) e `TableArena` (mesa única) repetem
-`HandRow`, leitura de total com `+?`, POV da última carta e placa de nome.
-A duplicação já cobrou o seu preço: a correção do rótulo "TEMPO — PAROU"
-valeu só para o 1v1, porque a mesa única nem tem essa linha.
+**O que estava errado.** `HandsArena` (1v1 e torneio) e `TableArena`
+(mesa única) repetiam `HandRow`, leitura de total com `+?`, POV da última
+carta e placa de nome. A duplicação já tinha cobrado o seu preço: a
+correção do rótulo "TEMPO — PAROU" valeu só para o 1v1.
 
-**Como resolver:** extrair `HandRow` e `HandTotal` para
-`components/table/` e consumir nos dois. Não vale unificar os arenas
-inteiros — as geometrias são legitimamente diferentes.
+**O que foi implementado.** `components/table/`, consumido pelos dois:
 
-**Impacto depois de pronto.** Correção feita uma vez passa a valer nos
-dois modos — hoje toda melhoria na mão de cartas tem custo dobrado e, na
-prática, só metade é feita. Mais importante: a **regra de POV** (a última
-carta do rival virada para baixo) passa a morar num componente só. Hoje
-ela está implementada duas vezes; qualquer divergência entre as duas
-implementações é um vazamento de informação sigilosa direto na tela, que
-é o pior bug possível neste jogo.
+1. **`HandRow`** — a fileira de cartas, com `cardSize`, `mini` (o aperto
+   das mãos de rival) e `align` (o duelo CENTRA, porque as duas mãos são
+   espelho em torno do brasão; a mesa única assenta na BASE, porque a
+   fileira de assentos precisa de uma linha de chão comum). As
+   geometrias das arenas continuam legitimamente diferentes — o que
+   deixou de ser diferente é a mão.
+2. **`HandTotal`** — o total, com as variantes `duel` e `seat`. As duas
+   famílias de classe continuam (tamanhos e posições são próprios); o que
+   passou a ser único é a LÓGICA: a leitura soft, o piso de estouro e o
+   `+?`.
+3. **`povHand`** — **a regra de POV, num arquivo só.** É a única regra do
+   jogo cuja violação não dá erro, não quebra teste de layout e não
+   aparece em lugar nenhum além da tela do jogador: ela simplesmente
+   entrega de graça a informação que decide o duelo. Duas implementações
+   de um segredo é uma a mais.
+
+**Impacto (já em produção).** Correção feita uma vez passa a valer nos
+dois modos — antes toda melhoria na mão de cartas tinha custo dobrado e,
+na prática, só metade era feita. E o risco que sumiu é o mais caro do
+projeto: enquanto o corte da carta oculta estava escrito duas vezes,
+qualquer divergência entre as duas cópias era um vazamento de informação
+sigilosa direto na tela do jogador, silencioso e sem sintoma até alguém
+perceber que dá para ver a mão do rival.
 
 ---
 
 ## 4. Acessibilidade
 
-### 4.1 Metade dos controles não tem anel de foco
+### 4.1 Metade dos controles não tinha anel de foco — ✅ FEITO
 
-**Medido:** o CSS tem **7 regras `focus-visible`**. Ficam de fora:
+**Onde:** `src/index.css` (bloco compartilhado, logo abaixo do `.btn`) e a
+classe `.focus-ring` nos componentes.
 
-- Os **9 botões redondos de ícone** (voltar, ajustes, engrenagem, fechar
-  folha) — só têm `active:brightness-125`, que não existe para teclado.
-  Aparecem em `GameScreen`, `HomeScreen`, `BracketScreen`,
-  `LobbyBrowseScreen`, `LobbyScreen` (×2) e `Sheet`.
-- `.seg__btn` — os segmentados de visibilidade, formato e nº de jogadores.
-- `.lobby-seat__kick`, `.lobby-chat__send`, os botões do DevTools.
+**O que estava errado.** O CSS tinha **7 regras `focus-visible`**,
+escritas uma a uma pelos componentes que lembraram. Ficavam de fora os
+botões redondos de ícone (voltar, ajustes, engrenagem, fechar folha), os
+segmentados, o × de expulsar, o enviar do chat, o cartão de sala, as
+ações do perfil e os controles de áudio. Quem navega por teclado (ou por
+controle, num futuro TV/desktop) atravessava metade do jogo às cegas.
 
-Quem navega por teclado (ou por controle, num futuro TV/desktop) fica sem
-saber onde está.
+**O que foi implementado.**
 
-**Como resolver:** um mixin de foco aplicado a todos eles — o projeto já
-tem o padrão certo em `.btn:focus-visible` (`outline: 2px solid` âmbar,
-`outline-offset: 2px`). Reaproveitar.
+1. **Um bloco só de anel de foco**, no lugar da regra solitária do
+   `.btn`: `outline: 2px solid var(--color-gold)` com `outline-offset:
+   2px`. O hexadecimal cru que estava ali (`#f5b76f`) virou token de
+   caminho — um empurrãozinho de graça no item 2.3.
+2. **Consolidação das cópias**: `.prop-bubble__choice`,
+   `.amount-stepper__bump` e `.lobby-seat__open` mantinham cada um a sua
+   versão da mesma regra. Agora todas moram no bloco compartilhado; o
+   assento do lobby continua com afastamento de 3px e raio próprio,
+   documentado ali como a única exceção.
+3. **Seletores que passaram a ter anel**: `.seg__btn`, `.lobby-card`,
+   `.lobby-seat__kick`, `.lobby-chat__send`, `.profile-close` e
+   `.profile-action`.
+4. **Classe `.focus-ring`** para o que é montado com utilitário do
+   Tailwind em vez de classe de componente — aplicada nos **6 redondos de
+   ícone** (fechar folha, ajustes da Home, sair do chaveamento, voltar da
+   lista de salas, sair da sala e detalhes da sala), nos **5 botões do
+   DevTools**, nos **3 do segmentado de cenário**, no link de perfil da
+   tela de confirmação e nos **4 controles de ajustes** (silenciar,
+   vibração e os dois volumes, que até então dependiam do anel padrão do
+   navegador — de estilo `auto`, não `solid`, e portanto fora do padrão
+   da casa).
+5. **Comentário de contrato** no bloco: controle novo entra ali, ou ganha
+   `.focus-ring`. É o que impede a dispersão de voltar.
+6. **Teste e2e novo** — `foco de teclado: todo controle acende o anel
+   âmbar`: navega por Tab pela Home e pela folha de ajustes e cobra
+   `outline` sólido de ≥ 2px de cada controle focado, com um piso de
+   quantos precisam ser conferidos (um teste de Tab que não sai do lugar
+   passaria sem testar nada). Verifiquei que ele **reprova** com o
+   seletor desligado, apontando o botão de Ajustes pelo nome.
 
 **Impacto depois de pronto.** O jogo passa a ser jogável sem toque —
 teclado hoje, controle amanhã, se um dia virar desktop ou TV. Para quem
@@ -558,12 +646,20 @@ Em conexão boa ninguém vê o splash; em conexão ruim ele salva a abertura.
 
 ## 6. Saúde do código (com efeito no design)
 
-### 6.1 `index.css` tem 4.762 linhas — e um pouco de código morto
+### 6.1 `index.css` tem 4.885 linhas — e um pouco de código morto
 
 Um arquivo único com tudo: tokens, cenário, cartas, botões, mesa,
 negociação, torneio, mesa única, folhas. Achar "onde mexo para mudar X"
 custa caro, e é isso que faz nascerem valores novos em vez de reusar os
 existentes (ver seção 2).
+
+**Nota honesta sobre a seção 3:** o arquivo CRESCEU 123 linhas com ela,
+não encolheu. Saíram ~140 linhas de CSS paralelo (`.table-over*`,
+`.nego-hud*`, `.table-hud*`, `.rival-seat__head/__badge/__name`) e
+entraram duas famílias compartilhadas (`.result-stage` e `.hud-pill`) com
+o comentário que explica por que existem. O que diminuiu foi o número de
+FAMÍLIAS a conhecer — de seis para duas —, não o de linhas. É o trade que
+vale a pena aqui, mas não vamos chamá-lo de redução.
 
 **Como resolver:** quebrar por domínio com `@import` do Tailwind v4 —
 `tokens.css`, `base.css`, `scene.css`, `cards.css`, `table.css`,
@@ -612,16 +708,19 @@ um par de ícones. Também é pré-requisito de qualquer passo futuro
 ## 7. Ordem sugerida
 
 **Semana 1 — correções baratas de alto retorno**
-~~1.1 (tutorial)~~ ✅ feito · 1.2 (título da mesa única) · 1.3 (CSS morto)
-· 1.4 (gitignore) · 4.1 (foco de teclado) · 2.2 (piso de tamanho de
-fonte).
+~~1.1 (tutorial)~~ ✅ · ~~4.1 (foco de teclado)~~ ✅ · ~~1.2 (título da
+mesa única)~~ ✅ (por 3.1) · 1.3 (CSS morto) · 1.4 (gitignore) · 2.2
+(piso de tamanho de fonte).
 
 **Semana 2 — fundação**
 6.1 (quebrar o CSS) e, sobre ele, 2.1 (escala tipográfica) e 2.3 (tokens
 de cor). É a dupla que impede o problema de voltar.
 
-**Semana 3 — consistência**
-3.1 (`ResultStage`) · 3.2 (`HudPill`) · 3.3 (`HandRow` compartilhado).
+**Semana 3 — consistência** — ✅ feita
+~~3.1 (`ResultStage`) · 3.2 (`HudPill`) · 3.3 (`HandRow` compartilhado)~~.
+Feita antes da fundação, o que barateou a semana 2: as três famílias
+novas (`.result-stage`, `.hud-pill`, `components/table/`) são hoje um
+lugar só para receber a escala tipográfica e os tokens de cor.
 
 **Depois — beleza**
 5.1 (histórico) · 5.3 (crupiê) · 5.4 (pote na mesa única) · 5.7 (splash).
@@ -643,6 +742,6 @@ como referência ao mexer no resto.
 - **Comentários que explicam o PORQUÊ**, não o quê. O CSS documenta
   decisões de design (por que a placa e não tinta direto no couro, por que
   o `translate` antes do `transform`) — isso é patrimônio do projeto.
-- **Cobertura de teste do que é regra**: 335 unitários e 13 e2e, com os
+- **Cobertura de teste do que é regra**: 337 unitários e 14 e2e, com os
   testes de regra de jogo (empate, desempate, POV) escritos como
   especificação legível.

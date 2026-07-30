@@ -44,7 +44,7 @@ export function DevToolsPanel() {
                 type="button"
                 onClick={() => devSetForcedDeal(forcedDeal === deal.value ? null : deal.value)}
                 data-testid={`force-${deal.value}`}
-                className={`rounded-lg px-2 py-1 font-bold ${
+                className={`focus-ring rounded-lg px-2 py-1 font-bold ${
                   forcedDeal === deal.value ? 'bg-gold text-arena-950' : 'bg-arena-700 text-ivory'
                 }`}
               >
@@ -57,7 +57,7 @@ export function DevToolsPanel() {
             type="button"
             onClick={() => devSetNegotiationAutoAccept(!negoAutoAccept)}
             data-testid="force-nego-accept"
-            className={`rounded-lg px-2 py-1 text-left font-bold ${
+            className={`focus-ring rounded-lg px-2 py-1 text-left font-bold ${
               negoAutoAccept ? 'bg-gold text-arena-950' : 'bg-arena-700 text-ivory'
             }`}
           >
@@ -67,7 +67,7 @@ export function DevToolsPanel() {
             type="button"
             onClick={() => devAddCredits(1000)}
             data-testid="dev-add-credits"
-            className="rounded-lg bg-arena-700 px-2 py-1 text-left font-bold text-ivory"
+            className="focus-ring rounded-lg bg-arena-700 px-2 py-1 text-left font-bold text-ivory"
           >
             +1000 créditos
           </button>
@@ -75,7 +75,7 @@ export function DevToolsPanel() {
             type="button"
             onClick={devResetAll}
             data-testid="dev-reset"
-            className="rounded-lg bg-opponent/80 px-2 py-1 text-left font-bold text-white"
+            className="focus-ring rounded-lg bg-opponent/80 px-2 py-1 text-left font-bold text-white"
           >
             Limpar estado
           </button>
@@ -86,7 +86,7 @@ export function DevToolsPanel() {
         onClick={() => setOpen((value) => !value)}
         aria-label="DevTools"
         data-testid="devtools-toggle"
-        className="grid h-10 w-10 place-items-center rounded-full border border-arena-line bg-arena-900/90 text-base shadow-lg"
+        className="focus-ring grid h-10 w-10 place-items-center rounded-full border border-arena-line bg-arena-900/90 text-base shadow-lg"
       >
         <Icon name="wrench" className="text-lavender" />
       </button>

@@ -5,11 +5,12 @@ import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 
 import { AvatarBadge } from '../../components/AvatarBadge';
-import { Card3D } from '../../components/Card3D';
-import { handStep, miniHandStep } from '../../animations/cards';
+import { HudPill } from '../../components/HudPill';
+import { HandRow } from '../../components/table/HandRow';
+import { HandTotal } from '../../components/table/HandTotal';
+import { povHand } from '../../components/table/pov';
 import { TIMINGS } from '../../animations/timings';
-import { handValue, isNaturalBlackjack, visibleCards } from '../../engine/rules';
-import type { Card } from '../../engine/types';
+import { isNaturalBlackjack } from '../../engine/rules';
 import { TURN_SECONDS } from '../../store/gameStore';
 import { laneSlices } from '../tableLayout';
 import type { TableSeatHand } from '../tableRound';
@@ -63,56 +64,6 @@ export interface TableArenaProps {
   onStand: () => void;
 }
 
-/** Fileira de cartas de um assento, no tamanho pedido. */
-function HandRow({
-  cards,
-  cardSize,
-  mini = false,
-  faceDownAt,
-  dealDelayFor,
-  ablaze,
-  labelPrefix,
-  testid,
-}: {
-  cards: readonly (Card | null)[];
-  /** Comprimento CSS da carta (cheia ou mini). */
-  cardSize: string;
-  /** Mão de rival: aperta muito mais (ver miniHandStep). */
-  mini?: boolean;
-  faceDownAt?: (index: number) => boolean;
-  dealDelayFor?: (index: number) => number;
-  ablaze?: boolean;
-  labelPrefix: string;
-  testid: string;
-}) {
-  const step = mini ? miniHandStep(cards.length) : handStep(cards.length);
-  return (
-    <div className="flex items-end justify-center" data-testid={testid}>
-      {cards.map((card, index) => (
-        <div
-          key={index}
-          style={
-            {
-              marginLeft: index > 0 ? `calc(${cardSize} * ${step})` : undefined,
-              zIndex: index,
-            } as CSSProperties
-          }
-        >
-          <Card3D
-            card={card}
-            size={cardSize}
-            compact={mini}
-            faceDown={faceDownAt?.(index) ?? false}
-            dealDelayMs={dealDelayFor?.(index) ?? 0}
-            ablaze={ablaze}
-            label={`${labelPrefix} ${index + 1}`}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /** O contador da série: três pastilhas que acendem a cada rodada ganha. */
 function WinPips({ wins, testid }: { wins: number; testid?: string }) {
   return (
@@ -128,37 +79,6 @@ function WinPips({ wins, testid }: { wins: number; testid?: string }) {
       {Array.from({ length: TABLE_TARGET_WINS }, (_, i) => (
         <span key={i} className={`win-pip ${i < wins ? 'win-pip--on' : ''}`} aria-hidden="true" />
       ))}
-    </span>
-  );
-}
-
-/** O total de uma mão, com o "+?" da carta que ainda não virou. */
-function SeatTotal({
-  cards,
-  partial,
-  compact,
-  testid,
-}: {
-  cards: readonly Card[];
-  partial: boolean;
-  compact?: boolean;
-  testid?: string;
-}) {
-  const value = handValue(cards);
-  const soft = value.soft && value.total !== 21;
-  return (
-    <span
-      className={`seat-total ${compact ? 'seat-total--mini' : ''} ${value.total > 21 ? 'is-bust' : ''}`}
-      data-testid={testid}
-    >
-      {soft && !compact && (
-        <>
-          <span className="seat-total__soft">{value.total - 10}</span>
-          <span className="seat-total__slash">/</span>
-        </>
-      )}
-      {value.total}
-      {partial && <span className="seat-total__partial">+?</span>}
     </span>
   );
 }
@@ -189,9 +109,9 @@ function RivalSeat({
 }: RivalSeatProps) {
   const cards = hand?.cards ?? [];
   /* POV: tudo menos a última carta. O corte vale até no showdown — quem
-     revela é a fase, não a chegada das cartas. */
-  const known = revealed ? cards : visibleCards(cards);
-  const shown: (Card | null)[] = revealed ? [...cards] : [...known, null];
+     revela é a fase, não a chegada das cartas. É o MESMO `povHand` do
+     duelo (ver components/table/pov): a regra é uma só. */
+  const pov = povHand(cards, revealed);
 
   return (
     <div
@@ -199,15 +119,19 @@ function RivalSeat({
       data-testid={`table-seat-${seat.player.id}`}
       data-spectator={spectator}
     >
-      <div className="rival-seat__head">
-        <AvatarBadge name={seat.player.name} className="rival-seat__badge" />
-        <span className="rival-seat__name">{seat.player.name}</span>
-        {winner && (
-          <span className="rival-seat__crown" aria-label="Venceu a rodada">
-            <Icon name="crown" size={10} strokeWidth={2.4} />
-          </span>
-        )}
-      </div>
+      <HudPill
+        variant="seat"
+        leading={<AvatarBadge name={seat.player.name} />}
+        trailing={
+          winner && (
+            <span className="rival-seat__crown" aria-label="Venceu a rodada">
+              <Icon name="crown" size={10} strokeWidth={2.4} />
+            </span>
+          )
+        }
+      >
+        {seat.player.name}
+      </HudPill>
 
       <WinPips wins={seat.wins} testid={`table-wins-${seat.player.id}`} />
 
@@ -222,16 +146,18 @@ function RivalSeat({
               em volta da mesa, e não como linha de placar. */}
           <span className="rival-seat__spot" aria-hidden="true" />
           <HandRow
-            cards={shown}
+            cards={pov.shown}
             cardSize="var(--card-mini)"
             mini
-            faceDownAt={(index) => !revealed && index === shown.length - 1}
+            align="end"
+            faceDownAt={(index) => !revealed && index === pov.shown.length - 1}
             labelPrefix={`Carta de ${seat.player.name}`}
             testid={`table-hand-${seat.player.id}`}
           />
           <div className="rival-seat__foot">
-            <SeatTotal
-              cards={revealed ? cards : known}
+            <HandTotal
+              variant="seat"
+              cards={pov.counted}
               partial={!revealed}
               compact
               testid={`table-total-${seat.player.id}`}
@@ -325,12 +251,13 @@ export function TableArena({
           {youPlaying && yourCards.length > 0 ? (
             <>
               <div className="table-arena__you-score">
-                <SeatTotal cards={yourCards} partial={false} testid="table-total-you" />
+                <HandTotal variant="seat" cards={yourCards} partial={false} testid="table-total-you" />
               </div>
               <HandRow
                 cards={yourCards}
                 cardSize="var(--card-w)"
-                dealDelayFor={dealDelay}
+                align="end"
+                delayFor={dealDelay}
                 ablaze={isNaturalBlackjack(yourCards)}
                 labelPrefix="Sua carta"
                 testid="table-hand-you"

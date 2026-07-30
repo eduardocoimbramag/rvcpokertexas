@@ -1,14 +1,11 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import type { CSSProperties } from 'react';
 
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
-import { handStep } from '../animations/cards';
 import { TIMINGS } from '../animations/timings';
-import type { HandValue } from '../engine/rules';
-import { handValue, isNaturalBlackjack } from '../engine/rules';
+import { isNaturalBlackjack } from '../engine/rules';
 import type {
   BlackjackRoundState,
   Card,
@@ -19,7 +16,9 @@ import type {
 } from '../engine/types';
 import type { DoubleBetState, GamePhase, TurnClock, TurnReveal } from '../store/gameStore';
 import { TURN_SECONDS, useGameStore } from '../store/gameStore';
-import { Card3D } from './Card3D';
+import { HandRow } from './table/HandRow';
+import { HandTotal } from './table/HandTotal';
+import { povHand } from './table/pov';
 
 export interface HandsArenaProps {
   phase: GamePhase;
@@ -84,50 +83,6 @@ const DEAL_SLOT = {
   player: [0, 2],
   opponent: [1, 3],
 } as const;
-
-interface HandRowProps {
-  cards: readonly (Card | null)[];
-  testid: string;
-  /** Prefixo dos rótulos acessíveis ("Sua carta", "Carta de Luna"…). */
-  labelPrefix: string;
-  faceDownAt?: (index: number) => boolean;
-  delayFor?: (index: number) => number;
-  /** A mão é um blackjack: as cartas ganham o contorno em brasa. */
-  ablaze?: boolean;
-}
-
-/** Uma mão deitada na mesa: cartas retas, uma ao lado da outra, todas
- * inteiramente visíveis. Só uma mão longa demais para o feltro volta a
- * se sobrepor, e apenas o necessário (ver `handStep`). O deslocamento é
- * estático — quem anima entrada e virada é o Card3D de cada carta. */
-function HandRow({ cards, testid, labelPrefix, faceDownAt, delayFor, ablaze }: HandRowProps) {
-  const step = handStep(cards.length);
-  return (
-    <div className="flex items-center justify-center" data-testid={testid}>
-      {cards.map((card, index) => (
-        <div
-          key={index}
-          data-testid={`${testid}-card-${index + 1}`}
-          style={
-            {
-              marginLeft: index > 0 ? `calc(var(--card-w) * ${step})` : undefined,
-              // Só conta quando a mão aperta: a carta nova cobre a anterior.
-              zIndex: index,
-            } as CSSProperties
-          }
-        >
-          <Card3D
-            card={card}
-            faceDown={faceDownAt?.(index) ?? false}
-            dealDelayMs={delayFor?.(index) ?? 0}
-            ablaze={ablaze}
-            label={`${labelPrefix} ${index + 1}`}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
 
 interface ScorePlateProps {
   side: 'player' | 'opponent';
@@ -215,43 +170,6 @@ function Nameplate({ side, name, active, status }: NameplateProps) {
         </span>
       )}
     </div>
-  );
-}
-
-interface HandTotalProps {
-  side: Duelist;
-  value: HandValue;
-  /** A conta ainda não fechou: falta a carta virada ("+?"). */
-  partial: boolean;
-}
-
-/**
- * O total da mão, na borda INTERNA — os dois apontam para o centro do
- * feltro, como um espelho do outro.
- *
- * Tipografia: a condensada da casa (Oswald), em algarismos tabulares
- * para o número não dançar de largura ao trocar de 9 para 11. Uma mão
- * soft mostra as duas leituras ("7/17") com a menor em segundo plano —
- * o que vale é a de cima.
- */
-function HandTotal({ side, value, partial }: HandTotalProps) {
-  const soft = value.soft && value.total !== 21;
-  return (
-    <span
-      className={`hand-total hand-total--${side} ${value.total > 21 ? 'is-bust' : ''}`}
-      data-testid={`${side}-total`}
-    >
-      {soft && (
-        <>
-          <span className="hand-total__soft">{value.total - 10}</span>
-          <span className="hand-total__slash">/</span>
-        </>
-      )}
-      {value.total}
-      {/* A conta do rival é sempre parcial até o showdown: o "+?" é a
-          carta que ele guarda virada. */}
-      {partial && <span className="hand-total__partial">+?</span>}
-    </span>
   );
 }
 
@@ -493,23 +411,20 @@ export function HandsArena({
   const opponentFull: readonly Card[] = result?.opponentHand ?? [];
 
   /* A mão do rival na mesa, antes do showdown: tudo o que ele tem MENOS
-     a última carta, que fica virada — a regra de POV, sem exceção.
+     a última carta, que fica virada — a regra de POV, sem exceção. Quem
+     aplica o corte é `povHand`, o mesmo dos assentos da mesa única (ver
+     ./table/pov): a regra é uma, então a implementação é uma.
      O corte vale inclusive para o estado `settled` (que já traz a mão
      inteira aberta): quem revela é a fase `settle`, não a chegada do
      resultado. Cada carta nova que ele pede empurra a anterior para o
      campo aberto — a informação chega em conta-gotas. */
-  const opponentKnown: readonly Card[] = round
-    ? round.opponentHidden > 0
-      ? round.opponentVisible
-      : round.opponentVisible.slice(0, -1)
-    : opponentFull.slice(0, -1);
-  const opponentCards: readonly (Card | null)[] = revealed
-    ? opponentFull
-    : [...opponentKnown, null];
+  const opponentPov = revealed
+    ? povHand(opponentFull, true)
+    : povHand(round?.opponentVisible ?? opponentFull, false, (round?.opponentHidden ?? 0) > 0);
+  const opponentCards = opponentPov.shown;
 
   if (playerCards.length === 0 || opponentCards.length === 0) return null;
 
-  const playerValue = handValue(playerCards);
   /* Blackjack na mesa: o contorno das cartas pega fogo — e a brasa é
      SÓ SUA. Ela mora na sua tela, para você saber o que tem na mão; a
      mão do rival nunca acende aqui, nem no showdown, porque o efeito é
@@ -518,9 +433,6 @@ export function HandsArena({
      Acende na hora, sem esperar o showdown: as suas duas cartas estão
      abertas na sua frente e você já sabe o que tirou. */
   const playerAblaze = isNaturalBlackjack(playerCards);
-  // O total do rival é o das cartas ABERTAS enquanto houver oculta — com
-  // o "+?" lembrando que falta carta para a conta fechar.
-  const opponentValue = handValue(revealed ? opponentFull : opponentKnown);
 
   /* Atrasos de entrada e de virada por carta. Só a distribuição tem
      coreografia: dali em diante cada carta pedida é um lance sozinho na
@@ -622,7 +534,9 @@ export function HandsArena({
           faceDownAt={(index) => !revealed && index === opponentCards.length - 1}
           delayFor={opponentDelay}
         />
-        <HandTotal side="opponent" value={opponentValue} partial={!revealed} />
+        {/* O total do rival é o das cartas ABERTAS enquanto houver
+            oculta — com o "+?" lembrando que falta carta para fechar. */}
+        <HandTotal side="opponent" cards={opponentPov.counted} partial={!revealed} />
       </section>
 
       {/* Faixa livre do feltro: é aqui que o brasão da casa respira — e
@@ -653,7 +567,7 @@ export function HandsArena({
         aria-label="Sua mão"
         data-testid="hand-player"
       >
-        <HandTotal side="player" value={playerValue} partial={false} />
+        <HandTotal side="player" cards={playerCards} partial={false} />
         <HandRow
           cards={playerCards}
           testid="hand-player-cards"

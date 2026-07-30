@@ -11,6 +11,7 @@ import { Confetti } from '../../components/Confetti';
 import { CountdownOverlay } from '../../components/CountdownOverlay';
 import { FoundSplash } from '../../components/FoundSplash';
 import { HandsArena } from '../../components/HandsArena';
+import { ResultStage } from '../../components/ResultStage';
 import { RoundEndBanner } from '../../components/RoundEndBanner';
 import { LocalBlackjackGameEngine } from '../../engine/LocalBlackjackGameEngine';
 import type { BlackjackRoundState, RoundResult } from '../../engine/types';
@@ -43,14 +44,6 @@ function cameraFor(phase: LocalPhase): SceneCamera {
  * sozinho. O botão continua disponível para pular a espera.
  */
 const AUTO_RETURN_SECONDS = 10;
-
-/**
- * Classes da linha de contagem. Compartilhadas entre a linha visível (em
- * cima do botão) e a cópia invisível que a compensa acima do veredito —
- * as duas PRECISAM ocupar exatamente a mesma caixa para o título cair no
- * meio exato entre as cartas e o botão.
- */
-const COUNTDOWN_LINE = 'mb-1.5 text-center text-xs font-extrabold';
 
 /**
  * Partida do torneio: a mesma mesa, cartas e ritmo do 1v1. A tela
@@ -471,84 +464,31 @@ export function TournamentMatchScreen() {
                 </div>
               )}
               {phase === 'completed' && (
-                <motion.div
-                  className="result-stage relative flex flex-1 flex-col items-center pb-4"
-                  initial={reducedMotion ? false : { opacity: 0, y: 24 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ type: 'spring', damping: 20, stiffness: 260 }}
+                <ResultStage
+                  surface="felt"
+                  tone={youWin ? 'win' : 'lose'}
+                  title={youWin ? 'VITÓRIA!' : 'DERROTA'}
+                  titleTestId="tournament-result-title"
+                  subtitle={subtitle}
+                  /* A derrota é o instante em que a taxa sai do saldo: a
+                     linha do débito nasce junto do veredito. */
+                  note={feeCharged ? feeLine : undefined}
+                  noteTestId="entry-fee-charged"
+                  footer={
+                    <>
+                      <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" />{' '}
+                      Retornando em {returnSecs}s
+                    </>
+                  }
+                  footerTestId="auto-return"
+                  instant={reducedMotion}
+                  decoration={youWin && !reducedMotion ? <Confetti /> : undefined}
                   data-testid="tournament-result-block"
                 >
-                  {youWin && !reducedMotion && <Confetti />}
-
-                  {/* Espaçador superior: da base das cartas ao veredito. */}
-                  <div aria-hidden className="w-full grow" />
-
-                  {/* Cópia invisível da linha de contagem. Ela existe só
-                      para compensar, do lado de cima, a altura que a
-                      contagem real ocupa do lado de baixo — sem isso o
-                      centro do título cairia acima do meio real. */}
-                  <p aria-hidden className={`invisible ${COUNTDOWN_LINE}`}>
-                    <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Retornando
-                    em {returnSecs}s
-                  </p>
-
-                  {/* Uma cópia invisível do subtítulo acima do título
-                      equilibra o grupo: sobra a MESMA altura acima e
-                      abaixo do título, então ele fica no centro exato do
-                      grupo — e o grupo, entre os dois espaçadores, no
-                      centro da faixa. Tudo em fluxo normal (nada absoluto),
-                      então em telas baixas o layout comprime junto em vez
-                      de sobrepor. */}
-                  <div className="flex flex-col items-center gap-0.5">
-                    {/* A derrota é o instante em que a taxa sai do saldo:
-                        a linha do débito nasce junto do veredito. Ela
-                        também ganha cópia invisível — o grupo tem de
-                        continuar simétrico para o título ficar no centro. */}
-                    {feeCharged && (
-                      <p aria-hidden className="invisible text-xs font-extrabold">
-                        {feeLine}
-                      </p>
-                    )}
-                    <p aria-hidden className="invisible text-sm font-extrabold">
-                      {subtitle}
-                    </p>
-                    <p
-                      className={`result-title font-display text-engraved font-bold tracking-wide ${youWin ? 'text-[#7a4503]' : 'text-[#8f1616]'}`}
-                      data-testid="tournament-result-title"
-                    >
-                      {youWin ? 'VITÓRIA!' : 'DERROTA'}
-                    </p>
-                    <p className="text-engraved text-sm font-extrabold text-[#123324]">
-                      {subtitle}
-                    </p>
-                    {feeCharged && (
-                      <p
-                        className="text-engraved text-xs font-extrabold text-[#7a1f28]"
-                        data-testid="entry-fee-charged"
-                      >
-                        {feeLine}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Espaçador inferior: do veredito ao botão. Mesmo grow
-                      do de cima → veredito EXATAMENTE no meio da faixa. */}
-                  <div aria-hidden className="w-full grow" />
-
-                  <p
-                    className={`text-engraved text-[#123324] ${COUNTDOWN_LINE}`}
-                    data-testid="auto-return"
-                  >
-                    <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Retornando
-                    em {returnSecs}s
-                  </p>
-
-                  <div className="action-stack">
-                    <Button onClick={returnOnce} size="md" fullWidth data-testid="back-to-bracket">
-                      <Icon name="trophy" /> VOLTAR AO CHAVEAMENTO
-                    </Button>
-                  </div>
-                </motion.div>
+                  <Button onClick={returnOnce} size="md" fullWidth data-testid="back-to-bracket">
+                    <Icon name="trophy" /> VOLTAR AO CHAVEAMENTO
+                  </Button>
+                </ResultStage>
               )}
             </motion.div>
           )}

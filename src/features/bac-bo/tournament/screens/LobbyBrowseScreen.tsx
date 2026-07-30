@@ -62,7 +62,7 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
           type="button"
           onClick={onBack}
           aria-label="Voltar"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
+          className="focus-ring grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
         >
           <Icon name="chevron-left" />
         </button>

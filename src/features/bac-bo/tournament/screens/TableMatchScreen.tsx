@@ -10,6 +10,8 @@ import { COUNTDOWN_START, TIMINGS } from '../../animations/timings';
 import { Confetti } from '../../components/Confetti';
 import { CountdownOverlay } from '../../components/CountdownOverlay';
 import { GoldAnnounce } from '../../components/GoldAnnounce';
+import { HudPill } from '../../components/HudPill';
+import { ResultStage } from '../../components/ResultStage';
 import { buildDeck } from '../../engine/rules';
 import type { Card, PlayerAction } from '../../engine/types';
 import { TableScene } from '../../scene/TableScene';
@@ -360,12 +362,17 @@ export function TableMatchScreen() {
       {/* relative z-20: na câmera vertical a mesa toma a tela inteira —
           o selo da rodada flutua acima do recorte expandido. */}
       <header className="relative z-20 mb-3 flex items-center justify-between gap-2">
-        <span className="table-hud" data-testid="table-round">
+        <HudPill variant="tag" data-testid="table-round">
           {series.tiebreak ? 'Desempate' : `Rodada ${series.round}`}
-        </span>
-        <span className="table-hud table-hud--prize" data-testid="table-pot">
-          <Icon name="trophy" size="0.9em" /> {formatCredits(tablePrize(entryFee, size))}
-        </span>
+        </HudPill>
+        <HudPill
+          variant="tag"
+          className="hud-pill--num"
+          data-testid="table-pot"
+          leading={<Icon name="trophy" size="0.9em" />}
+        >
+          {formatCredits(tablePrize(entryFee, size))}
+        </HudPill>
       </header>
 
       <TableScene reaction={reaction} camera={cameraFor(phase)}>
@@ -417,42 +424,37 @@ export function TableMatchScreen() {
             )}
           </AnimatePresence>
 
-          {/* Fim da série: o veredito da mesa e a saída para a coroação. */}
+          {/* Fim da série: o veredito da mesa e a saída para a coroação.
+              É o MESMO palco do duelo e da partida do torneio — só que
+              sobre a cortina escura em vez do couro (ver ResultStage). */}
           {phase === 'over' && (
-            <motion.div
-              className="table-over"
-              data-testid="table-over"
-              initial={reduced ? false : { opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-            >
-              {youWon && !reduced && <Confetti />}
-              <p
-                className={`table-over__title ${youWon ? 'table-over__title--win' : 'table-over__title--lose'}`}
-                data-testid="table-result-title"
-              >
-                {youWon ? 'VITÓRIA!' : 'DERROTA'}
-              </p>
-              <p className="table-over__detail">
-                {youWon
+            <ResultStage
+              surface="overlay"
+              tone={youWon ? 'win' : 'lose'}
+              title={youWon ? 'VITÓRIA!' : 'DERROTA'}
+              titleTestId="table-result-title"
+              subtitle={
+                youWon
                   ? `Você levou ${formatCredits(tablePrize(entryFee, size))} créditos`
-                  : `${champion?.name ?? 'A mesa'} fechou a série · você fez ${yourSeat?.wins ?? 0} de ${TABLE_TARGET_WINS}`}
-              </p>
-              {!youWon && (
-                <p className="table-over__fee" data-testid="table-fee-charged">
-                  Taxa de entrada de {formatCredits(entryFee)} debitada
-                </p>
-              )}
-              <p className="table-over__return" data-testid="table-auto-return">
-                <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Encerrando em{' '}
-                {returnSecs}s
-              </p>
-              <div className="action-stack">
-                <Button onClick={returnOnce} size="md" fullWidth data-testid="table-finish">
-                  <Icon name="trophy" /> VER O RESULTADO
-                </Button>
-              </div>
-            </motion.div>
+                  : `${champion?.name ?? 'A mesa'} fechou a série · você fez ${yourSeat?.wins ?? 0} de ${TABLE_TARGET_WINS}`
+              }
+              note={!youWon ? `Taxa de entrada de ${formatCredits(entryFee)} debitada` : undefined}
+              noteTestId="table-fee-charged"
+              footer={
+                <>
+                  <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Encerrando
+                  em {returnSecs}s
+                </>
+              }
+              footerTestId="table-auto-return"
+              instant={reduced}
+              decoration={youWon && !reduced ? <Confetti /> : undefined}
+              data-testid="table-over"
+            >
+              <Button onClick={returnOnce} size="md" fullWidth data-testid="table-finish">
+                <Icon name="trophy" /> VER O RESULTADO
+              </Button>
+            </ResultStage>
           )}
         </div>
       </TableScene>

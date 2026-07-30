@@ -7,16 +7,16 @@ import { isBroke } from '../engine/credits';
 import type { RoundOutcome, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
 import { Confetti } from './Confetti';
+import { ResultStage } from './ResultStage';
 
 export interface ResultBannerProps {
   result: RoundResult;
 }
 
-/* Tintas escuras e saturadas: o banner assenta sobre o feltro claro. */
-const OUTCOME_COPY: Record<RoundOutcome, { title: string; className: string }> = {
-  win: { title: 'VITÓRIA!', className: 'text-[#7a4503]' },
-  lose: { title: 'DERROTA', className: 'text-[#8f1616]' },
-  tie: { title: 'EMPATE', className: 'text-[#3d372f]' },
+const OUTCOME_TITLE: Record<RoundOutcome, string> = {
+  win: 'VITÓRIA!',
+  lose: 'DERROTA',
+  tie: 'EMPATE',
 };
 
 /** Fase Completed: veredito da rodada, variação de saldo e próximas ações. */
@@ -27,76 +27,48 @@ export function ResultBanner({ result }: ResultBannerProps) {
   const refillCredits = useGameStore((state) => state.refillCredits);
   const reducedMotion = useReducedMotion();
 
-  const copy = OUTCOME_COPY[result.outcome];
   // Sem saldo para o menor lance, "jogar de novo" seria um beco: a
   // recarga assume o CTA (o botão volta a ser o duelo após recarregar).
   const broke = isBroke(balance);
 
   return (
-    // O banner ocupa toda a faixa livre abaixo das cartas (flex-1) e a
-    // divide em: [espaço] · veredito · [espaço] · ações. Os dois
-    // espaçadores crescem igual (grow), então o veredito fica
-    // EXATAMENTE no centro vertical entre as PLACAS DE PLACAR e o botão
-    // "Jogar de novo" — em qualquer altura de tela. Quem desconta a faixa
-    // das placas (que são absolutas) é o respiro de `.result-stage`.
-    <motion.div
-      className="result-stage relative flex flex-1 flex-col items-center pb-4"
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', damping: 20, stiffness: 260 }}
+    // O palco ocupa a faixa livre abaixo das cartas e centra o veredito
+    // entre as PLACAS DE PLACAR e o botão — ver ResultStage. `--tight`
+    // junta os dois botões empilhados deste desfecho.
+    <ResultStage
+      surface="felt"
+      tone={result.outcome}
+      title={OUTCOME_TITLE[result.outcome]}
+      titleTestId="result-title"
+      /* Vitória/derrota: a variação de saldo é mostrada subindo para
+         dentro da pílula de saldo (BalancePill) — nada aqui embaixo.
+         Empate não altera o saldo, então mantém o aviso textual. */
+      subtitle={result.outcome === 'tie' ? 'Aposta devolvida' : undefined}
+      subtitleTestId="result-delta"
+      tightActions
+      instant={reducedMotion ?? false}
+      decoration={
+        result.outcome === 'win' && !reducedMotion ? (
+          <>
+            <Confetti />
+            <WinParticles />
+          </>
+        ) : undefined
+      }
     >
-      {result.outcome === 'win' && !reducedMotion && (
-        <>
-          <Confetti />
-          <WinParticles />
-        </>
-      )}
-
-      {/* Espaçador superior: da base das cartas até o veredito. */}
-      <div aria-hidden className="w-full grow" />
-
-      <div className="flex flex-col items-center gap-0.5">
-        <p
-          className={`result-title font-display text-engraved font-bold tracking-wide ${copy.className}`}
-          data-testid="result-title"
-        >
-          {copy.title}
-        </p>
-        {/* Vitória/derrota: a variação de saldo é mostrada subindo para
-            dentro da pílula de saldo (BalancePill) — nada aqui embaixo.
-            Empate não altera o saldo, então mantém o aviso textual. */}
-        {result.outcome === 'tie' && (
-          <p
-            className="text-engraved text-lg font-extrabold tabular-nums text-[#33261a]"
-            data-testid="result-delta"
-          >
-            Aposta devolvida
-          </p>
-        )}
-      </div>
-
-      {/* Espaçador inferior: do veredito até o botão. Mesmo grow do de
-          cima → veredito centralizado na faixa. */}
-      <div aria-hidden className="w-full grow" />
-
-      {/* --tight = metade do gap padrão da .action-stack (0.75rem →
-          0.375rem): ações mais juntas neste desfecho, sem alterar as
-          demais telas que usam .action-stack. */}
-      <div className="action-stack action-stack--tight">
-        {broke ? (
-          <Button onClick={refillCredits} size="md" fullWidth data-testid="refill-button">
-            <Icon name="chip" /> RECARREGAR CRÉDITOS
-          </Button>
-        ) : (
-          <Button onClick={playAgain} size="md" fullWidth data-testid="play-again">
-            <Icon name="club" /> JOGAR DE NOVO
-          </Button>
-        )}
-        <Button variant="secondary" onClick={goHome} size="md" fullWidth data-testid="go-home">
-          INÍCIO
+      {broke ? (
+        <Button onClick={refillCredits} size="md" fullWidth data-testid="refill-button">
+          <Icon name="chip" /> RECARREGAR CRÉDITOS
         </Button>
-      </div>
-    </motion.div>
+      ) : (
+        <Button onClick={playAgain} size="md" fullWidth data-testid="play-again">
+          <Icon name="club" /> JOGAR DE NOVO
+        </Button>
+      )}
+      <Button variant="secondary" onClick={goHome} size="md" fullWidth data-testid="go-home">
+        INÍCIO
+      </Button>
+    </ResultStage>
   );
 }
 

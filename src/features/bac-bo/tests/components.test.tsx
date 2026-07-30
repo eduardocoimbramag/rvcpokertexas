@@ -11,6 +11,7 @@ import { HandsArena } from '../components/HandsArena';
 import { HistorySheet } from '../components/HistorySheet';
 import { NegotiationHud, NegotiationPanel } from '../components/NegotiationPanel';
 import { ResultBanner } from '../components/ResultBanner';
+import { ResultStage } from '../components/ResultStage';
 import { RoundEndBanner } from '../components/RoundEndBanner';
 import type {
   BlackjackRoundState,
@@ -772,6 +773,68 @@ describe('ResultBanner', () => {
     );
     expect(screen.getByTestId('result-title')).toHaveTextContent('DERROTA');
     expect(screen.queryByTestId('confetti')).not.toBeInTheDocument();
+  });
+});
+
+describe('ResultStage', () => {
+  /**
+   * O palco é compartilhado pelos TRÊS desfechos (duelo, partida do
+   * torneio, mesa única) e o que ele carrega de precioso é a centragem
+   * por espelho: para cada linha abaixo do título entra uma cópia
+   * invisível acima. Se as cópias sumirem, nada quebra, nada dá erro — o
+   * veredito só passa a cair um pouco alto demais, que é exatamente o
+   * tipo de regressão que ninguém percebe até estar publicada.
+   */
+  const lines = (container: HTMLElement, selector: string) =>
+    [...container.querySelectorAll(selector)];
+
+  it('espelha subtítulo, débito e contagem acima do título para centrar o veredito', () => {
+    const { container } = render(
+      <ResultStage
+        surface="felt"
+        tone="lose"
+        title="DERROTA"
+        titleTestId="t"
+        subtitle="Fim da sua caminhada"
+        note="Taxa de entrada de 10 debitada"
+        footer="Retornando em 8s"
+      >
+        <button type="button">VOLTAR</button>
+      </ResultStage>,
+    );
+
+    // Cada linha existe DUAS vezes: a que se lê e a que só ocupa altura.
+    for (const selector of [
+      '.result-stage__subtitle',
+      '.result-stage__note',
+      '.result-stage__footer',
+    ]) {
+      const both = lines(container, selector);
+      expect(both, selector).toHaveLength(2);
+      // A cópia é invisível e fora do fluxo de leitura...
+      const ghost = both.find((el) => el.classList.contains('invisible'));
+      expect(ghost, selector).toBeDefined();
+      expect(ghost).toHaveAttribute('aria-hidden');
+      // ...e tem o MESMO texto, senão não teria a mesma altura.
+      expect(ghost?.textContent).toBe(both.find((el) => el !== ghost)?.textContent);
+    }
+
+    // Quem lê a tela ouve o veredito uma vez só.
+    expect(screen.getAllByText('Fim da sua caminhada')).toHaveLength(2);
+    expect(screen.getByTestId('t')).toHaveTextContent('DERROTA');
+  });
+
+  it('sem subtítulo e sem débito, não inventa cópia nenhuma', () => {
+    const { container } = render(
+      <ResultStage surface="overlay" tone="win" title="VITÓRIA!" titleTestId="t">
+        <button type="button">VER O RESULTADO</button>
+      </ResultStage>,
+    );
+    expect(lines(container, '.result-stage__subtitle')).toHaveLength(0);
+    expect(lines(container, '.result-stage__note')).toHaveLength(0);
+    expect(lines(container, '.result-stage__footer')).toHaveLength(0);
+    // A superfície manda na roupa: a cortina escura da mesa única.
+    expect(container.querySelector('.result-stage')).toHaveClass('result-stage--overlay');
   });
 });
 

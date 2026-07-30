@@ -1,0 +1,84 @@
+import type { CSSProperties } from 'react';
+
+import { handStep, miniHandStep } from '../../animations/cards';
+import type { Card } from '../../engine/types';
+import { Card3D } from '../Card3D';
+
+export interface HandRowProps {
+  cards: readonly (Card | null)[];
+  /** Raiz do `data-testid`; cada carta ganha `${testid}-card-N`. */
+  testid: string;
+  /** Prefixo dos rótulos acessíveis ("Sua carta", "Carta de Luna"…). */
+  labelPrefix: string;
+  /** Comprimento CSS da carta. Padrão: a carta cheia da casa. */
+  cardSize?: string;
+  /** Mão de rival na mesa única: aperta muito mais (ver `miniHandStep`). */
+  mini?: boolean;
+  /**
+   * Onde as cartas se alinham entre si. O duelo CENTRA (as duas mãos são
+   * espelho uma da outra em torno do brasão); a mesa única assenta na
+   * BASE, porque a fileira de assentos precisa de uma linha de chão comum
+   * para ler como cadeiras em volta da mesa.
+   */
+  align?: 'center' | 'end';
+  faceDownAt?: (index: number) => boolean;
+  delayFor?: (index: number) => number;
+  /** A mão é um blackjack: as cartas ganham o contorno em brasa. */
+  ablaze?: boolean;
+}
+
+/**
+ * Uma mão deitada na mesa: cartas retas, uma ao lado da outra, todas
+ * inteiramente visíveis. Só uma mão longa demais para o feltro volta a se
+ * sobrepor, e apenas o necessário (ver `handStep`/`miniHandStep`). O
+ * deslocamento é estático — quem anima entrada e virada é o Card3D de
+ * cada carta.
+ *
+ * É a MESMA fileira nos dois modos. As geometrias das duas arenas são
+ * legitimamente diferentes, mas a mão não é: enquanto cada uma tinha a
+ * sua cópia, toda melhoria aqui custava dobrado e, na prática, só metade
+ * era feita.
+ */
+export function HandRow({
+  cards,
+  testid,
+  labelPrefix,
+  cardSize = 'var(--card-w)',
+  mini = false,
+  align = 'center',
+  faceDownAt,
+  delayFor,
+  ablaze,
+}: HandRowProps) {
+  const step = mini ? miniHandStep(cards.length) : handStep(cards.length);
+  return (
+    <div
+      className={`flex justify-center ${align === 'end' ? 'items-end' : 'items-center'}`}
+      data-testid={testid}
+    >
+      {cards.map((card, index) => (
+        <div
+          key={index}
+          data-testid={`${testid}-card-${index + 1}`}
+          style={
+            {
+              marginLeft: index > 0 ? `calc(${cardSize} * ${step})` : undefined,
+              // Só conta quando a mão aperta: a carta nova cobre a anterior.
+              zIndex: index,
+            } as CSSProperties
+          }
+        >
+          <Card3D
+            card={card}
+            size={cardSize}
+            compact={mini}
+            faceDown={faceDownAt?.(index) ?? false}
+            dealDelayMs={delayFor?.(index) ?? 0}
+            ablaze={ablaze}
+            label={`${labelPrefix} ${index + 1}`}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}

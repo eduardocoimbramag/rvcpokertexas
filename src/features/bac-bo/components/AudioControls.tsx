@@ -17,7 +17,7 @@ export function AudioControls() {
           type="checkbox"
           checked={audio.muted}
           onChange={(event) => updateAudioSettings({ muted: event.target.checked })}
-          className="h-6 w-6 accent-amber-400"
+          className="focus-ring h-6 w-6 accent-amber-400"
           data-testid="mute-toggle"
         />
       </label>
@@ -34,7 +34,7 @@ export function AudioControls() {
           value={audio.musicVolume}
           disabled={audio.muted}
           onChange={(event) => updateAudioSettings({ musicVolume: Number(event.target.value) })}
-          className="accent-amber-400"
+          className="focus-ring rounded-full accent-amber-400"
           aria-label="Volume da música"
         />
       </label>
@@ -51,7 +51,7 @@ export function AudioControls() {
           value={audio.sfxVolume}
           disabled={audio.muted}
           onChange={(event) => updateAudioSettings({ sfxVolume: Number(event.target.value) })}
-          className="accent-amber-400"
+          className="focus-ring rounded-full accent-amber-400"
           aria-label="Volume dos efeitos sonoros"
         />
       </label>

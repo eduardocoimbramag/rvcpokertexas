@@ -36,7 +36,7 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
             type="checkbox"
             checked={vibrationEnabled}
             onChange={(event) => setVibrationEnabled(event.target.checked)}
-            className="h-6 w-6 accent-amber-400"
+            className="focus-ring h-6 w-6 accent-amber-400"
             data-testid="vibration-toggle"
           />
         </label>
@@ -58,7 +58,7 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
                 aria-checked={scenery === option.value}
                 onClick={() => setSceneryQuality(option.value)}
                 data-testid={`scenery-${option.value}`}
-                className={`min-h-11 rounded-xl border-2 text-sm font-bold transition-colors ${
+                className={`focus-ring min-h-11 rounded-xl border-2 text-sm font-bold transition-colors ${
                   scenery === option.value
                     ? 'border-gold bg-gold/15 text-gold'
                     : 'border-arena-line bg-arena-800 text-ivory'

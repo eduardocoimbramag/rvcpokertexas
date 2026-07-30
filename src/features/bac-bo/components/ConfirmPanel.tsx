@@ -126,7 +126,7 @@ function ReadySeat({ name, accent, confirmed, instant, onOpenProfile }: ReadySea
         <button
           type="button"
           onClick={onOpenProfile}
-          className="text-[10px] font-bold uppercase tracking-wider text-[#7f1d1d]/70 underline decoration-dotted underline-offset-2 active:brightness-125"
+          className="focus-ring rounded-sm text-[10px] font-bold uppercase tracking-wider text-[#7f1d1d]/70 underline decoration-dotted underline-offset-2 active:brightness-125"
           data-testid="opponent-profile-hint"
         >
           ver perfil

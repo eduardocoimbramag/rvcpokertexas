@@ -260,7 +260,7 @@ export function LobbyScreen() {
           type="button"
           onClick={leave}
           aria-label="Sair da sala"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
+          className="focus-ring grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
         >
           <Icon name="chevron-left" />
         </button>
@@ -277,7 +277,7 @@ export function LobbyScreen() {
           onClick={() => setSettingsOpen(true)}
           aria-label="Detalhes da sala"
           data-testid="lobby-settings"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
+          className="focus-ring grid h-11 w-11 shrink-0 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
         >
           <Icon name="gear" />
         </button>

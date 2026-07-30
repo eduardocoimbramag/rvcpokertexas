@@ -67,7 +67,7 @@ export function HomeScreen({
           type="button"
           onClick={onOpenSettings}
           aria-label="Ajustes"
-          className="grid h-11 w-11 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
+          className="focus-ring grid h-11 w-11 place-items-center rounded-full border border-arena-line bg-arena-800 text-lg text-ivory active:brightness-125"
         >
           <Icon name="gear" />
         </button>
