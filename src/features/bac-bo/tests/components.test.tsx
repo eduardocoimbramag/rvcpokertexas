@@ -497,8 +497,11 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     // Os dois ainda têm de bater o martelo: as duas placas acendem.
     expect(screen.getByTestId('nameplate-player')).toHaveClass('is-turn');
     expect(screen.getByTestId('nameplate-opponent')).toHaveClass('is-turn');
-    expect(screen.getByTestId('status-player')).toHaveTextContent('ESCOLHENDO');
+    // O RÓTULO de situação é só do rival: do seu lado o aro aceso já diz
+    // que a mesa espera você — escrever "escolhendo" seria contar o que
+    // você acabou de fazer.
     expect(screen.getByTestId('status-opponent')).toHaveTextContent('ESCOLHENDO');
+    expect(screen.queryByTestId('status-player')).not.toBeInTheDocument();
   });
 
   it('travada a sua escolha, o rodapé passa a esperar o rival', () => {
@@ -507,9 +510,10 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
       turn: { seconds: 9, opponentReady: false },
     });
 
-    // O QUE você escolheu não aparece em lugar nenhum da mesa: só que
-    // você já escolheu.
-    expect(screen.getByTestId('status-player')).toHaveTextContent('PRONTO');
+    // O QUE você escolheu não aparece em lugar nenhum da mesa — e nem
+    // QUE você escolheu: o aro apaga e o rodapé passa a esperar o rival,
+    // que é a informação nova.
+    expect(screen.queryByTestId('status-player')).not.toBeInTheDocument();
     expect(screen.getByTestId('nameplate-player')).not.toHaveClass('is-turn');
     expect(screen.getByTestId('turn-wait')).toHaveTextContent('Aguardando Luna');
     expect(screen.queryByTestId('action-hit')).not.toBeInTheDocument();
@@ -586,7 +590,7 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     expect(screen.getByTestId('verdict-opponent')).toHaveTextContent('BLACKJACK');
   });
 
-  it('o lance perdido no relógio é anunciado como tempo esgotado', () => {
+  it('o relógio zerado é anunciado como PAROU, sem falar do tempo', () => {
     renderArena({
       reveal: {
         id: 'r2',
@@ -594,7 +598,11 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
       },
     });
 
-    expect(screen.getByTestId('turn-call')).toHaveTextContent('TEMPO');
+    // A mesa anuncia o que ACONTECEU na mesa (a mão parou), não o motivo:
+    // quem viu o relógio zerar não precisa da legenda.
+    const call = screen.getByTestId('turn-call');
+    expect(call).toHaveTextContent('PAROU');
+    expect(call).not.toHaveTextContent('TEMPO');
   });
 
   it('a dobra vira placar: recusada apaga o botão, aceita põe fogo nele', () => {
@@ -788,11 +796,19 @@ describe('App (fluxo Home → Tutorial → Busca)', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    expect(screen.getByText(/BLACKJACK/)).toBeInTheDocument();
+    // O logotipo é desenhado letra a letra em três andares (BLACK /
+    // JACK / ARENA), então quem responde pela marca é o NOME ACESSÍVEL
+    // do título, não um nó de texto.
+    expect(screen.getByRole('heading', { name: 'Blackjack Arena' })).toBeInTheDocument();
     await user.click(screen.getByTestId('play-button'));
 
-    // Tutorial de 3 passos.
+    // Tutorial de 4 passos: oponente → negociação → a mão de 21 → torneio.
     expect(screen.getByRole('dialog', { name: 'Como jogar' })).toBeInTheDocument();
+    // A negociação é a mesa de FICHAS: o tutorial não pode voltar a
+    // prometer o chat que a fase teve um dia.
+    await user.click(screen.getByTestId('tutorial-next'));
+    expect(screen.getByText(/proposta/i)).toBeInTheDocument();
+    expect(screen.queryByText(/chat/i)).not.toBeInTheDocument();
     await user.click(screen.getByTestId('tutorial-next'));
     await user.click(screen.getByTestId('tutorial-next'));
     await user.click(screen.getByTestId('tutorial-next'));

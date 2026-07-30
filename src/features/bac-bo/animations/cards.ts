@@ -67,3 +67,23 @@ export function handStep(count: number): number {
   if (count <= HAND_SPREAD_MAX) return HAND_GAP;
   return (HAND_MAX_WIDTH - 1) / (count - 1) - 1;
 }
+
+/**
+ * Largura de referência de uma mão MINI (a de um rival na mesa única),
+ * em cartas. Bem menor que a da mão cheia porque são até três assentos
+ * por fileira numa casca de 480px: a mão do rival é para se CONTAR e
+ * conferir o que está aberto, não para se ler carta por carta.
+ */
+export const MINI_HAND_MAX_WIDTH = 2.5;
+
+/**
+ * Deslocamento entre cartas de uma mão mini. Duas cartas (a
+ * distribuição) abrem com respiro; da terceira em diante elas se
+ * sobrepõem o quanto for preciso para a mão nunca passar de
+ * `MINI_HAND_MAX_WIDTH` — é o que mantém seis assentos dentro da tela
+ * mesmo com todas as mãos crescendo.
+ */
+export function miniHandStep(count: number): number {
+  if (count <= 2) return HAND_GAP;
+  return (MINI_HAND_MAX_WIDTH - 1) / (count - 1) - 1;
+}

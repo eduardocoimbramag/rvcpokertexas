@@ -270,7 +270,9 @@ function HandTotal({ side, value, partial }: HandTotalProps) {
  */
 function moveLabel(move: TableMove): string {
   if (move.by === 'player' && move.bust) return 'ESTOUROU';
-  if (move.timedOut) return 'TEMPO — PAROU';
+  // Relógio zerado NÃO ganha rótulo próprio: a mesa parou a mão, e o que
+  // aconteceu na mesa foi exatamente isso — "PAROU". Anunciar o motivo
+  // ("tempo") é ruído; o jogador viu o relógio zerar.
   return move.action === 'hit' ? 'PEDIU CARTA' : 'PAROU';
 }
 
@@ -356,8 +358,12 @@ function DoubleCta({
 
   return (
     <div className={`double-cta double-cta--${status}`} data-double-status={status}>
+      {/* `secondary`, não `ghost`: o convite da dobra é uma peça CHAPADA
+          do vinho da casa em qualquer estado. O fantasma translúcido lia
+          como botão desligado sobre o feltro claro mesmo quando estava
+          clicável — e o fogo continua exclusivo do aceite. */}
       <Button
-        variant="ghost"
+        variant="secondary"
         onClick={onRequest}
         disabled={status !== 'idle' || !enabled}
         size="md"
@@ -655,17 +661,15 @@ export function HandsArena({
           delayFor={playerDelay}
           ablaze={playerAblaze}
         />
+        {/* A SUA placa não anuncia a sua vez: você sabe se já escolheu —
+            quem precisa de aviso é o outro lado da mesa. O que entra aqui
+            é só o veredito do showdown. O ponto aceso da placa (active)
+            continua marcando que a mesa espera o seu martelo. */}
         <Nameplate
           side="player"
           name="Você"
           active={playerThinking}
-          status={
-            revealed
-              ? playerVerdict
-              : choosing && !round?.playerClosed
-                ? { label: playerThinking ? 'ESCOLHENDO…' : 'PRONTO', tone: 'ready' }
-                : null
-          }
+          status={revealed ? playerVerdict : null}
         />
       </section>
 

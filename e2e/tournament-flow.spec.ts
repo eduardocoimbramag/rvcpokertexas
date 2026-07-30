@@ -131,6 +131,89 @@ test('sala privada: características escolhidas na criação, senha na porta', a
   await expect(page.getByTestId('settings-password')).toContainText('4821');
 });
 
+test('mesa única: 3 a 6 assentos, todos no mesmo feltro, melhor de 3', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByTestId('tournament-button').click();
+  await page.getByTestId('create-room').click();
+
+  // O formato manda na régua de tamanhos: chaveamento em potências de 2,
+  // mesa única de 3 a 6 assentos.
+  await expect(page.getByTestId('create-size-16')).toBeVisible();
+  await expect(page.getByTestId('create-size-3')).toHaveCount(0);
+  await page.getByTestId('create-format-table').click();
+  await expect(page.getByTestId('create-size-16')).toHaveCount(0);
+  for (const size of [3, 4, 5, 6]) {
+    await expect(page.getByTestId(`create-size-${size}`)).toBeVisible();
+  }
+
+  // Na mesa única a premiação é de UM só: 3 taxas de 100 = 300, menos os
+  // 10% da casa → 270 para quem levar as 3 rodadas.
+  await page.getByTestId('create-size-4').click();
+  await page.getByTestId('create-fee').fill('100');
+  await expect(page.getByTestId('create-prize')).toContainText('270');
+  await expect(page.getByTestId('create-prize')).toContainText('Campeão');
+
+  await page.getByTestId('create-confirm').click();
+
+  // A ficha da sala anuncia o formato e o alvo da série.
+  await page.getByTestId('lobby-settings').click();
+  await expect(page.getByTestId('settings-format')).toContainText('Mesa única');
+  await expect(page.getByTestId('settings-format')).toContainText('Melhor de 3');
+  await page.getByRole('button', { name: 'Fechar' }).click();
+
+  const start = page.getByTestId('start-tournament');
+  await expect(start).toBeEnabled({ timeout: 60_000 });
+  await start.click();
+
+  // A mesa abre com TODOS sentados — não há chaveamento nem pareamento.
+  await expect(page.getByTestId('table-rivals')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('table-round')).toContainText('Rodada 1');
+  await expect(page.getByTestId('table-rivals').locator('[data-spectator]')).toHaveCount(3);
+
+  // A sua mão abre em tamanho cheio, com o relógio de 20 s da casa.
+  await expect(page.getByTestId('table-clock')).toBeVisible({ timeout: 40_000 });
+  await expect(page.getByTestId('table-hand-you')).toBeVisible();
+
+  // As SUAS cartas são maiores que as dos rivais — é a assimetria pedida.
+  const yours = await page.getByTestId('table-hand-you').locator('.card-scene').first().boundingBox();
+  const rival = await page.getByTestId('table-rivals').locator('.card-scene').first().boundingBox();
+  expect(yours?.width ?? 0).toBeGreaterThan((rival?.width ?? 0) * 1.5);
+
+  // Joga a rodada até a mesa dar o veredito.
+  const verdict = page.getByTestId('table-verdict');
+  const deadline = Date.now() + 90_000;
+  while (!(await verdict.isVisible().catch(() => false)) && Date.now() < deadline) {
+    const stand = page.getByTestId('table-stand');
+    if (await stand.isVisible().catch(() => false)) {
+      await stand.click({ timeout: 1_500 }).catch(() => undefined);
+    }
+    await page.waitForTimeout(300);
+  }
+  await expect(verdict).toBeVisible({ timeout: 5_000 });
+
+  // O viewport é fixo: a mesa de N assentos tem de CABER nele. Medir o
+  // documento não serve de nada (o #root tem overflow hidden, então ele
+  // nunca rola — a asserção passaria mesmo com conteúdo cortado): o que
+  // vale é o #root transbordar por dentro e a barra de ações continuar
+  // inteira dentro da tela.
+  const fit = await page.evaluate(() => {
+    const root = document.getElementById('root');
+    const actions = document.querySelector('.arena-actions');
+    return {
+      rootOverflowV: root ? root.scrollHeight - root.clientHeight : -1,
+      rootOverflowH: root ? root.scrollWidth - root.clientWidth : -1,
+      actionsBottom: actions ? Math.round(actions.getBoundingClientRect().bottom) : -1,
+      viewportH: window.innerHeight,
+    };
+  });
+  expect(fit.rootOverflowV).toBeLessThanOrEqual(1);
+  expect(fit.rootOverflowH).toBeLessThanOrEqual(1);
+  expect(fit.actionsBottom).toBeGreaterThan(0);
+  expect(fit.actionsBottom).toBeLessThanOrEqual(fit.viewportH);
+});
+
 test('entrar numa sala passa por uma confirmação com a taxa', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');
@@ -194,28 +277,31 @@ test('o veredito fica centrado entre a mesa e o botão', async ({ page }) => {
   await page.waitForTimeout(900);
 
   const metrics = await page.evaluate(() => {
-    const blockEl = document.querySelector('[data-testid="tournament-result-block"]');
     const titleEl = document.querySelector('[data-testid="tournament-result-title"]');
     const buttonEl = document.querySelector('[data-testid="back-to-bracket"]');
-    if (!blockEl || !titleEl || !buttonEl) throw new Error('resultado do torneio não encontrado');
-    const block = blockEl.getBoundingClientRect();
+    if (!titleEl || !buttonEl) throw new Error('resultado do torneio não encontrado');
     const title = titleEl.getBoundingClientRect();
     const button = buttonEl.getBoundingClientRect();
-    // As placas de placar flanqueiam a dealer, bem acima do veredito.
+    // As placas de placar assentam no feltro, acima do veredito — e é da
+    // BASE delas que a faixa livre começa (o bloco do resultado reserva
+    // essa altura em padding, porque as placas são absolutas).
     const plates = [...document.querySelectorAll('.score-plate')].map((el) =>
       el.getBoundingClientRect(),
     );
     const platesBottom = plates.length > 0 ? Math.max(...plates.map((r) => r.bottom)) : 0;
     return {
-      midpoint: (block.top + button.top) / 2,
+      platesBottom,
+      midpoint: (platesBottom + button.top) / 2,
       titleCenter: (title.top + title.bottom) / 2,
       platesAboveTitle: platesBottom < title.top,
     };
   });
 
   // As placas ficam acima do veredito, e o veredito no meio exato da
-  // faixa livre entre o topo do bloco e o botão (tolerância de
-  // sub-pixel — as cópias invisíveis compensam contagem e subtítulo).
+  // faixa livre ENTRE elas e o botão (as cópias invisíveis do bloco
+  // compensam contagem e subtítulo; a reserva do padding é declarada em
+  // rem, daí a tolerância de alguns pixels).
+  expect(metrics.platesBottom).toBeGreaterThan(0);
   expect(metrics.platesAboveTitle).toBe(true);
-  expect(Math.abs(metrics.titleCenter - metrics.midpoint)).toBeLessThanOrEqual(1.5);
+  expect(Math.abs(metrics.titleCenter - metrics.midpoint)).toBeLessThanOrEqual(4);
 });

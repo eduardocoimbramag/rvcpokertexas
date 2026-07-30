@@ -11,8 +11,14 @@ import { MIN_STAKE } from '../../engine/credits';
 import { useGameStore } from '../../store/gameStore';
 import { randomLobbyPassword, suggestLobbyName } from '../simulation';
 import { useTournamentStore } from '../tournamentStore';
-import type { LobbyVisibility, TournamentSize } from '../types';
-import { TOURNAMENT_SIZES } from '../types';
+import type { LobbyVisibility, TournamentFormat, TournamentSize } from '../types';
+import {
+  TABLE_TARGET_WINS,
+  TOURNAMENT_FORMATS,
+  defaultSizeFor,
+  formatLabel,
+  sizesFor,
+} from '../types';
 import { PrizeSplit } from './PrizeSplit';
 
 export interface CreateLobbySheetProps {
@@ -42,7 +48,8 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
 
   const [visibility, setVisibility] = useState<LobbyVisibility>('public');
   const [name, setName] = useState(suggestLobbyName);
-  const [size, setSize] = useState<TournamentSize>(8);
+  const [format, setFormat] = useState<TournamentFormat>('bracket');
+  const [size, setSize] = useState<TournamentSize>(defaultSizeFor('bracket'));
   // A taxa é texto enquanto se digita (o campo precisa poder ficar
   // vazio); o número derivado alimenta a validação E a premiação, que
   // por isso recalcula a cada tecla.
@@ -66,10 +73,17 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
         : null;
   const error = nameError ?? passwordError ?? feeError;
 
+  /** Trocar de formato troca a régua de tamanhos: o valor antigo pode não
+   *  existir no formato novo (16 não é mesa; 3 não é chaveamento). */
+  const chooseFormat = (next: TournamentFormat) => {
+    setFormat(next);
+    setSize(defaultSizeFor(next));
+  };
+
   const submit = () => {
     setTouched(true);
     if (error) return;
-    createLobby({ name: trimmed, visibility, size, fee, password });
+    createLobby({ name: trimmed, visibility, format, size, fee, password });
     onClose();
   };
 
@@ -148,21 +162,55 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
           )}
         </AnimatePresence>
 
+        {/* O FORMATO manda no resto da folha: ele define a régua de
+            tamanhos e o desenho da premiação. Escolhido aqui, vira
+            contrato — a sala nasce sendo uma coisa ou a outra. */}
+        <Field label="Formato">
+          <div className="seg seg--full" role="group" aria-label="Formato da sala">
+            {TOURNAMENT_FORMATS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => chooseFormat(option)}
+                aria-pressed={format === option}
+                className={`seg__btn ${format === option ? 'seg__btn--on' : ''}`}
+                data-testid={`create-format-${option}`}
+              >
+                <Icon
+                  name={option === 'bracket' ? 'trophy' : 'users'}
+                  size="0.95em"
+                  className="mr-1 inline align-[-0.1em]"
+                />
+                {formatLabel(option)}
+              </button>
+            ))}
+          </div>
+          <p className="field__hint">
+            {format === 'bracket'
+              ? 'Mata-mata em duelos 1v1 até a final, com pódio premiado.'
+              : `Todos na mesma mesa: melhor de ${TABLE_TARGET_WINS} — quem vencer ${TABLE_TARGET_WINS} rodadas leva o bolo.`}
+          </p>
+        </Field>
+
         {/* O quantitativo se decide AQUI e vira contrato: depois de criada
             a sala, não há onde mudá-lo. Com 16, o chaveamento abre nas
-            oitavas de final. */}
+            oitavas de final; a mesa única vai de 3 a 6 assentos. */}
         <Field label="Jogadores">
           <div className="seg seg--full" role="group" aria-label="Número de jogadores">
-            {TOURNAMENT_SIZES.map((n) => (
+            {sizesFor(format).map((n) => (
               <button
                 key={n}
                 type="button"
                 onClick={() => setSize(n)}
                 aria-pressed={size === n}
+                aria-label={`${n} jogadores`}
                 className={`seg__btn ${size === n ? 'seg__btn--on' : ''}`}
                 data-testid={`create-size-${n}`}
               >
-                {n} jogadores
+                {/* Com quatro opções (mesa única) o rótulo inteiro não
+                    cabe na coluna: fica o número, que o rótulo do campo
+                    já qualifica. */}
+                {format === 'bracket' ? `${n} jogadores` : n}
               </button>
             ))}
           </div>
@@ -188,7 +236,7 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
         {/* Recalcula a cada tecla: a premiação é função direta da taxa e
             do tamanho da mesa, então acompanha o campo acima ao vivo. */}
         <Field label="Premiação">
-          <PrizeSplit fee={fee} size={size} data-testid="create-prize" />
+          <PrizeSplit fee={fee} size={size} format={format} data-testid="create-prize" />
         </Field>
 
         <Button onClick={submit} size="md" fullWidth data-testid="create-confirm">

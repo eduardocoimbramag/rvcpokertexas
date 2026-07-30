@@ -472,7 +472,7 @@ export function TournamentMatchScreen() {
               )}
               {phase === 'completed' && (
                 <motion.div
-                  className="relative flex flex-1 flex-col items-center pb-4"
+                  className="result-stage relative flex flex-1 flex-col items-center pb-4"
                   initial={reducedMotion ? false : { opacity: 0, y: 24 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ type: 'spring', damping: 20, stiffness: 260 }}
@@ -513,7 +513,7 @@ export function TournamentMatchScreen() {
                       {subtitle}
                     </p>
                     <p
-                      className={`font-display text-engraved text-4xl font-bold tracking-wide ${youWin ? 'text-[#7a4503]' : 'text-[#8f1616]'}`}
+                      className={`result-title font-display text-engraved font-bold tracking-wide ${youWin ? 'text-[#7a4503]' : 'text-[#8f1616]'}`}
                       data-testid="tournament-result-title"
                     >
                       {youWin ? 'VITÓRIA!' : 'DERROTA'}

@@ -84,6 +84,15 @@ h2 {
      4rem + 1px, e o CSS não deixa uma media query ler custom property. */
   --app-shell-w: 480px;
 
+  /* Altura reservada para o composer da rodada de negociação, em TODA a
+     fase: relógio (1,1rem) + campo (2,75rem) + enviar (2,75rem) + sair
+     (2,75rem) + os respiros entre eles e as bordas. Reservar o slot é o
+     que mantém o feltro do MESMO tamanho com e sem o composer — e é por
+     isso que os dois letreiros ("rodada de negociação" e "hora do
+     duelo") caem exatamente no mesmo lugar. Mesmo contrato do
+     --arena-actions-h da mesa 1v1. */
+  --nego-actions-h: 12.4rem;
+
   /* Altura reservada para a barra de ações da rodada, em TODAS as fases
      da mesa (ver .arena-actions): duas fileiras de botão `size="md"`
      (2×2,75rem) + o relógio da vez (1,2rem) + os dois respiros entre
@@ -175,8 +184,8 @@ h2 {
   z-index: -1;
   width: var(--scene-stage-w);
   translate: -50%;
-  /* o salão Art Déco (1024×1536, ancorado no lustre) */
-  background-image: url('/fundocassino.webp');
+  /* o salão Art Déco (1024×1536, ancorado na luminária do teto) */
+  background-image: url('/fundocassinobot.webp');
   background-size: cover;
   background-position: center top;
   background-repeat: no-repeat;
@@ -325,7 +334,7 @@ h2 {
     content: '';
     position: absolute;
     inset: -12%;
-    background-image: url('/fundocassino.webp');
+    background-image: url('/fundocassinobot.webp');
     background-size: 100% 100%;
     background-position: center;
     filter: blur(60px) saturate(0.95);
@@ -441,6 +450,29 @@ h2 {
      estourar em aparelhos baixos. */
   --dealer-h: clamp(160px, 28vh, 260px);
   --dealer-h: clamp(160px, 28dvh, 260px);
+
+  /* FAIXA DE SEGURANÇA LATERAL — a mesma dos CTAs, que a escrevem em
+     Tailwind (`w-[min(100%,80vw)] max-w-96`). Nenhuma peça de mesa passa
+     dela: é o que garante que nada encoste na borda da tela. O `100%`
+     resolve contra o contêiner de quem usa a variável, então a conta vale
+     em qualquer largura. */
+  --safe-band: min(100%, 80vw, 24rem);
+
+  /* Onde as placas de placar do desfecho assentam, medido do topo da
+     área de jogo. O valor põe as duas DENTRO do feltro: mais alto que
+     isto e elas montam no trilho de mogno, saindo da mesa. Deriva de
+     --dealer-h como toda a geometria da cena. */
+  --score-plate-top: calc(var(--dealer-h) * 0.3);
+
+  /* Recuo lateral das placas: metade do que sobra entre o palco e a faixa
+     de segurança. Com ele, a borda externa de cada placa cai EXATAMENTE
+     na borda dos botões de "jogar de novo"/"início" — o que aproxima as
+     duas placas entre si, que é o espaço de onde a margem sai. */
+  --score-plate-inset: calc((100% - var(--safe-band)) / 2);
+  /* Altura de uma placa (nome + total + acolchoamento + aro). É reserva
+     de LAYOUT: as placas são absolutas e não empurram nada, então é este
+     número que o veredito desconta para se centrar abaixo delas. */
+  --score-plate-h: 4.45rem;
 }
 
 /* Recorte do pano de fundo da cena (dealer + mesa): estende o clip até
@@ -680,7 +712,7 @@ h2 {
    posicionada na altura da cabeça da dealer (deriva de --dealer-h). */
 .score-plate {
   position: absolute;
-  top: calc(var(--dealer-h) * 0.14);
+  top: var(--score-plate-top);
   z-index: 1;
   display: flex;
   flex-direction: column;
@@ -697,12 +729,12 @@ h2 {
 }
 
 .score-plate--player {
-  left: 2%;
+  left: var(--score-plate-inset);
   border: 2px solid var(--color-player);
 }
 
 .score-plate--opponent {
-  right: 2%;
+  right: var(--score-plate-inset);
   border: 2px solid var(--color-opponent);
 }
 
@@ -725,6 +757,29 @@ h2 {
   font-variant-numeric: tabular-nums;
   color: var(--color-ivory);
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* ---------- Veredito da rodada (fase completed) ---------- */
+
+/* O palco do desfecho. As placas de placar são ABSOLUTAS (não empurram
+   nada), então o respiro de topo desconta a faixa que elas ocupam: com
+   ele, os dois espaçadores `grow` do banner centram o veredito na faixa
+   que sobra ENTRE as placas e os botões — e não entre o topo da mesa e
+   os botões, que jogava o texto alto demais.
+
+   Fora do palco com cenário a variável não existe, o `calc` fica
+   inválido e o respiro simplesmente não se aplica. É o comportamento
+   certo: sem cenário não há placas, os totais entram em FLUXO e o
+   espaçamento vem deles. */
+.result-stage {
+  padding-top: calc(var(--score-plate-top) + var(--score-plate-h));
+}
+
+/* O veredito é a manchete da tela: escala com a largura, com piso e teto
+   para não quebrar linha em "VITÓRIA!" nem encostar nas placas. */
+.result-title {
+  font-size: clamp(2.75rem, 12vw, 3.75rem);
+  line-height: 1;
 }
 
 /* O vencedor ganha aro dourado, halo e o total em champagne. */
@@ -803,10 +858,13 @@ h2 {
   pointer-events: none;
 }
 
+/* O halo da brasa. O raio é CURTO: com ele largo a luz de uma carta
+   alcançava a vizinha e as duas pareciam encostadas — o contorno tem de
+   dizer "esta mão está pegando fogo", não pintar o feltro em volta. */
 .card-scene--ablaze::after {
-  inset: calc(var(--card-size, var(--card-w)) * -0.12);
-  filter: blur(calc(var(--card-size, var(--card-w)) * 0.11));
-  opacity: 0.7;
+  inset: calc(var(--card-size, var(--card-w)) * -0.085);
+  filter: blur(calc(var(--card-size, var(--card-w)) * 0.075));
+  opacity: 0.62;
   animation:
     fire-turn 4.1s linear infinite reverse,
     fire-breathe 1.3s ease-in-out infinite;
@@ -955,6 +1013,42 @@ h2 {
   line-height: 0.9;
   letter-spacing: -0.02em;
   font-variant-numeric: lining-nums;
+}
+
+/* Face COMPACTA (mão de rival na mesa única): um índice só, grande e
+   centrado. A ~30px de largura o arranjo de pips vira mancha e os dois
+   índices de canto ficam ilegíveis; o que sobra de informação útil é
+   qual valor e qual naipe, e é isso que esta face grava em tamanho
+   máximo. Mesmo papel, mesma tinta — outra gravação. */
+/* Ancorado à ESQUERDA, não centrado: numa mão de cinco ou seis cartas as
+   mini se sobrepõem em ~70% (ver miniHandStep), e é a coluna da esquerda
+   que continua à vista. É o mesmo motivo pelo qual um baralho de verdade
+   tem índice de canto — a carta precisa se anunciar mesmo coberta. */
+.card3d__compact {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3%;
+  padding: 6% 8%;
+}
+
+.card3d__compact-rank {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: calc(var(--card-size, var(--card-w)) * 0.42);
+  line-height: 0.86;
+  letter-spacing: -0.04em;
+  font-variant-numeric: lining-nums;
+}
+
+/* O tamanho do naipe é aplicado INLINE no <svg> pelo SuitGlyph (ver
+   Card3D): uma regra aqui perderia do atributo de estilo. O que sobra
+   para o CSS é o alinhamento. */
+.card3d__compact svg {
+  margin-left: 4%;
 }
 
 /* ---------- Miolo da carta ---------- */
@@ -1212,6 +1306,43 @@ h2 {
   .title-royal::after {
     display: none;
   }
+}
+
+/* ---------- Logotipo da marca (tela inicial) ---------- */
+
+/* Três andares — BLACK / JACK / ARENA — justificados na MESMA largura.
+   O bloco mede `max-content` (a largura natural da linha mais larga) e
+   cada linha se estica a 100% dele distribuindo as próprias letras
+   (`space-between`): a linha mais larga fica com espacejamento zero e as
+   outras abrem o quanto for preciso para fechar nas mesmas duas bordas.
+   É o desenho de um letreiro gravado — nenhuma linha "sobra" à direita —
+   e não depende de acertar um letter-spacing por palavra à mão.
+
+   O tamanho tem guard de ALTURA além do de largura (o mesmo idioma de
+   --card-w): três andares num aparelho baixo não podem empurrar os
+   botões da Home para fora da tela. */
+.brand-title {
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  flex-direction: column;
+  font-size: clamp(2.5rem, 15vw, 3.75rem);
+  font-size: clamp(2.5rem, min(15vw, 7.5dvh), 3.75rem);
+  font-weight: 900;
+  line-height: 0.94;
+  /* O espacejamento é o do justify: um tracking global brigaria com ele
+     (e deixaria um vão sobrando depois da última letra de cada linha). */
+  letter-spacing: 0;
+}
+
+.brand-title__line {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.brand-title__line--gold {
+  color: var(--color-gold);
 }
 
 /* Marca "VS" da apresentação de duelo: ouro metálico com contorno. */
@@ -1802,11 +1933,13 @@ h2 {
 }
 
 /* A segunda língua de fogo: mais larga, borrada e girando ao contrário —
-   é ela que dá volume à chama e a faz "lamber" a borda. */
+   é ela que dá volume à chama e a faz "lamber" a borda. O raio é curto de
+   propósito: com o halo largo a brasa passava do botão e sujava o feltro
+   em volta. */
 .double-cta--accepted::after {
-  inset: -5px;
-  filter: blur(7px);
-  opacity: 0.75;
+  inset: -3.5px;
+  filter: blur(5px);
+  opacity: 0.7;
   animation:
     fire-turn 4.1s linear infinite reverse,
     fire-breathe 1.3s ease-in-out infinite;
@@ -3454,6 +3587,457 @@ h2 {
   }
 }
 
+/* ==================== Mesa única do torneio ==================== */
+
+/* De 3 a 6 jogadores no MESMO feltro. A assimetria é o desenho: a sua
+   mão fica em tamanho cheio na cabeceira de baixo (é a que você lê para
+   decidir) e os rivais ocupam a metade de cima em assentos compactos —
+   como numa mesa real, onde você vê a sua mão de perto e as dos outros
+   de longe.
+
+   A margem negativa é a mesma da mesa 1v1 (.hands-arena--felt): na
+   câmera vertical a crupiê está fora de quadro, e o espaço que o
+   dealer-spacer reserva para ela volta a ser feltro. */
+.table-arena {
+  /* Carta de rival: metade da carta cheia, com piso legível e teto para
+     não competir com a sua mão. Derivada de --card-w, então acompanha o
+     mesmo guard de largura E altura (dvh) da carta da casa. Cada faixa
+     de profundidade reduz este valor (ver .table-lane). */
+  --card-mini: clamp(1.55rem, calc(var(--card-w) * 0.5), 2.3rem);
+  /* Respiro entre assentos de rival — some junto com eles em tela baixa. */
+  --seat-gap: clamp(0.3rem, 1.4vw, 0.6rem);
+
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  margin-top: calc(var(--dealer-h) * -0.95);
+}
+
+/* O anel de rivais: uma FAIXA por profundidade, empilhadas da mais
+   funda (topo) até a que encosta na sua mão. */
+.table-arena__rivals {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--seat-gap);
+  padding-bottom: 0.3rem;
+}
+
+/* Uma faixa: os assentos dela centrados, e a LARGURA ÚTIL estreitando
+   com a profundidade — a faixa de trás é mais curta que a da frente,
+   que é o que dá a curva de mesa sem rotação nenhuma. `--lane-depth` 0
+   é a faixa da frente. */
+.table-lane {
+  display: flex;
+  width: calc(100% - var(--lane-depth) * 12%);
+  justify-content: center;
+  gap: var(--seat-gap);
+  /* Perspectiva por TAMANHO: cada faixa de profundidade encolhe a carta
+     em 12%. É o que faz a mesa parecer funda — girar as cartas custaria
+     ~40% de altura de bloco e estouraria a tela em 320px. */
+  --card-mini: calc(
+    clamp(1.55rem, calc(var(--card-w) * 0.5), 2.3rem) * (1 - var(--lane-depth) * 0.12)
+  );
+}
+
+/* A curva: numa faixa de três, os assentos das pontas descem um fio —
+   as cadeiras laterais de uma mesa oval ficam mais perto de você que a
+   da cabeceira. Sutil de propósito: é leitura, não ornamento. */
+.table-lane > .rival-seat:first-child:not(:only-child),
+.table-lane > .rival-seat:last-child:not(:only-child) {
+  translate: 0 6%;
+}
+
+/* Assento de rival: pastilha de vinho translúcido sobre o feltro. A
+   base do cálculo é a mão MINI, que nunca passa de 2,5 cartas de
+   largura (ver miniHandStep) — é isso que garante seis assentos dentro
+   da tela mesmo com todas as mãos crescendo. */
+.rival-seat {
+  position: relative;
+  display: flex;
+  flex: 0 1 calc((100% - (var(--lane-cols) - 1) * var(--seat-gap)) / var(--lane-cols));
+  min-width: calc(var(--card-mini) * 2.5);
+  flex-direction: column;
+  align-items: center;
+  gap: 0.12rem;
+  padding: 0.28rem 0.2rem 0.32rem;
+  border-radius: 0.75rem;
+  background: rgba(20, 8, 8, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.16);
+  transition:
+    opacity 0.35s ease,
+    box-shadow 0.35s ease,
+    background 0.35s ease;
+}
+
+/* A casa de aposta gravada no feltro, atrás da mão do assento: um
+   losango de luz baixa, o mesmo vocabulário do brasão da mesa. */
+.rival-seat__spot {
+  position: absolute;
+  bottom: 0.9rem;
+  left: 50%;
+  z-index: 0;
+  width: calc(var(--card-mini) * 2.1);
+  height: calc(var(--card-mini) * 0.7);
+  translate: -50%;
+  border-radius: 9999px;
+  background: radial-gradient(
+    60% 100% at 50% 50%,
+    rgba(252, 217, 160, 0.16),
+    transparent 72%
+  );
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.1);
+  pointer-events: none;
+}
+
+/* A vez dele: o mesmo aro dourado da placa de nome da mesa 1v1 — um
+   vocabulário só para "está decidindo" em todo o jogo. */
+.rival-seat.is-turn {
+  background: rgba(48, 12, 6, 0.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(252, 217, 160, 0.75),
+    0 0 12px rgba(245, 183, 111, 0.3);
+}
+
+/* Espectador: está na mesa, fora DESTA mão (desempate alheio). Apagado
+   e dessaturado — presente, sem peso. */
+.rival-seat--out {
+  opacity: 0.42;
+  filter: saturate(0.55);
+}
+
+/* Venceu a rodada revelada: aro esmeralda, como todo veredito bom da casa. */
+.rival-seat--winner {
+  background: rgba(6, 40, 26, 0.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(52, 211, 153, 0.75),
+    0 0 14px rgba(52, 211, 153, 0.3);
+}
+
+.rival-seat__head {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.rival-seat__badge {
+  flex: none;
+  font-size: 0.62rem;
+}
+
+.rival-seat__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--color-ivory);
+}
+
+.rival-seat__crown {
+  flex: none;
+  color: var(--color-gold-bright);
+}
+
+/* O rodapé do assento (total + estado) nunca pode empurrar o vizinho:
+   ele é limitado à largura do assento e o estado cede primeiro. */
+.rival-seat__foot {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.28rem;
+  overflow: hidden;
+}
+
+.rival-seat__state {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.48rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-lavender);
+}
+
+/* Tela estreita com a faixa cheia (três assentos): o rótulo de estado é
+   o primeiro ornamento a sair — o que não pode faltar é o TOTAL. Medido:
+   em 320-360px de largura os rodapés vizinhos chegavam a se tocar. */
+@media (max-width: 380px) {
+  .rival-seat__state {
+    display: none;
+  }
+}
+
+.rival-seat__state.is-ready {
+  color: #6ee7b7;
+}
+
+/* Assento fora da mão (ou ainda sem cartas): o lugar continua ocupado,
+   com a mesma altura de uma mão mini — a fileira não pula de tamanho. */
+.rival-seat__out {
+  display: grid;
+  min-height: calc(var(--card-mini) * 1.4);
+  place-items: center;
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-lavender);
+}
+
+/* ---------- O contador da série (melhor de 3) ---------- */
+
+/* Três pastilhas que acendem: o placar da série lido de relance, sem
+   número nenhum. Mesmo gesto no assento do rival e no seu. */
+.win-pips {
+  display: inline-flex;
+  gap: 0.14rem;
+}
+
+.win-pip {
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 9999px;
+  background: rgba(203, 169, 138, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.35);
+  transition:
+    background 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.win-pip--on {
+  background: var(--color-gold);
+  box-shadow: 0 0 6px rgba(245, 183, 111, 0.8);
+}
+
+/* ---------- Total de uma mão na mesa única ---------- */
+
+.seat-total {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.1rem;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ivory);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.seat-total--mini {
+  font-size: 0.9rem;
+}
+
+.seat-total.is-bust {
+  color: #ff9d9d;
+}
+
+.seat-total__soft,
+.seat-total__slash {
+  font-size: 0.62em;
+  color: var(--color-lavender);
+}
+
+.seat-total__partial {
+  margin-left: 0.1rem;
+  font-size: 0.5em;
+  font-weight: 800;
+  color: var(--color-lavender);
+}
+
+/* ---------- A sua mão, em tamanho cheio ---------- */
+
+/* A sua mão e a barra de ações moram no PÉ da mesa: `margin-top: auto`
+   joga toda a folga do palco para o meio do feltro — que é onde ela deve
+   estar (o miolo da mesa, com o brasão respirando), e não abaixo dos
+   botões. Sem isto o conjunto inteiro flutuava no terço de cima. */
+.table-arena__you {
+  display: flex;
+  flex: none;
+  margin-top: auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding-top: 0.2rem;
+}
+
+.table-arena__you-score {
+  min-height: var(--arena-total-h);
+  display: grid;
+  place-items: center;
+}
+
+/* Você fora da mão (desempate alheio): a mesa avisa em vez de deixar um
+   vazio onde as suas cartas costumam estar. */
+.table-arena__spectator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: calc(var(--card-w) * 1.4);
+  padding: 0 0.9rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--color-lavender);
+  text-align: center;
+}
+
+/* ---------- HUD da mesa (rodada e bolo) ---------- */
+
+.table-hud {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  background: rgba(20, 4, 4, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(245, 183, 111, 0.26);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-gold);
+}
+
+.table-hud--prize {
+  color: var(--color-ivory);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Anúncio do veredito da rodada ---------- */
+
+/* A voz da mesa entre rodadas: pastilha centrada no feltro, por cima de
+   tudo, com o que aconteceu e o que vem a seguir. */
+.table-verdict {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  z-index: 12;
+  width: min(20rem, 88%);
+  translate: -50% -50%;
+  padding: 0.7rem 1rem 0.75rem;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(76, 10, 21, 0.96) 0%, rgba(30, 6, 12, 0.96) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(245, 183, 111, 0.5),
+    0 12px 30px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.table-verdict__title {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-gold-bright);
+}
+
+.table-verdict__detail {
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: rgba(243, 230, 216, 0.85);
+}
+
+/* ---------- Fim da série ---------- */
+
+.table-over {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 1rem 1.5rem 0;
+  background: radial-gradient(120% 80% at 50% 45%, rgba(20, 4, 4, 0.82), rgba(20, 4, 4, 0.94));
+  text-align: center;
+}
+
+.table-over__title {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.table-over__title--win {
+  color: var(--color-gold);
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
+}
+
+.table-over__title--lose {
+  color: #d24747;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
+}
+
+.table-over__detail {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--color-ivory);
+}
+
+.table-over__fee {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #ff9d9d;
+}
+
+.table-over__return {
+  margin-top: 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--color-lavender);
+}
+
+.table-over .action-stack {
+  margin-top: 0.8rem;
+}
+
+/* Telas baixas: o assento de rival vira o mais enxuto possível — o que
+   cede é o ornamento, nunca a legibilidade da SUA mão. */
+@media (max-height: 620px) {
+  .table-lane {
+    --card-mini: calc(
+      clamp(1.4rem, calc(var(--card-w) * 0.44), 1.9rem) * (1 - var(--lane-depth) * 0.1)
+    );
+  }
+
+  .rival-seat__spot {
+    display: none;
+  }
+
+  .rival-seat {
+    padding-block: 0.18rem 0.22rem;
+  }
+
+  .rival-seat__state {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rival-seat,
+  .win-pip {
+    transition: none;
+  }
+}
+
 /* ==================== Mesa de negociação ==================== */
 
 /* O palco da fase é O FELTRO: a fase começa onde o couro começa (sem a
@@ -3483,6 +4067,15 @@ h2 {
   height: calc(var(--dealer-h) * 0.76);
   min-height: 0;
   flex-shrink: 1;
+}
+
+/* Slot do composer: altura reservada durante a fase inteira. O composer
+   entra e sai por dentro dele (AnimatePresence), então o feltro nunca
+   cresce nem encolhe — as fichas ficam paradas e os dois letreiros
+   dourados nascem no mesmo ponto do palco. */
+.nego-actions {
+  flex: none;
+  min-height: var(--nego-actions-h);
 }
 
 /* ---------- Pílula do rival no HUD (acima da dealer) ---------- */
@@ -3730,19 +4323,6 @@ h2 {
   /* A pilha é cenário, não controle: nunca intercepta um toque que
      mira o ✓/✗ de um balão por cima dela. */
   pointer-events: none;
-  transition:
-    opacity 0.4s ease,
-    filter 0.4s ease,
-    scale 0.4s ease;
-}
-
-/* Com a HORA DO DUELO em cena a pilha recua ao fundo do palco: apaga e
-   desborra atrás do título, sem sair da mesa — a placa do valor segue
-   acesa, porque o número acordado é a notícia do momento. */
-.chip-stack--backstage .chip-stack__pile {
-  opacity: 0.3;
-  filter: blur(2px) saturate(0.8);
-  scale: 0.92;
 }
 
 /* Uma ficha de cassino vista de cima: disco vinho lapidado, marcas de
@@ -3857,11 +4437,16 @@ h2 {
    palco central: entra e sai sem mexer nas fichas. */
 .prop-bubble {
   position: absolute;
-  /* Desce até o FELTRO: encostado no topo do palco, o balão nascia em
-     cima do trilho e o bico esbarrava no peito da crupiê. Aqui a nuvem
-     é da mesa, não dela — o vão deriva de --dealer-h para o
-     afastamento acompanhar a escala da cena. */
-  top: calc(var(--dealer-h) * 0.13);
+  /* A nuvem SAI DO TRONCO de quem está do outro lado da mesa: ela sobe
+     do palco até a altura do peito da crupiê (offset negativo — o palco
+     começa abaixo dela), com o bico apontando para o alto, para ela. É
+     a mesma leitura da nuvem de dobra em cena: a fala vem do rival, não
+     do feltro.
+
+     O valor deriva de --dealer-h porque o alvo é a FIGURA dela: 0,52 da
+     altura do corpo põe o balão entre os ombros e o trilho em qualquer
+     tela, deixando o rosto livre. */
+  top: calc(var(--dealer-h) * -0.52);
   left: 50%;
   z-index: 7;
   display: flex;

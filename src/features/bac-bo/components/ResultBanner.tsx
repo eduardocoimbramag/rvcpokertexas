@@ -36,10 +36,11 @@ export function ResultBanner({ result }: ResultBannerProps) {
     // O banner ocupa toda a faixa livre abaixo das cartas (flex-1) e a
     // divide em: [espaço] · veredito · [espaço] · ações. Os dois
     // espaçadores crescem igual (grow), então o veredito fica
-    // EXATAMENTE no centro vertical entre as cartas e o botão "Jogar de
-    // novo" — em qualquer altura de tela (docs/centralizacao.md).
+    // EXATAMENTE no centro vertical entre as PLACAS DE PLACAR e o botão
+    // "Jogar de novo" — em qualquer altura de tela. Quem desconta a faixa
+    // das placas (que são absolutas) é o respiro de `.result-stage`.
     <motion.div
-      className="relative flex flex-1 flex-col items-center pb-4"
+      className="result-stage relative flex flex-1 flex-col items-center pb-4"
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: 'spring', damping: 20, stiffness: 260 }}
@@ -56,7 +57,7 @@ export function ResultBanner({ result }: ResultBannerProps) {
 
       <div className="flex flex-col items-center gap-0.5">
         <p
-          className={`font-display text-engraved text-4xl font-bold tracking-wide ${copy.className}`}
+          className={`result-title font-display text-engraved font-bold tracking-wide ${copy.className}`}
           data-testid="result-title"
         >
           {copy.title}

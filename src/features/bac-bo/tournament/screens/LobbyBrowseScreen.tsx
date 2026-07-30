@@ -8,6 +8,7 @@ import { formatCredits } from '@/shared/lib/format';
 
 import { useTournamentStore } from '../tournamentStore';
 import type { LobbyListing } from '../types';
+import { formatLabel } from '../types';
 import { CreateLobbySheet } from './CreateLobbySheet';
 import { JoinPrivateSheet } from './JoinPrivateSheet';
 
@@ -97,7 +98,7 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
                 transition={{ delay: i * 0.06 }}
                 className={`lobby-card ${isPrivate ? 'lobby-card--locked' : ''}`}
                 data-testid={`lobby-${lobby.id}`}
-                aria-label={`${lobby.name}${isPrivate ? ', sala privada com senha' : ''}`}
+                aria-label={`${lobby.name}, ${formatLabel(lobby.format)}${isPrivate ? ', sala privada com senha' : ''}`}
               >
                 <span className="lobby-card__crown text-gold" aria-hidden="true">
                   <Icon name={isPrivate ? 'lock' : 'crown'} />
@@ -107,8 +108,15 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
                     <span className="truncate font-bold text-ivory">{lobby.name}</span>
                     {isPrivate && <span className="lobby-card__tag">Senha</span>}
                   </span>
+                  {/* O formato vem antes da taxa: é o que a pessoa
+                      precisa saber para decidir se quer aquela sala. */}
                   <span className="block text-xs text-lavender">
-                    por {lobby.hostName} ·{' '}
+                    <Icon
+                      name={lobby.format === 'bracket' ? 'trophy' : 'users'}
+                      size="0.85em"
+                      className="inline align-[-0.1em]"
+                    />{' '}
+                    {formatLabel(lobby.format)} ·{' '}
                     <Icon name="chip" size="0.85em" className="inline align-[-0.1em]" />{' '}
                     {formatCredits(lobby.fee)}
                   </span>

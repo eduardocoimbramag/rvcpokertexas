@@ -1,6 +1,6 @@
 import { createId } from '@/shared/lib/ids';
 
-import type { Bracket, BracketMatch, TournamentPlayer, TournamentSize } from './types';
+import type { Bracket, BracketMatch, BracketSize, TournamentPlayer } from './types';
 
 /**
  * Lógica pura do chaveamento estilo mata-mata (copa do mundo). Sem efeito
@@ -9,7 +9,7 @@ import type { Bracket, BracketMatch, TournamentPlayer, TournamentSize } from './
  */
 
 /** Monta o chaveamento vazio: 1ª fase pareada, fases seguintes a preencher. */
-export function createBracket(players: readonly TournamentPlayer[], size: TournamentSize): Bracket {
+export function createBracket(players: readonly TournamentPlayer[], size: BracketSize): Bracket {
   const seeded = players.slice(0, size);
   const rounds: BracketMatch[][] = [];
 

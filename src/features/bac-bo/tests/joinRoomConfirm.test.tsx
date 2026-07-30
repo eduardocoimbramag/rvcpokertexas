@@ -24,6 +24,7 @@ const publicLobby: LobbyListing = {
   filled: 2,
   fee: 25,
   visibility: 'public',
+  format: 'bracket',
   password: '',
 };
 
@@ -32,6 +33,7 @@ const privateLobby: LobbyListing = {
   id: 'lobby-priv',
   name: 'Salão Royal',
   visibility: 'private',
+  format: 'bracket',
   password: '4821',
 };
 

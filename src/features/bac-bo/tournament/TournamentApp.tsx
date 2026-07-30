@@ -4,6 +4,7 @@ import { BracketScreen } from './screens/BracketScreen';
 import { ChampionScreen } from './screens/ChampionScreen';
 import { LobbyBrowseScreen } from './screens/LobbyBrowseScreen';
 import { LobbyScreen } from './screens/LobbyScreen';
+import { TableMatchScreen } from './screens/TableMatchScreen';
 import { TournamentMatchScreen } from './screens/TournamentMatchScreen';
 import { useTournamentStore } from './tournamentStore';
 
@@ -41,6 +42,9 @@ export function TournamentApp({ onExit }: TournamentAppProps) {
         {stage === 'lobby' && <LobbyScreen />}
         {stage === 'bracket' && <BracketScreen />}
         {stage === 'match' && <TournamentMatchScreen />}
+        {/* Mesa única: a série inteira (rodadas, desempates e o fim) mora
+            numa tela só — não há chaveamento a que voltar. */}
+        {stage === 'table' && <TableMatchScreen />}
         {stage === 'champion' && <ChampionScreen />}
       </motion.div>
     </AnimatePresence>

@@ -9,6 +9,16 @@ import { useGameStore } from '../store/gameStore';
 import { BalancePill } from './BalancePill';
 import { BrandCard } from './BrandCard';
 
+/**
+ * Os três andares do logotipo, de cima para baixo. "ARENA" é a linha de
+ * ouro — a hierarquia da marca é a mesma de sempre, só empilhada.
+ */
+const BRAND_LINES = [
+  { word: 'BLACK', gold: false },
+  { word: 'JACK', gold: false },
+  { word: 'ARENA', gold: true },
+] as const;
+
 export interface HomeScreenProps {
   onOpenTutorial: () => void;
   onOpenHistory: () => void;
@@ -76,15 +86,24 @@ export function HomeScreen({
         >
           <BrandCard size={80} />
         </motion.span>
-        <h1 className="flex flex-col items-center gap-1.5 text-6xl font-black leading-none tracking-tight">
-          <span>BLACKJACK</span>
-          {/* Letras distribuídas para que "ARENA" tenha a mesma largura de "BLACKJACK". */}
-          <span className="flex w-full justify-between text-gold" aria-hidden="true">
-            {['A', 'R', 'E', 'N', 'A'].map((letter, index) => (
-              <span key={`${letter}-${index}`}>{letter}</span>
-            ))}
-          </span>
-          <span className="sr-only">ARENA</span>
+        {/* Logotipo em três andares. Cada linha DISTRIBUI as próprias
+            letras na largura do bloco (que é a da linha mais larga), então
+            as três terminam exatamente alinhadas nas duas bordas — o
+            espacejamento sai da geometria, não de um letter-spacing
+            chutado linha por linha. O rótulo acessível é a marca inteira:
+            três linhas soltas leriam "Black. Jack. Arena.". */}
+        <h1 className="brand-title" aria-label="Blackjack Arena">
+          {BRAND_LINES.map(({ word, gold }) => (
+            <span
+              key={word}
+              className={`brand-title__line ${gold ? 'brand-title__line--gold' : ''}`}
+              aria-hidden="true"
+            >
+              {[...word].map((letter, index) => (
+                <span key={`${letter}-${index}`}>{letter}</span>
+              ))}
+            </span>
+          ))}
         </h1>
       </motion.div>
 

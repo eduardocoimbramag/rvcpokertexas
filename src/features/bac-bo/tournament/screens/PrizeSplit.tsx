@@ -2,21 +2,44 @@ import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
 import { PODIUM_METALS } from '../podium';
-import { PRIZE_SHARES, prizeFor } from '../tournamentStore';
-import type { TournamentSize } from '../types';
+import { PRIZE_SHARES, prizeFor, tablePrize } from '../tournamentStore';
+import type { TournamentFormat, TournamentSize } from '../types';
+import { TABLE_TARGET_WINS } from '../types';
 
 export interface PrizeSplitProps {
   fee: number;
   size: TournamentSize;
+  /** Chaveamento paga pódio; mesa única paga o campeão. */
+  format: TournamentFormat;
   'data-testid'?: string;
 }
 
 /**
- * A tabela de prêmios da sala: quem sobe ao pódio e com quanto. Os três
- * valores saem do bolo das taxas dos derrotados, já sem a comissão da
- * casa — é o número que cai no saldo, não uma promessa bruta.
+ * A tabela de prêmios da sala. Os valores saem do bolo das taxas dos
+ * derrotados, já sem a comissão da casa — é o número que cai no saldo,
+ * não uma promessa bruta.
+ *
+ * O desenho segue o FORMATO: o chaveamento tem pódio (50/30/20, três
+ * linhas), a mesa única tem uma linha só — quem leva 3 rodadas leva
+ * tudo. Não é um caso especial da tabela: é outra tabela.
  */
-export function PrizeSplit({ fee, size, 'data-testid': testId }: PrizeSplitProps) {
+export function PrizeSplit({ fee, size, format, 'data-testid': testId }: PrizeSplitProps) {
+  if (format === 'table') {
+    const gold = PODIUM_METALS[0];
+    return (
+      <div className="prize-split" data-testid={testId}>
+        <div className="prize-split__row prize-split__row--gold">
+          <span className="prize-split__place">
+            <Icon name={gold.icon} size="0.95em" className="mr-1 inline align-[-0.15em]" />
+            Campeão
+          </span>
+          <span className="prize-split__share">{TABLE_TARGET_WINS} vitórias</span>
+          <span className="prize-split__value">{formatCredits(tablePrize(fee, size))}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="prize-split" data-testid={testId}>
       {PRIZE_SHARES.map((share, i) => {

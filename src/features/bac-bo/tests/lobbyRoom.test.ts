@@ -9,6 +9,7 @@ import {
   useTournamentStore,
 } from '../tournament/tournamentStore';
 import type { LobbyListing } from '../tournament/types';
+import { sizesFor } from '../tournament/types';
 import type { RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
 
@@ -33,6 +34,7 @@ function listing(overrides: Partial<LobbyListing> = {}): LobbyListing {
     id: 'lobby-1',
     name: 'Mesa Imperial',
     hostName: 'Otto',
+    format: 'bracket',
     size: 4,
     filled: 2,
     fee: 25,
@@ -47,6 +49,7 @@ describe('criação de sala', () => {
     useTournamentStore.getState().createLobby({
       name: '  Mesa Coroa  ',
       visibility: 'private',
+      format: 'bracket',
       size: 4,
       fee: 50,
       password: '4821',
@@ -65,6 +68,7 @@ describe('criação de sala', () => {
     useTournamentStore.getState().createLobby({
       name: 'Mesa Aberta',
       visibility: 'public',
+      format: 'bracket',
       size: 8,
       fee: 10,
       password: '1234',
@@ -76,6 +80,7 @@ describe('criação de sala', () => {
     useTournamentStore.getState().createLobby({
       name: 'Mesa Coroa',
       visibility: 'public',
+      format: 'bracket',
       size: 4,
       fee: 50,
       password: '',
@@ -95,6 +100,7 @@ describe('sala de 16', () => {
     useTournamentStore.getState().createLobby({
       name: 'Copa Grande',
       visibility: 'public',
+      format: 'bracket',
       size: 16,
       fee: 10,
       password: '',
@@ -121,9 +127,14 @@ describe('porta da sala privada', () => {
       // Toda privada da lista tem senha de 4 dígitos; pública, nenhuma.
       if (lobby.visibility === 'private') expect(lobby.password).toMatch(/^\d{4}$/);
       else expect(lobby.password).toBe('');
-      expect([4, 8, 16]).toContain(lobby.size);
+      // O tamanho tem de ser válido PARA O FORMATO da sala: chaveamento
+      // só em potências de 2, mesa única de 3 a 6 assentos.
+      expect(sizesFor(lobby.format)).toContain(lobby.size);
     }
-    // A copa de 16 aparece na vitrine — rara, mas existente.
+    // Os dois formatos convivem na vitrine…
+    expect(lobbies.some((l) => l.format === 'bracket')).toBe(true);
+    expect(lobbies.some((l) => l.format === 'table')).toBe(true);
+    // …e a copa de 16 aparece nela — rara, mas existente.
     expect(lobbies.some((l) => l.size === 16)).toBe(true);
   });
 
@@ -155,6 +166,7 @@ function fullRoom(fee: number, { ready = true } = {}) {
   useTournamentStore.getState().createLobby({
     name: 'Mesa Coroa',
     visibility: 'public',
+    format: 'bracket',
     size: 4,
     fee,
     password: '',
@@ -274,6 +286,7 @@ describe('confirmação da sala', () => {
     useTournamentStore.getState().createLobby({
       name: 'Mesa Coroa',
       visibility: 'public',
+      format: 'bracket',
       size: 4,
       fee: 10,
       password: '',

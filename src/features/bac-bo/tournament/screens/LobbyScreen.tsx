@@ -11,8 +11,9 @@ import { AvatarBadge } from '../../components/AvatarBadge';
 import { OpponentProfileSheet } from '../../components/OpponentProfileSheet';
 import { illustrativeRating } from '../../components/opponentProfile';
 import type { Opponent } from '../../engine/types';
-import { prizeFor, tournamentSelectors, useTournamentStore } from '../tournamentStore';
+import { prizeFor, tablePrize, tournamentSelectors, useTournamentStore } from '../tournamentStore';
 import type { TournamentPlayer } from '../types';
+import { TABLE_TARGET_WINS, formatLabel } from '../types';
 import { TournamentSettingsSheet } from './TournamentSettingsSheet';
 
 /**
@@ -198,6 +199,7 @@ function Seat({
 /** Lobby do torneio: assentos, chat, controles do anfitrião e início. */
 export function LobbyScreen() {
   const lobbyName = useTournamentStore((s) => s.lobbyName);
+  const format = useTournamentStore((s) => s.format);
   const size = useTournamentStore((s) => s.size);
   const entryFee = useTournamentStore((s) => s.entryFee);
   const members = useTournamentStore((s) => s.members);
@@ -228,8 +230,10 @@ export function LobbyScreen() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // No resumo compacto cabe o topo do pódio; a divisão inteira
-  // (50/30/20) vive na ficha da sala, atrás da engrenagem.
-  const prize = prizeFor(1, entryFee, size);
+  // (50/30/20) vive na ficha da sala, atrás da engrenagem. Na mesa única
+  // não há divisão: o campeão leva o bolo.
+  const prize =
+    format === 'table' ? tablePrize(entryFee, size) : prizeFor(1, entryFee, size);
   // A taxa não é debitada aqui — mas o saldo precisa cobri-la, porque é
   // ela que sai se o jogador perder.
   const canAfford = balance >= entryFee;
@@ -279,10 +283,17 @@ export function LobbyScreen() {
         </button>
       </header>
 
-      {/* Resumo: jogadores · taxa de entrada · prêmio do campeão. */}
+      {/* Resumo: formato · jogadores · taxa de entrada · prêmio. */}
       <div className="tournament-summary mb-3">
         <span className="tournament-summary__item flex items-center gap-1.5">
-          <Icon name="users" size="0.95em" /> {members.length}/{size}
+          <Icon name={format === 'bracket' ? 'trophy' : 'users'} size="0.95em" />{' '}
+          {format === 'bracket' ? formatLabel(format) : `Melhor de ${TABLE_TARGET_WINS}`}
+        </span>
+        <span className="tournament-summary__sep" aria-hidden="true">
+          ·
+        </span>
+        <span className="tournament-summary__item flex items-center gap-1.5">
+          <Icon name="user" size="0.95em" /> {members.length}/{size}
         </span>
         <span className="tournament-summary__sep" aria-hidden="true">
           ·

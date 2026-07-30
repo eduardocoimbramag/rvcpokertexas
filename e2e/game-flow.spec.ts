@@ -97,8 +97,9 @@ async function playRound(page: Page, stake: number, stands = 1) {
 test('primeira jogada: tutorial, negociação e a vitória com blackjack', async ({ page }) => {
   await page.goto('/');
 
-  // Home → Tutorial (primeira visita) → busca direta por oponente.
+  // Home → Tutorial (primeira visita, 4 passos) → busca por oponente.
   await page.getByTestId('play-button').click();
+  await page.getByTestId('tutorial-next').click();
   await page.getByTestId('tutorial-next').click();
   await page.getByTestId('tutorial-next').click();
   await page.getByTestId('tutorial-next').click();

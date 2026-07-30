@@ -29,6 +29,17 @@ export interface Card3DProps {
   silent?: boolean;
   /** A mão desta carta é um blackjack: o contorno pega fogo. */
   ablaze?: boolean;
+  /**
+   * Face COMPACTA: um índice grande e centrado (valor + naipe) no lugar
+   * dos dois índices de canto e do campo de pips.
+   *
+   * Não é uma carta "pior": é a mesma carta desenhada para ser lida a
+   * ~30px de largura, o tamanho de uma mão de rival na mesa única. No
+   * tamanho cheio o arranjo de pips é o que faz a carta parecer carta; a
+   * 30px ele vira mancha, e o que resta de informação útil (qual valor,
+   * qual naipe) é justamente o que esta face isola.
+   */
+  compact?: boolean;
   label: string;
 }
 
@@ -67,6 +78,7 @@ export function Card3D({
   dealDelayMs = 0,
   silent = false,
   ablaze = false,
+  compact = false,
   label,
 }: Card3DProps) {
   const reducedMotion = useReducedMotion() ?? false;
@@ -131,13 +143,22 @@ export function Card3D({
           className={`card3d__face card3d__face--front ${red ? 'card3d--red' : 'card3d--black'}`}
           aria-hidden="true"
         >
-          {card && (
-            <>
-              <CornerIndex card={card} />
-              <CornerIndex card={card} bottom />
-              <CardField rank={card.rank} suit={card.suit} />
-            </>
-          )}
+          {card &&
+            (compact ? (
+              <span className="card3d__compact">
+                <span className="card3d__compact-rank">{card.rank}</span>
+                {/* A largura do naipe vem INLINE: o SuitGlyph aplica o
+                    `width` no próprio <svg>, e uma regra de CSS não
+                    venceria o atributo de estilo dele. */}
+                <SuitGlyph suit={card.suit} width="38%" />
+              </span>
+            ) : (
+              <>
+                <CornerIndex card={card} />
+                <CornerIndex card={card} bottom />
+                <CardField rank={card.rank} suit={card.suit} />
+              </>
+            ))}
         </div>
         <div className="card3d__face card3d__face--back" aria-hidden="true">
           <span className="card3d__monogram">

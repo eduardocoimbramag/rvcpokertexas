@@ -3,6 +3,7 @@ import { Sheet } from '@/shared/components/Sheet';
 import { formatCredits } from '@/shared/lib/format';
 
 import { useTournamentStore } from '../tournamentStore';
+import { TABLE_TARGET_WINS, formatLabel } from '../types';
 import { PrizeSplit } from './PrizeSplit';
 
 export interface TournamentSettingsSheetProps {
@@ -16,6 +17,7 @@ export interface TournamentSettingsSheetProps {
  * inclusive), a folha é só leitura.
  */
 export function TournamentSettingsSheet({ open, onClose }: TournamentSettingsSheetProps) {
+  const format = useTournamentStore((s) => s.format);
   const size = useTournamentStore((s) => s.size);
   const entryFee = useTournamentStore((s) => s.entryFee);
   const visibility = useTournamentStore((s) => s.visibility);
@@ -37,6 +39,26 @@ export function TournamentSettingsSheet({ open, onClose }: TournamentSettingsShe
             </span>
             <span className="room-fact__value tracking-[0.2em]">{lobbyCode}</span>
           </div>
+        </div>
+
+        {/* Formato: o que se joga aqui dentro. Vem antes do tamanho
+            porque é ele que dá sentido ao número. */}
+        <div>
+          <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">Formato</p>
+          <div className="room-fact" data-testid="settings-format">
+            <span className="flex items-center gap-2">
+              <Icon name={format === 'bracket' ? 'trophy' : 'users'} />{' '}
+              {formatLabel(format)}
+            </span>
+            <span className="room-fact__value">
+              {format === 'bracket' ? 'Mata-mata' : `Melhor de ${TABLE_TARGET_WINS}`}
+            </span>
+          </div>
+          <p className="field__hint">
+            {format === 'bracket'
+              ? 'Duelos 1v1 em escada até a final, com pódio premiado.'
+              : `Todos na mesma mesa. Quem vencer ${TABLE_TARGET_WINS} rodadas leva o bolo.`}
+          </p>
         </div>
 
         {/* Tamanho: escolhido na criação, exibido como fato consumado —
@@ -85,7 +107,7 @@ export function TournamentSettingsSheet({ open, onClose }: TournamentSettingsShe
 
         <div>
           <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">Premiação</p>
-          <PrizeSplit fee={entryFee} size={size} data-testid="settings-pot" />
+          <PrizeSplit fee={entryFee} size={size} format={format} data-testid="settings-pot" />
         </div>
       </div>
     </Sheet>

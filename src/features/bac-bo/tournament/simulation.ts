@@ -4,6 +4,7 @@ import type {
   ChatMessage,
   LobbyListing,
   LobbyVisibility,
+  TournamentFormat,
   TournamentPlayer,
   TournamentSize,
 } from './types';
@@ -48,6 +49,8 @@ const LOBBY_NAMES = [
   'Copa Borgonha',
   'Arena VIP',
   'Clube dos Ases',
+  'Roda dos Barões',
+  'Mesa do Coringa',
 ];
 
 /**
@@ -140,11 +143,22 @@ export function suggestLobbyName(): string {
  */
 export function makeLobbyListings(): LobbyListing[] {
   return shuffle(LOBBY_NAMES)
-    .slice(0, randInt(3, 5))
+    .slice(0, randInt(4, 6))
     .map((name, index) => {
+      // Os dois formatos convivem na vitrine, com o chaveamento um pouco
+      // mais comum — é a modalidade mais antiga da casa.
+      const format: TournamentFormat = Math.random() < 0.6 ? 'bracket' : 'table';
       const roll = Math.random();
-      // As mesas de 16 existem, mas são raras — como numa casa real.
-      const size: TournamentSize = roll < 0.45 ? 4 : roll < 0.85 ? 8 : 16;
+      const size: TournamentSize =
+        format === 'bracket'
+          ? // As mesas de 16 existem, mas são raras — como numa casa real.
+            roll < 0.45
+            ? 4
+            : roll < 0.85
+              ? 8
+              : 16
+          : // Mesa única: de 3 a 6 assentos, sem preferência.
+            ((3 + Math.floor(roll * 4)) as TournamentSize);
       // Uma em cada três, e nunca a primeira: a lista abre com uma sala
       // de entrada livre em vez de uma porta trancada.
       const visibility: LobbyVisibility =
@@ -153,6 +167,7 @@ export function makeLobbyListings(): LobbyListing[] {
         id: createId(),
         name,
         hostName: pick(HOST_NAMES),
+        format,
         size,
         filled: randInt(1, size - 1),
         fee: pick(SIMULATED_FEES),

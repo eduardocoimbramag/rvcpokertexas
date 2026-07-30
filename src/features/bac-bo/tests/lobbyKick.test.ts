@@ -28,6 +28,7 @@ function openRoom(visibility: LobbyVisibility = 'public'): void {
   useTournamentStore.getState().createLobby({
     name: 'Mesa de teste',
     visibility,
+    format: 'bracket',
     size: 8,
     fee: 10,
     password: visibility === 'private' ? '1234' : '',

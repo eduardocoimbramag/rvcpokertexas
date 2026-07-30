@@ -28,15 +28,19 @@ import {
   systemMessage,
   you,
 } from './simulation';
+import type { TableRoundVerdict, TableStanding, TableWins } from './tableRules';
+import { awardTableWins, judgeTableRound } from './tableRules';
 import type {
   Bracket,
+  BracketSize,
   ChatMessage,
   LobbyListing,
   LobbyVisibility,
+  TournamentFormat,
   TournamentPlayer,
   TournamentSize,
 } from './types';
-import { lobbyPasswordMatches } from './types';
+import { TABLE_TARGET_WINS, lobbyPasswordMatches } from './types';
 
 /**
  * Store do modo Torneio. Orquestra lobby (chat, membros, dono),
@@ -44,7 +48,41 @@ import { lobbyPasswordMatches } from './types';
  * Todo o "multiplayer" é simulado — ver ./simulation.
  */
 
-export type TournamentStage = 'closed' | 'browse' | 'lobby' | 'bracket' | 'match' | 'champion';
+export type TournamentStage =
+  | 'closed'
+  | 'browse'
+  | 'lobby'
+  | 'bracket'
+  | 'match'
+  /** Mesa única: a série inteira acontece numa tela só. */
+  | 'table'
+  | 'champion';
+
+/** Um assento da mesa única, com o contador da série. */
+export interface TableSeriesSeat {
+  player: TournamentPlayer;
+  /** Rodadas vencidas (0 a TABLE_TARGET_WINS). */
+  wins: number;
+}
+
+/**
+ * A série da MESA ÚNICA: todos no mesmo feltro, rodada após rodada, até
+ * alguém chegar a 3 vitórias. As regras de empate e desempate vivem em
+ * ./tableRules — aqui fica só o estado que a mesa mostra.
+ */
+export interface TableSeries {
+  seats: TableSeriesSeat[];
+  /** Rodada corrente (1-based), contando as de desempate. */
+  round: number;
+  /** Quem joga a rodada corrente; quem está fora ASSISTE. */
+  playingIds: string[];
+  /** A rodada corrente é uma rodada de desempate. */
+  tiebreak: boolean;
+  /** Campeão da série (chegou a 3); `null` enquanto ela corre. */
+  championId: string | null;
+  /** Veredito da última rodada julgada — é o que a mesa anuncia. */
+  lastVerdict: TableRoundVerdict | null;
+}
 
 /**
  * Dados prontos para o TournamentMatchScreen abrir a mesa. A partida
@@ -63,6 +101,8 @@ export interface ActiveMatch {
 export interface CreateLobbyOptions {
   name: string;
   visibility: LobbyVisibility;
+  /** Chaveamento mata-mata ou mesa única (melhor de 3). */
+  format: TournamentFormat;
   size: TournamentSize;
   /** Taxa de entrada por jogador — fixa a partir daqui. */
   fee: number;
@@ -77,6 +117,8 @@ export interface TournamentState {
   lobbyCode: string;
   /** Senha da sala privada (vazia nas públicas). */
   password: string;
+  /** Formato da sala, fixo desde a criação. */
+  format: TournamentFormat;
   size: TournamentSize;
   /**
    * Taxa de entrada por jogador, definida na criação da sala. NÃO é
@@ -104,6 +146,8 @@ export interface TournamentState {
   /** Salas anunciadas no navegador — públicas e privadas (com cadeado). */
   lobbies: LobbyListing[];
   bracket: Bracket | null;
+  /** Série da mesa única; `null` fora do formato `table`. */
+  tableSeries: TableSeries | null;
   activeMatch: ActiveMatch | null;
   /** Bots preenchendo/simulando — trava botões durante a animação. */
   simulating: boolean;
@@ -128,6 +172,14 @@ export interface TournamentState {
   /** Grava no chaveamento o resultado que a mesa acabou de decidir. */
   finishMyMatch: (result: RoundResult) => void;
   backToBracket: () => void;
+  /**
+   * Julga a rodada da mesa única a partir das mãos do showdown: aplica os
+   * pontos, decide desempate/campeão e monta a rodada seguinte. Paga o
+   * prêmio (ou cobra a taxa) no instante em que a série fecha.
+   */
+  settleTableRound: (standings: readonly TableStanding[]) => void;
+  /** Encerra a mesa única e abre a coroação. */
+  showTableChampion: () => void;
   leaveTournament: () => void;
 }
 
@@ -138,6 +190,15 @@ export interface TournamentState {
  */
 export function tournamentPot(fee: number, size: TournamentSize): number {
   return fee * (size - 1);
+}
+
+/**
+ * Prêmio da MESA ÚNICA: quem leva 3 rodadas leva o bolo INTEIRO, menos a
+ * comissão da casa — 90% das taxas dos derrotados. Não há pódio aqui: a
+ * mesa tem um campeão e o resto pagou para jogar.
+ */
+export function tablePrize(fee: number, size: TournamentSize): number {
+  return afterHouseEdge(tournamentPot(fee, size));
 }
 
 /** Fatia do bolo (já sem a comissão) de cada lugar do pódio. */
@@ -309,6 +370,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     lobbyName: '',
     lobbyCode: '',
     password: '',
+    format: 'bracket',
     size: 8,
     entryFee: MIN_STAKE,
     feePaid: false,
@@ -319,6 +381,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     chat: [],
     lobbies: [],
     bracket: null,
+    tableSeries: null,
     activeMatch: null,
     simulating: false,
     prizePaid: false,
@@ -328,7 +391,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       set({ stage: 'browse', lobbies: makeLobbyListings() });
     },
 
-    createLobby: ({ name, visibility, size, fee, password }) => {
+    createLobby: ({ name, visibility, format, size, fee, password }) => {
       clearTimers();
       const trimmed = name.trim();
       const code = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -339,6 +402,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         lobbyName: trimmed || (isPrivate ? 'Sua sala privada' : 'Sua sala pública'),
         lobbyCode: code,
         password: isPrivate ? password : '',
+        format,
         size,
         entryFee: fee,
         feePaid: false,
@@ -354,6 +418,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
           ),
         ],
         bracket: null,
+        tableSeries: null,
         activeMatch: null,
         simulating: false,
         prizePaid: false,
@@ -383,6 +448,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         lobbyName: lobby.name,
         lobbyCode: lobby.id.slice(0, 4).toUpperCase(),
         password: lobby.password,
+        format: lobby.format,
         size: lobby.size,
         entryFee: lobby.fee,
         feePaid: false,
@@ -392,6 +458,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         bannedNames: [],
         chat: [systemMessage(`Você entrou em ${lobby.name}.`)],
         bracket: null,
+        tableSeries: null,
         activeMatch: null,
         simulating: false,
         prizePaid: false,
@@ -462,9 +529,32 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       if (useGameStore.getState().balance < s.entryFee) return;
       clearTimers();
       const seeded = shuffle([you(), ...s.members.filter((m) => !m.isYou)]);
+
+      // MESA ÚNICA: ninguém é pareado com ninguém — todos sentam no mesmo
+      // feltro e a série de melhor de 3 começa na primeira rodada.
+      if (s.format === 'table') {
+        set({
+          stage: 'table',
+          bracket: null,
+          tableSeries: {
+            seats: seeded.map((player) => ({ player, wins: 0 })),
+            round: 1,
+            playingIds: seeded.map((player) => player.id),
+            tiebreak: false,
+            championId: null,
+            lastVerdict: null,
+          },
+          chat: [...s.chat, systemMessage('A mesa está aberta! Melhor de 3 — boa sorte.')],
+          simulating: false,
+          prizePaid: false,
+        });
+        return;
+      }
+
       set({
         stage: 'bracket',
-        bracket: createBracket(seeded, s.size),
+        bracket: createBracket(seeded, s.size as BracketSize),
+        tableSeries: null,
         chat: [...s.chat, systemMessage('O torneio começou! Boa sorte.')],
         simulating: false,
         prizePaid: false,
@@ -530,6 +620,89 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       runSimulation();
     },
 
+    settleTableRound: (standings) => {
+      const s = get();
+      const series = s.tableSeries;
+      if (s.stage !== 'table' || !series || series.championId) return;
+
+      const wins: TableWins = Object.fromEntries(
+        series.seats.map((seat) => [seat.player.id, seat.wins]),
+      );
+      const verdict = judgeTableRound(standings, wins, TABLE_TARGET_WINS);
+
+      // Ninguém salvou a mão: a rodada não vale ponto e a mesa
+      // redistribui — mesma rodada, cartas novas.
+      if (verdict.kind === 'void') {
+        audioManager.playSfx('tie');
+        set({
+          tableSeries: { ...series, round: series.round + 1, lastVerdict: verdict },
+        });
+        return;
+      }
+
+      // Empate na decisão: o ponto coroaria dois de uma vez, então
+      // ninguém pontua — a rodada de desempate é que vale, e quem está
+      // fora dela vira espectador.
+      if (verdict.kind === 'tiebreak') {
+        audioManager.playSfx('stake');
+        set({
+          tableSeries: {
+            ...series,
+            round: series.round + 1,
+            playingIds: verdict.contenders,
+            tiebreak: true,
+            lastVerdict: verdict,
+          },
+        });
+        return;
+      }
+
+      const nextWins = awardTableWins(wins, verdict.winners);
+      const seats = series.seats.map((seat) => ({
+        ...seat,
+        wins: nextWins[seat.player.id] ?? seat.wins,
+      }));
+      const championId = verdict.championId;
+
+      if (!championId) {
+        audioManager.playSfx(verdict.winners.includes(YOU_ID) ? 'win' : 'tap');
+        set({
+          tableSeries: {
+            ...series,
+            seats,
+            round: series.round + 1,
+            // Fechado o desempate sem campeão (impossível hoje, mas o
+            // estado não pode ficar preso nele), a mesa volta cheia.
+            playingIds: series.seats.map((seat) => seat.player.id),
+            tiebreak: false,
+            lastVerdict: verdict,
+          },
+        });
+        return;
+      }
+
+      // A série fechou: é AQUI que o dinheiro se move, uma única vez.
+      // O campeão leva 90% do bolo das taxas; todos os outros pagam a sua.
+      if (!s.prizePaid) {
+        set({ prizePaid: true });
+        if (championId === YOU_ID) {
+          useGameStore.getState().applyBalanceDelta(tablePrize(s.entryFee, s.size));
+        } else {
+          chargeEntryFee();
+        }
+      }
+      audioManager.playSfx(championId === YOU_ID ? 'win' : 'lose');
+      set({
+        tableSeries: { ...series, seats, playingIds: [], tiebreak: false, championId, lastVerdict: verdict },
+      });
+    },
+
+    showTableChampion: () => {
+      if (get().stage !== 'table' || !get().tableSeries?.championId) return;
+      clearTimers();
+      set({ stage: 'champion' });
+    },
+
     leaveTournament: () => {
       clearTimers();
       set({
@@ -539,6 +712,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         bannedNames: [],
         chat: [],
         bracket: null,
+        tableSeries: null,
         activeMatch: null,
         simulating: false,
         // Sai sem dívida: quem não perdeu partida não paga taxa.
@@ -551,6 +725,22 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
 /** Seletores derivados usados pelas telas. */
 export const tournamentSelectors = {
   youId: YOU_ID,
+  /** A sala é uma mesa única (melhor de 3) em vez de chaveamento. */
+  isTable: (s: TournamentState) => s.format === 'table',
+  /** O assento do jogador na mesa única. */
+  yourSeat: (s: TournamentState) =>
+    s.tableSeries?.seats.find((seat) => seat.player.id === YOU_ID) ?? null,
+  /** Campeão da mesa única (o assento que chegou a 3). */
+  tableChampion: (s: TournamentState) => {
+    const series = s.tableSeries;
+    if (!series?.championId) return null;
+    return series.seats.find((seat) => seat.player.id === series.championId)?.player ?? null;
+  },
+  /** Você está de fora da rodada corrente (rodada de desempate alheia). */
+  youSpectating: (s: TournamentState) => {
+    const series = s.tableSeries;
+    return !!series && !series.championId && !series.playingIds.includes(YOU_ID);
+  },
   isOwner: (s: TournamentState) => s.ownerId === YOU_ID,
   seatsFull: (s: TournamentState) => s.members.length === s.size,
   youReady: (s: TournamentState) => s.readyIds.includes(YOU_ID),

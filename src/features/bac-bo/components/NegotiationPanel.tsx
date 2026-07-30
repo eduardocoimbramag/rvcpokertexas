@@ -82,16 +82,7 @@ export function NegotiationHud({ match }: NegotiationPanelProps) {
  * bagunça natural de uma pilha real, sem Math.random — os testes e o
  * reduced motion veem sempre a mesma mesa.
  */
-function ChipStack({
-  stake,
-  instant,
-  backstage,
-}: {
-  stake: number;
-  instant: boolean;
-  /** A HORA DO DUELO está em cena: a pilha recua atrás do título. */
-  backstage: boolean;
-}) {
+function ChipStack({ stake, instant }: { stake: number; instant: boolean }) {
   const chips = useMemo(() => {
     const count = Math.min(9, Math.max(3, 2 + Math.round(stake / 50)));
     return Array.from({ length: count }, (_, index) => ({
@@ -103,7 +94,7 @@ function ChipStack({
 
   return (
     <div
-      className={`chip-stack ${backstage ? 'chip-stack--backstage' : ''}`}
+      className="chip-stack"
       data-testid="nego-table"
       role="group"
       aria-label={`Aposta na mesa: ${formatCredits(stake)} créditos`}
@@ -144,9 +135,7 @@ function ChipStack({
           initial={instant ? false : { scale: 1.35, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={
-            instant
-              ? { duration: 0 }
-              : { type: 'spring', stiffness: 300, damping: 20, delay: 0.15 }
+            instant ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 20, delay: 0.15 }
           }
         >
           <Icon name="chip" size="1em" /> {formatCredits(stake)}
@@ -216,9 +205,7 @@ function ProposalBubble({
       initial={instant ? false : { opacity: 0, y: -14, scale: 0.9 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={instant ? { opacity: 0 } : { opacity: 0, y: -12, scale: 0.9 }}
-      transition={
-        instant ? { duration: 0 } : { type: 'spring', stiffness: 360, damping: 24 }
-      }
+      transition={instant ? { duration: 0 } : { type: 'spring', stiffness: 360, damping: 24 }}
     >
       <p className="prop-bubble__title">{title}</p>
       <p className="prop-bubble__amount" data-testid="nego-proposal-amount">
@@ -370,23 +357,17 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
           {starting ? (
             <GoldAnnounce key="duel" text="Hora do duelo" data-testid="nego-duel-announce" />
           ) : announcing ? (
-            <GoldAnnounce
-              key="open"
-              text="Rodada de negociação"
-              data-testid="nego-open-announce"
-            />
+            <GoldAnnounce key="open" text="Rodada de negociação" data-testid="nego-open-announce" />
           ) : null}
         </AnimatePresence>
 
         {/* key={tableStake}: cada valor novo re-monta a pilha — as
-            fichas do acordo deslizam ao centro de novo. */}
-        {!announcing && (
-          <ChipStack
-            key={tableStake}
-            stake={tableStake}
-            instant={instant}
-            backstage={starting}
-          />
+            fichas do acordo deslizam ao centro de novo.
+            Nos dois ANÚNCIOS o feltro fica só com o letreiro: as fichas e
+            a placa saem de cena para o título não dividir o palco com
+            nada (nem com uma versão apagada delas). */}
+        {!announcing && !starting && (
+          <ChipStack key={tableStake} stake={tableStake} instant={instant} />
         )}
 
         <AnimatePresence>
@@ -404,83 +385,93 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
       </div>
 
       {/* Composer + saída na faixa de segurança dos CTAs
-          (docs/margemdeseguranca.md); some inteiro na HORA DO DUELO. */}
-      <AnimatePresence>
-        {!starting && (
-          <motion.div
-            className="mx-auto flex w-[min(100%,80vw)] max-w-96 flex-col gap-2 pb-4 pt-3"
-            initial={instant ? false : { opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={instant ? { opacity: 0 } : { opacity: 0, y: 18, transition: { duration: 0.25 } }}
-            transition={instant ? { duration: 0 } : { delay: 0.2, duration: 0.35, ease: 'easeOut' }}
-          >
-            <NegoClock seconds={secondsLeft} paused={waitingReply || sealed} />
-
-            <form
-              className="flex flex-col gap-1.5"
-              onSubmit={(event) => {
-                event.preventDefault();
-                submit();
-              }}
+          (docs/margemdeseguranca.md). O SLOT tem altura reservada em toda
+          a fase — mesmo idioma da barra de ações da mesa 1v1
+          (.arena-actions): o composer entra e sai sem que o feltro cresça
+          ou encolha, então o letreiro de abertura e o da HORA DO DUELO
+          caem exatamente no mesmo lugar. */}
+      <div className="nego-actions">
+        <AnimatePresence>
+          {!starting && (
+            <motion.div
+              className="mx-auto flex w-[min(100%,80vw)] max-w-96 flex-col gap-2 pb-4 pt-3"
+              initial={instant ? false : { opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={
+                instant ? { opacity: 0 } : { opacity: 0, y: 18, transition: { duration: 0.25 } }
+              }
+              transition={
+                instant ? { duration: 0 } : { delay: 0.2, duration: 0.35, ease: 'easeOut' }
+              }
             >
-              <AmountStepper
-                value={draft}
-                onChange={setDraft}
-                label="Valor da proposta em créditos"
-                placeholder={`Mín. ${MIN_STAKE}`}
-                max={balance}
-                disabled={starting || sealed}
-                data-testid="nego-input"
-                stepTestIdPrefix="nego-plus"
-                inputRef={amountRef}
-                describedBy={hint ? 'nego-hint' : undefined}
-                invalid={overBalance || belowMin}
-              />
-              <Button
-                type="submit"
-                size="md"
-                fullWidth
-                disabled={!canSend}
-                data-testid="nego-send"
-              >
-                {sealed ? (
-                  <>
-                    <Icon name="check" /> ACORDO FECHADO
-                  </>
-                ) : waitingReply ? (
-                  <>
-                    <Icon name="timer" /> AGUARDANDO RESPOSTA…
-                  </>
-                ) : (
-                  <>
-                    <Icon name="send" /> ENVIAR PROPOSTA
-                  </>
-                )}
-              </Button>
-            </form>
+              <NegoClock seconds={secondsLeft} paused={waitingReply || sealed} />
 
-            {/* role="status": o motivo do bloqueio é ANUNCIADO quando
+              <form
+                className="flex flex-col gap-1.5"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  submit();
+                }}
+              >
+                <AmountStepper
+                  value={draft}
+                  onChange={setDraft}
+                  label="Valor da proposta em créditos"
+                  placeholder={`Mín. ${MIN_STAKE}`}
+                  max={balance}
+                  disabled={starting || sealed}
+                  data-testid="nego-input"
+                  stepTestIdPrefix="nego-plus"
+                  inputRef={amountRef}
+                  describedBy={hint ? 'nego-hint' : undefined}
+                  invalid={overBalance || belowMin}
+                />
+                <Button
+                  type="submit"
+                  size="md"
+                  fullWidth
+                  disabled={!canSend}
+                  data-testid="nego-send"
+                >
+                  {sealed ? (
+                    <>
+                      <Icon name="check" /> ACORDO FECHADO
+                    </>
+                  ) : waitingReply ? (
+                    <>
+                      <Icon name="timer" /> AGUARDANDO RESPOSTA…
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="send" /> ENVIAR PROPOSTA
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              {/* role="status": o motivo do bloqueio é ANUNCIADO quando
                 entra — sem ele o leitor de tela só ouviria o enviar
                 esmaecido, sem explicação. */}
-            {hint && (
-              <p className="nego-hint" id="nego-hint" role="status" data-testid="nego-hint">
-                {hint}
-              </p>
-            )}
+              {hint && (
+                <p className="nego-hint" id="nego-hint" role="status" data-testid="nego-hint">
+                  {hint}
+                </p>
+              )}
 
-            <Button
-              variant="secondary"
-              onClick={abandonNegotiation}
-              size="md"
-              fullWidth
-              disabled={sealed}
-              data-testid="nego-quit"
-            >
-              SAIR DA MESA
-            </Button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <Button
+                variant="secondary"
+                onClick={abandonNegotiation}
+                size="md"
+                fullWidth
+                disabled={sealed}
+                data-testid="nego-quit"
+              >
+                SAIR DA MESA
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
