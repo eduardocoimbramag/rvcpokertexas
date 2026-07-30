@@ -135,6 +135,11 @@ describe('NegotiationPanel — mesa de negociação', () => {
     const view = render(<NegotiationHud match={match} />);
     expect(screen.getByTestId('nego-hud')).toHaveTextContent(/Luna\s*Esperando/i);
 
+    // A pílula é um dado COMPOSTO, e o papel `img` faz o leitor de tela
+    // anunciá-la de uma vez: sem ele o rótulo seria descartado e sobraria
+    // o conteúdo cru ("L Luna ESPERANDO").
+    expect(screen.getByRole('img', { name: /Luna: esperando/i })).toBeInTheDocument();
+
     // O lance do rival chama a sua resposta na própria pílula.
     useGameStore.setState({
       negotiation: {
@@ -838,10 +843,94 @@ describe('ResultStage', () => {
   });
 });
 
+/**
+ * Marcações cujo papel IMPLÍCITO já admite nome acessível. Qualquer outra
+ * (span, div, p…) precisa de `role` explícito ao lado do `aria-label`:
+ * sem ele a especificação ARIA proíbe o nome e o leitor de tela descarta
+ * o rótulo em silêncio.
+ */
+const NOMEAVEIS = new Set([
+  'A',
+  'AREA',
+  'ASIDE',
+  'BUTTON',
+  'DIALOG',
+  'FORM',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'IFRAME',
+  'IMG',
+  'INPUT',
+  'MAIN',
+  'METER',
+  'NAV',
+  'OUTPUT',
+  'PROGRESS',
+  'SECTION',
+  'SELECT',
+  'SUMMARY',
+  'TABLE',
+  'TEXTAREA',
+]);
+
+/** Rótulos que o navegador vai jogar fora, com o seletor de cada um. */
+function rotulosMudos(container: HTMLElement): string[] {
+  return [...container.querySelectorAll('[aria-label]')]
+    .filter((el) => !el.hasAttribute('role') && !NOMEAVEIS.has(el.tagName))
+    .map((el) => `${el.tagName.toLowerCase()}[aria-label="${el.getAttribute('aria-label')}"]`);
+}
+
+describe('acessibilidade: nenhum rótulo mudo', () => {
+  /**
+   * Um `aria-label` em elemento sem papel é a pior classe de bug de
+   * acessibilidade: não dá erro, não quebra teste nenhum, não muda um
+   * pixel — o código acha que está entregando a informação e ela nunca
+   * sai. Esta varredura é o que impede o padrão de voltar.
+   */
+  it('Home, histórico e tutorial não têm aria-label descartado', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    // Guarda contra a varredura passar por não ter olhado nada: a Home
+    // tem saldo, ajustes e o logotipo rotulados.
+    expect(container.querySelectorAll('[aria-label]').length).toBeGreaterThanOrEqual(3);
+    expect(rotulosMudos(container)).toEqual([]);
+
+    await user.click(screen.getByTestId('play-button'));
+    expect(rotulosMudos(container)).toEqual([]);
+  });
+
+  it('a folha do histórico não tem, nem vazia nem cheia', () => {
+    const vazia = render(<HistorySheet open onClose={() => undefined} />);
+    expect(rotulosMudos(vazia.container)).toEqual([]);
+    vazia.unmount();
+
+    useGameStore.setState({ history: [sampleEntry] });
+    const cheia = render(<HistorySheet open onClose={() => undefined} />);
+    expect(rotulosMudos(cheia.container)).toEqual([]);
+  });
+
+});
+
 describe('HistorySheet', () => {
   it('mostra estado vazio sem rodadas', () => {
     render(<HistorySheet open onClose={() => undefined} />);
     expect(screen.getByTestId('history-empty')).toBeInTheDocument();
+    // O vazio deixou de ser um beco: tem o brasão da casa e uma saída.
+    expect(screen.getByTestId('history-play')).toBeInTheDocument();
+  });
+
+  it('do vazio dá para sair jogando: o CTA fecha a folha e procura oponente', async () => {
+    const user = userEvent.setup();
+    let aberta = true;
+    render(<HistorySheet open onClose={() => (aberta = false)} />);
+
+    await user.click(screen.getByTestId('history-play'));
+    expect(aberta).toBe(false);
+    expect(useGameStore.getState().phase).toBe('search');
   });
 
   it('lista rodadas persistidas com resultado e variação', () => {

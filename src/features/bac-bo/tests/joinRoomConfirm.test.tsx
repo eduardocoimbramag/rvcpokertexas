@@ -112,4 +112,16 @@ describe('confirmação de entrada na sala', () => {
     expect(s.lobbyName).toBe('Salão Royal');
     expect(s.visibility).toBe('private');
   });
+
+  it('sem sala nenhuma, o vazio tem a cara da casa e aponta a saída', () => {
+    // O estado vazio é visto por quem acabou de chegar. Uma lista que
+    // some sem dizer nada lê como "produto sem conteúdo" — e o caminho
+    // de saída é o botão que já está em cena, não um segundo igual.
+    useTournamentStore.setState({ lobbies: [] });
+    render(<LobbyBrowseScreen onBack={() => undefined} />);
+
+    expect(screen.getByTestId('lobbies-empty')).toHaveTextContent(/nenhuma sala aberta/i);
+    expect(screen.getByTestId('lobbies-empty')).toHaveTextContent(/botão acima/i);
+    expect(screen.getByTestId('create-room')).toBeInTheDocument();
+  });
 });

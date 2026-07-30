@@ -124,7 +124,7 @@ function RivalSeat({
         leading={<AvatarBadge name={seat.player.name} />}
         trailing={
           winner && (
-            <span className="rival-seat__crown" aria-label="Venceu a rodada">
+            <span className="rival-seat__crown" role="img" aria-label="Venceu a rodada">
               <Icon name="crown" size={10} strokeWidth={2.4} />
             </span>
           )

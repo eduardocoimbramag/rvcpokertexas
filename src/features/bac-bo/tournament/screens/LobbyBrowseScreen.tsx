@@ -3,6 +3,8 @@ import { useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog';
+
+import { EmptyState } from '../../components/EmptyState';
 import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
@@ -81,6 +83,14 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
           Salas abertas
         </p>
         <div className="flex flex-col gap-2" data-testid="public-lobbies">
+          {/* Sem CTA próprio: o "CRIAR SALA" já está logo acima, e dois
+              convites iguais na mesma tela viram ruído — o texto aponta
+              para o botão que existe. */}
+          {lobbies.length === 0 && (
+            <EmptyState title="Nenhuma sala aberta" data-testid="lobbies-empty">
+              Crie a sua no botão acima e os outros entram em seguida.
+            </EmptyState>
+          )}
           {lobbies.map((lobby, i) => {
             const isPrivate = lobby.visibility === 'private';
             return (

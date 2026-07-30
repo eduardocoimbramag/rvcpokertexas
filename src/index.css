@@ -2463,6 +2463,56 @@ h2 {
     0 0 24px rgba(245, 183, 111, 0.5);
 }
 
+/* ==================== Estado vazio ==================== */
+
+/* Ver components/EmptyState.tsx: o vazio com a cara da casa, em vez do
+   parágrafo cinza centralizado que lia como "produto sem conteúdo". */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1.5rem 1rem 1.25rem;
+  text-align: center;
+}
+
+/* O brasão como PRESENÇA, não ilustração: mesma silhueta do relevo do
+   couro, aqui em ouro apagado. O desenho vem de `mask-image`, então a
+   tinta mora no CSS e o arquivo continua sendo um SVG só. */
+.empty-state__crest {
+  width: 5.5rem;
+  aspect-ratio: 364 / 476; /* proporção nativa do brasaorvc.svg */
+  margin-bottom: 0.5rem;
+  background: linear-gradient(180deg, var(--color-gold-bright) 0%, var(--color-copper) 100%);
+  opacity: 0.22;
+  -webkit-mask-image: var(--crest-src);
+  mask-image: var(--crest-src);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+.empty-state__title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--color-ivory);
+}
+
+.empty-state__text {
+  max-width: 22rem;
+  font-size: 0.875rem;
+  color: var(--color-lavender);
+}
+
+.empty-state .action-stack {
+  margin-top: 1rem;
+}
+
 /* ==================== Pílula de HUD ==================== */
 
 /* Toda informação de CONTEXTO do jogo tem a mesma forma: identidade à
@@ -2935,6 +2985,20 @@ h2 {
   font-size: 11px;
   font-weight: 900;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+/* ALVO DE TOQUE de 44px sem tocar no desenho: o × continua com 20px de
+   selo e ganha uma área invisível em volta.
+
+   A folga cresce para DENTRO do próprio assento (embaixo e à esquerda),
+   onde só existe canto vazio, e quase nada para fora — o vão entre os
+   assentos é de 8px, e esticar para lá roubaria o toque do VIZINHO.
+   Errar aqui só abre a confirmação de expulsar, que se cancela; errar
+   para o lado abriria o perfil de outra pessoa. */
+.lobby-seat__kick::after {
+  content: '';
+  position: absolute;
+  inset: -8px -4px -16px -20px;
 }
 
 /* ---------- Lobby: chat ---------- */
@@ -4741,6 +4805,7 @@ h2 {
 
 /* Atalhos +10/+100: fichas rápidas de incremento. */
 .amount-stepper__bump {
+  position: relative;
   padding: 0 0.65rem;
   border-radius: 0.8rem;
   background: rgba(76, 10, 21, 0.85);
@@ -4760,6 +4825,17 @@ h2 {
 
 .amount-stepper__bump:disabled {
   opacity: 0.5;
+}
+
+/* Alvo de toque de 44px sem mexer no desenho: o atalho acompanha a
+   altura do campo (~37px) e o "+10" é estreito, então a área tocável
+   transborda 4px em cima e embaixo e 1px de cada lado. Um toque errado
+   aqui MUDA O VALOR DA APOSTA — o vão de 6,4px entre os dois atalhos
+   continua separando as áreas. */
+.amount-stepper__bump::after {
+  content: '';
+  position: absolute;
+  inset: -4px -1px;
 }
 
 /* Dica sob o composer (limites, saldo insuficiente). */

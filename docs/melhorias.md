@@ -9,10 +9,10 @@
 > código e no app rodando, não estimados.
 >
 > **Estado da implementação (30/07/2026):** foram implementados os itens
-> **1.1**, **4.1** e a **seção 3 inteira** (3.1, 3.2 e 3.3). O item
-> **1.2** saiu junto, de graça, porque era a mesma divergência que 3.1
-> resolve na origem. Todo o resto continua sendo proposta — nada mais foi
-> tocado.
+> **1.1**, **4.1**, **4.2**, **4.4**, **5.2** e a **seção 3 inteira**
+> (3.1, 3.2 e 3.3). O item **1.2** saiu junto, de graça, porque era a
+> mesma divergência que 3.1 resolve na origem. Todo o resto continua
+> sendo proposta — nada mais foi tocado.
 
 ---
 
@@ -21,13 +21,13 @@
 | # | Item | Impacto | Esforço | Estado |
 | --- | --- | :-: | :-: | :-: |
 | 1 | [Tutorial fala de um chat que não existe mais](#11-o-tutorial-descrevia-uma-tela-que-não-existe-mais--feito) | 🔴 Alto | 5 min | ✅ Feito |
-| 2 | [Escala tipográfica: 52 tamanhos diferentes](#21-tipografia-52-tamanhos-para-105-declarações) | 🔴 Alto | 3–4 h | — |
+| 2 | [Escala tipográfica: 53 tamanhos diferentes](#21-tipografia-53-tamanhos-para-106-declarações) | 🔴 Alto | 3–4 h | — |
 | 3 | [Foco de teclado ausente em metade dos controles](#41-metade-dos-controles-não-tinha-anel-de-foco--feito) | 🔴 Alto | 1 h | ✅ Feito |
 | 4 | [Três vereditos de fim de partida, três desenhos](#31-três-telas-de-desfecho-com-três-tipografias--feito) | 🟡 Médio | 1–2 h | ✅ Feito |
 | 5 | [Tipos de 7,7px ilegíveis na mesa única](#22-tipo-abaixo-do-legível) | 🟡 Médio | 30 min | — |
-| 6 | [Tokens de cor contornados em 216 lugares](#23-a-paleta-existe-mas-quase-ninguém-usa) | 🟡 Médio | 2–3 h | — |
+| 6 | [Tokens de cor contornados em 220 lugares](#23-a-paleta-existe-mas-quase-ninguém-usa) | 🟡 Médio | 2–3 h | — |
 | 7 | [Histórico e ajustes não têm a identidade do clube](#51-o-histórico-é-a-tela-mais-pobre-do-jogo) | 🟢 Beleza | 2 h | — |
-| 8 | [CSS morto e um arquivo de 4.885 linhas](#61-indexcss-tem-4885-linhas--e-um-pouco-de-código-morto) | 🟢 Saúde | 1–3 h | — |
+| 8 | [CSS morto e um arquivo de 4.961 linhas](#61-indexcss-tem-4961-linhas--e-um-pouco-de-código-morto) | 🟢 Saúde | 1–3 h | — |
 
 ---
 
@@ -111,7 +111,7 @@ incluindo classes montadas por template string):
 **Impacto depois de pronto.** Nenhuma mudança visual — o ganho é de
 confiança. Some a armadilha de alguém (eu inclusive) reaproveitar
 `.stake-chip` achando que é código vivo e herdar o estilo de uma tela que
-morreu. Cada bloco morto num arquivo de 4.762 linhas é um falso positivo
+morreu. Cada bloco morto num arquivo de ~4.960 linhas é um falso positivo
 a mais na hora de responder "onde eu mexo para mudar X" — e é exatamente
 essa dificuldade que faz nascerem valores novos em vez de reuso (ver 2.1).
 
@@ -140,10 +140,10 @@ identidade forte (Art Déco, vinho e âmbar) mas **não tem um sistema**: os
 valores são decididos caso a caso, e é isso que produz as pequenas
 dissonâncias que se percebem sem saber nomear.
 
-### 2.1 Tipografia: 52 tamanhos para 104 declarações
+### 2.1 Tipografia: 53 tamanhos para 106 declarações
 
-**Medido** (renumerado depois da seção 3): o `index.css` declara
-`font-size` 104 vezes, com **52 valores distintos**. Só entre 0,48 rem e
+**Medido** (renumerado depois das seções 3 e 4): o `index.css` declara
+`font-size` 106 vezes, com **53 valores distintos**. Só entre 0,48 rem e
 0,95 rem existem **vinte e um** valores:
 
 ```
@@ -471,22 +471,45 @@ acende quando a navegação foi por teclado, o dedo continua sem ver nada.
 Também é item obrigatório em qualquer revisão de acessibilidade de loja
 de aplicativos.
 
-### 4.2 Rótulo em elemento sem papel
+### 4.2 Rótulo em elemento sem papel — ✅ FEITO
 
-Vários `aria-label` estão em `<span>`/`<div>` sem `role`, onde a
-especificação ARIA **proíbe nome acessível** — o leitor de tela
-simplesmente descarta. Já corrigimos dois casos (a pilha de fichas e o
-contador de vitórias); o padrão ainda aparece em outros pontos
-(`FoundSplash`, `TutorialSheet` no indicador de passo).
+**O que estava errado.** Vários `aria-label` em `<span>`/`<div>` sem
+`role`, onde a especificação ARIA **proíbe nome acessível** — o leitor de
+tela simplesmente descarta.
 
-**Como resolver:** `role="img"` ou `role="group"` junto do `aria-label`,
-ou trocar por texto em `.sr-only`.
+**O que foi implementado.** Os cinco casos que ainda existiam ganharam
+`role="img"`:
 
-**Impacto depois de pronto.** O rótulo sai do "escrito mas mudo" para
-"efetivamente falado". Hoje, quem usa leitor de tela atravessa esses
-elementos em silêncio — informação que o código acha que está entregando
-e não está. É uma correção de poucas linhas que transforma trechos
-inertes em conteúdo real, sem alterar um pixel para quem enxerga.
+- o **indicador de passo** do tutorial (as bolinhas são `aria-hidden`, então
+  o rótulo era a única voz que aquilo tinha);
+- a **coroa do anfitrião** no assento do lobby;
+- a **coroa de vencedor** no assento da mesa única;
+- o **selo V/D/E** de cada linha do histórico (a letra sozinha não diz nada
+  em voz alta);
+- a **pílula de HUD**, que cobre o saldo e o rival da negociação.
+
+Na pílula a correção mora no COMPONENTE, não em cada chamada: `HudPill`
+resolve `role="img"` sozinho sempre que recebe um `aria-label` sem papel
+explícito. É exatamente o tipo de detalhe que se esquece, e a falha é
+silenciosa para quem enxerga.
+
+**Correção do diagnóstico:** este documento citava o `FoundSplash` como
+um dos pontos afetados. Ele não tem `aria-label` nenhum — o container já
+usa `role="status"`. O apontamento estava errado.
+
+**Guarda contra o retorno.** Um teste novo varre a árvore renderizada
+(Home, tutorial e histórico, cheio e vazio) atrás de `[aria-label]` sem
+`role` em marcação que não admite nome, e falha listando cada ofensor. Ele
+tem um piso de quantos rótulos precisa ter olhado, para não passar por não
+ter olhado nada — verifiquei que ele **reprova** com a correção da pílula
+desligada, apontando `div[aria-label="Saldo: 1.000 créditos"]`.
+
+**Impacto (já em produção).** O rótulo saiu do "escrito mas mudo" para
+"efetivamente falado". Quem usa leitor de tela atravessava esses elementos
+em silêncio — informação que o código achava que estava entregando e não
+estava. É a pior classe de bug de acessibilidade justamente porque não dá
+erro, não quebra teste e não muda um pixel; agora existe uma varredura que
+o denuncia.
 
 ### 4.3 Contraste do texto sobre o feltro
 
@@ -502,20 +525,36 @@ uma mudança quase imperceptível no ambiente ideal e decisiva fora dele.
 Como se mexe só na tinta, o efeito de gravação no couro (que é uma das
 melhores ideias visuais do projeto) fica intacto.
 
-### 4.4 Alvos de toque
+### 4.4 Alvos de toque — ✅ FEITO
 
-`.rival-seat` na mesa única de 6 é clicável? Não — mas `.lobby-seat__kick`
-(o × de expulsar) tem ~20 px, abaixo dos 44 px recomendados. O mesmo vale
-para os `+10/+100` do stepper em telas estreitas.
+**O que estava errado.** `.lobby-seat__kick` (o × de expulsar) tinha 20 px
+de selo, abaixo dos 44 px recomendados; os atalhos `+10/+100` do stepper
+acompanhavam a altura do campo (~37 px) e o `+10` mal passava de 42 px de
+largura.
 
-**Como resolver:** manter o desenho e aumentar só a área tocável (padding
-transparente ou `::after` esticado), preservando a aparência atual.
+**O que foi implementado.** Um `::after` esticado em cada um — o desenho
+não mudou um pixel, só a área que recebe o toque.
 
-**Impacto depois de pronto.** Menos toque errado nas duas ações em que
-errar dói: expulsar um jogador (irreversível, e o alvo tem 20 px) e o
-stepper da aposta (um toque a mais muda o valor do duelo). Aumentar a
-área sem mexer no desenho é o tipo de melhoria que ninguém elogia e todo
-mundo sente — o jogo simplesmente passa a "responder direito".
+No × de expulsar a folga é **assimétrica**, e isso é o miolo da correção:
+ela cresce para DENTRO do próprio assento (embaixo e à esquerda, onde só
+existe canto vazio) e quase nada para fora. O vão entre assentos é de 8 px,
+e esticar para lá roubaria o toque do vizinho — errar no × só abre a
+confirmação de expulsar, que se cancela; errar para o lado abriria o perfil
+de outra pessoa.
+
+**Como isso foi testado.** Pseudo-elemento não se mede com
+`getBoundingClientRect`. Quem responde "quem recebe este toque?" é o
+`elementFromPoint`, e é assim que os dois e2e novos verificam: sondam
+pontos além do selo e cobram que o botão os receba — e, no caso do ×,
+cobram também que um ponto 30 px à esquerda **não** seja mais dele.
+
+**Fora de escopo, e por quê:** o documento perguntava se `.rival-seat` da
+mesa única de 6 é clicável. Não é — não há o que corrigir ali.
+
+**Impacto (já em produção).** Menos toque errado nas duas ações em que
+errar dói: expulsar um jogador e o stepper da aposta, onde um toque a mais
+muda o valor do duelo. É o tipo de melhoria que ninguém elogia e todo mundo
+sente — o jogo simplesmente passa a "responder direito".
 
 ---
 
@@ -536,6 +575,11 @@ do adversário (o `AvatarBadge` já existe), o placar em algarismos
 tabulares grandes, a variação em ouro/vermelho gravado, e um cabeçalho com
 o saldo do período. Um filete dourado separando os dias.
 
+**Já andou metade do caminho:** o item 5.2 deu ao histórico VAZIO a cara
+da casa (brasão em marca d'água e um caminho de saída). O que continua
+pobre é a lista CHEIA — que é o que este item trata. A expressão "extrato
+do clube" já está no texto do vazio, à espera da lista corresponder.
+
 **Impacto depois de pronto.** O histórico é a tela que o jogador visita
 entre partidas, quando está decidindo se joga de novo — e hoje é
 justamente ela que quebra o encanto construído na mesa. Transformá-la em
@@ -544,20 +588,39 @@ patrimônio, não linhas de log. Também é a tela onde a fidelidade se
 sustenta; ninguém volta para olhar retângulo cinza, mas todo mundo volta
 para ver o próprio saldo subir.
 
-### 5.2 Estados vazios sem personalidade
+### 5.2 Estados vazios sem personalidade — ✅ FEITO
 
-"Nenhuma rodada jogada ainda. Bora pro primeiro duelo?" é um parágrafo
-cinza centralizado. O mesmo vale para a lista de salas vazia.
+**O que estava errado.** "Nenhuma rodada jogada ainda. Bora pro primeiro
+duelo?" era um parágrafo cinza centralizado. A lista de salas vazia não
+mostrava nada — sumia em silêncio.
 
-**Ideias:** ilustração leve (o brasão em marca d'água, um baralho fechado)
-+ CTA. O jogo já tem os elementos gráficos; falta usá-los aqui.
+**O que foi implementado.** Um `<EmptyState>`
+(`components/EmptyState.tsx`) com o **brasão da casa em marca d'água**,
+manchete, texto e CTA opcional.
 
-**Impacto depois de pronto.** O estado vazio é visto exatamente por quem
+O brasão vem por `mask-image` do MESMO SVG do couro da mesa e do verso das
+cartas, em ouro apagado a 22% — é presença, não ilustração: fica no
+limiar do perceptível, como o relevo do feltro.
+
+Duas decisões de conteúdo:
+
+- **O histórico ganha CTA** ("JOGAR AGORA"), porque o vazio dali é um beco
+  — não há botão nenhum naquela folha. Ele fecha a folha e já procura
+  oponente, o mesmo caminho do botão de jogar da Home.
+- **A lista de salas não ganha**, porque o "CRIAR SALA" está a poucos
+  pixels acima e dois convites idênticos na mesma tela viram ruído. O
+  texto aponta para o botão que já existe.
+
+**Impacto (já em produção).** O estado vazio é visto exatamente por quem
 acabou de instalar — a hora em que o jogo tem uma chance só de parecer
-acabado. Hoje o primeiro contato com o histórico e com a lista de salas é
-uma tela quase em branco, que lê como "produto sem conteúdo". Com o
-brasão e um CTA, o vazio vira convite, e ainda aponta o caminho: em vez
-de um beco, o jogador sai com um botão na mão.
+acabado. O primeiro contato com o histórico e com a lista de salas era uma
+tela quase em branco, que lia como "produto sem conteúdo". Com o brasão e
+um caminho de saída, o vazio virou convite: em vez de um beco, o jogador
+sai com um botão na mão.
+
+*Duplicação assumida:* a constante do caminho do brasão agora existe em
+três arquivos (`Card3D`, `TableCrest` e `EmptyState`). Unificá-la estava
+fora do escopo desta mudança e fica registrada aqui.
 
 ### 5.3 A crupiê é subaproveitada
 
@@ -646,14 +709,14 @@ Em conexão boa ninguém vê o splash; em conexão ruim ele salva a abertura.
 
 ## 6. Saúde do código (com efeito no design)
 
-### 6.1 `index.css` tem 4.885 linhas — e um pouco de código morto
+### 6.1 `index.css` tem 4.961 linhas — e um pouco de código morto
 
 Um arquivo único com tudo: tokens, cenário, cartas, botões, mesa,
 negociação, torneio, mesa única, folhas. Achar "onde mexo para mudar X"
 custa caro, e é isso que faz nascerem valores novos em vez de reusar os
 existentes (ver seção 2).
 
-**Nota honesta sobre a seção 3:** o arquivo CRESCEU 123 linhas com ela,
+**Nota honesta:** o arquivo CRESCEU 199 linhas com as seções 3 e 4-5,
 não encolheu. Saíram ~140 linhas de CSS paralelo (`.table-over*`,
 `.nego-hud*`, `.table-hud*`, `.rival-seat__head/__badge/__name`) e
 entraram duas famílias compartilhadas (`.result-stage` e `.hud-pill`) com
@@ -712,6 +775,11 @@ um par de ícones. Também é pré-requisito de qualquer passo futuro
 mesa única)~~ ✅ (por 3.1) · 1.3 (CSS morto) · 1.4 (gitignore) · 2.2
 (piso de tamanho de fonte).
 
+**Acessibilidade e acabamento** — ✅ feitos
+~~4.2 (rótulos mudos) · 4.4 (alvos de toque) · 5.2 (estados vazios)~~.
+Restam da acessibilidade o 4.3 (contraste), que precisa de medição com
+ferramenta.
+
 **Semana 2 — fundação**
 6.1 (quebrar o CSS) e, sobre ele, 2.1 (escala tipográfica) e 2.3 (tokens
 de cor). É a dupla que impede o problema de voltar.
@@ -742,6 +810,6 @@ como referência ao mexer no resto.
 - **Comentários que explicam o PORQUÊ**, não o quê. O CSS documenta
   decisões de design (por que a placa e não tinta direto no couro, por que
   o `translate` antes do `transform`) — isso é patrimônio do projeto.
-- **Cobertura de teste do que é regra**: 337 unitários e 14 e2e, com os
+- **Cobertura de teste do que é regra**: 341 unitários e 16 e2e, com os
   testes de regra de jogo (empate, desempate, POV) escritos como
   especificação legível.

@@ -81,7 +81,14 @@ export function TutorialSheet({ open, onClose, continueToGame = false }: Tutoria
         <h3 className="text-xl font-extrabold">{current.title}</h3>
         <p className="min-h-16 text-sm text-lavender">{current.text}</p>
 
-        <div className="flex gap-2" aria-label={`Passo ${step + 1} de ${STEPS.length}`}>
+        {/* role="img": as bolinhas são decorativas (aria-hidden), então o
+            passo só chega ao leitor de tela por este rótulo — e rótulo em
+            <div> sem papel é descartado pela especificação ARIA. */}
+        <div
+          className="flex gap-2"
+          role="img"
+          aria-label={`Passo ${step + 1} de ${STEPS.length}`}
+        >
           {STEPS.map((_, index) => (
             <span
               key={index}

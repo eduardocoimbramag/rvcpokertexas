@@ -303,6 +303,40 @@ test('foco de teclado: todo controle acende o anel âmbar', async ({ page }) => 
   expect(sheetChecked.length, `visitou só ${sheetChecked.join(', ')}`).toBeGreaterThanOrEqual(4);
 });
 
+test('alvo de toque: os atalhos +10/+100 respondem além do próprio selo', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+  await page.getByTestId('play-button').click();
+  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
+  await expect(page.getByTestId('negotiation-panel')).toBeVisible({ timeout: 15_000 });
+
+  // Um toque errado aqui MUDA O VALOR DA APOSTA. O selo continua do
+  // tamanho que era; quem cresceu foi a área tocável (um `::after`
+  // esticado), e pseudo-elemento só se mede perguntando ao navegador
+  // quem recebe o toque em cada ponto.
+  const probe = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="nego-plus-10"]');
+    if (!el) throw new Error('sem atalho de +10');
+    const r = el.getBoundingClientRect();
+    const hits = (x: number, y: number) => {
+      const target = document.elementFromPoint(x, y);
+      return target != null && (target === el || el.contains(target));
+    };
+    return {
+      selo: { w: Math.round(r.width), h: Math.round(r.height) },
+      acima: hits(r.left + r.width / 2, r.top - 3),
+      abaixo: hits(r.left + r.width / 2, r.bottom + 3),
+      // O vão entre os dois atalhos continua separando as áreas: o
+      // toque no meio do vão não pode cair em nenhum dos dois.
+      alvo: Math.round(r.height) + 8,
+    };
+  });
+
+  expect(probe.acima, 'o toque acima do atalho devia acertá-lo').toBe(true);
+  expect(probe.abaixo, 'o toque abaixo do atalho devia acertá-lo').toBe(true);
+  expect(probe.alvo, 'o alvo somado tem de chegar aos 44px').toBeGreaterThanOrEqual(44);
+});
+
 test('cancelar a busca não debita créditos e volta ao menu', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');

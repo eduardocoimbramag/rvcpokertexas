@@ -143,7 +143,7 @@ function Seat({
         {/* O dono não confirma nada: onde os outros carimbam o visto, ele
             usa a coroa da casa. */}
         {leader ? (
-          <span className="lobby-seat__crown" aria-label="Anfitrião da sala">
+          <span className="lobby-seat__crown" role="img" aria-label="Anfitrião da sala">
             <Icon name="crown" size={10} strokeWidth={2.4} />
           </span>
         ) : (

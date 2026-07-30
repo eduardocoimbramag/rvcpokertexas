@@ -84,6 +84,54 @@ async function playTournamentMatch(page: Page) {
   await expect(title).toBeVisible({ timeout: 5_000 });
 }
 
+/**
+ * O × de expulsar tem 20px de selo — abaixo dos 44px recomendados. A área
+ * TOCÁVEL é maior que o desenho (um `::after` esticado), e pseudo-elemento
+ * não se mede: quem responde "quem recebe este toque?" é o
+ * `elementFromPoint`. É assim que se testa alvo de toque.
+ */
+test('alvo de toque: o × de expulsar responde além do próprio selo', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByTestId('tournament-button').click();
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('create-size-4').click();
+  await page.getByTestId('create-fee').fill('10');
+  await page.getByTestId('create-confirm').click();
+
+  // Basta o primeiro bot sentar para o × aparecer.
+  const kick = page.locator('[data-testid^="seat-kick-"]').first();
+  await expect(kick).toBeVisible({ timeout: 40_000 });
+
+  const probe = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid^="seat-kick-"]');
+    if (!el) throw new Error('sem botão de expulsar');
+    const r = el.getBoundingClientRect();
+    /** Quem recebe o toque em (x, y): o próprio × ou outra coisa? */
+    const hits = (x: number, y: number) => {
+      const target = document.elementFromPoint(x, y);
+      return target != null && (target === el || el.contains(target) || target.closest('[data-testid^="seat-kick-"]') === el);
+    };
+    return {
+      selo: { w: Math.round(r.width), h: Math.round(r.height) },
+      // O alvo cresce para DENTRO do assento (canto vazio), não para o
+      // vão que separa os vizinhos.
+      abaixo: hits(r.left + r.width / 2, r.bottom + 12),
+      aEsquerda: hits(r.left - 14, r.top + r.height / 2),
+      // ...e não invade o assento do lado.
+      longeAEsquerda: hits(r.left - 30, r.top + r.height / 2),
+    };
+  });
+
+  // O desenho não mudou: 20px de selo.
+  expect(probe.selo.w).toBeLessThanOrEqual(22);
+  // Mas o toque pega bem além dele.
+  expect(probe.abaixo, 'o toque logo abaixo do × devia acertá-lo').toBe(true);
+  expect(probe.aEsquerda, 'o toque à esquerda do × devia acertá-lo').toBe(true);
+  expect(probe.longeAEsquerda, 'o alvo não pode se esticar sem limite').toBe(false);
+});
+
 test('sala privada: características escolhidas na criação, senha na porta', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');

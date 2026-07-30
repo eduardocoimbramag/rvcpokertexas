@@ -1,8 +1,11 @@
+import { Button } from '@/shared/components/Button';
+import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
 import { formatDelta, formatTime } from '@/shared/lib/format';
 
 import type { HistoryEntry, RoundOutcome } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
+import { EmptyState } from './EmptyState';
 
 export interface HistorySheetProps {
   open: boolean;
@@ -18,13 +21,32 @@ const OUTCOME_BADGE: Record<RoundOutcome, { label: string; className: string }> 
 /** Histórico das últimas rodadas persistidas. */
 export function HistorySheet({ open, onClose }: HistorySheetProps) {
   const history = useGameStore((state) => state.history);
+  const startSearch = useGameStore((state) => state.startSearch);
+
+  /* O vazio do histórico é um beco: não há botão nenhum nesta folha. O
+     CTA fecha a folha e já procura oponente — o mesmo caminho do botão
+     de jogar da Home. */
+  const playNow = () => {
+    onClose();
+    void startSearch();
+  };
 
   return (
     <Sheet open={open} title="Histórico" onClose={onClose}>
       {history.length === 0 ? (
-        <p className="py-8 text-center text-sm text-lavender" data-testid="history-empty">
-          Nenhuma rodada jogada ainda. Bora pro primeiro duelo?
-        </p>
+        <EmptyState
+          title="Sem rodadas ainda"
+          data-testid="history-empty"
+          action={
+            <div className="action-stack">
+              <Button onClick={playNow} size="md" fullWidth data-testid="history-play">
+                <Icon name="club" /> JOGAR AGORA
+              </Button>
+            </div>
+          }
+        >
+          Seu extrato do clube começa no primeiro duelo.
+        </EmptyState>
       ) : (
         <ul className="flex flex-col gap-2" data-testid="history-list">
           {history.map((entry) => (
@@ -40,8 +62,11 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
   const badge = OUTCOME_BADGE[entry.outcome];
   return (
     <li className="flex items-center gap-3 rounded-2xl border border-arena-line bg-arena-800 px-4 py-3">
+      {/* role="img": a letra sozinha ("V") não diz nada em voz alta, e o
+          rótulo que a traduz seria descartado num <span> sem papel. */}
       <span
         className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-black ${badge.className}`}
+        role="img"
         aria-label={
           entry.outcome === 'win' ? 'Vitória' : entry.outcome === 'lose' ? 'Derrota' : 'Empate'
         }

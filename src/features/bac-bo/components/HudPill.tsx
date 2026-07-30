@@ -33,6 +33,10 @@ export interface HudPillProps {
   /** O rótulo principal. É ele que cede espaço primeiro (reticências). */
   children: ReactNode;
   className?: string;
+  /**
+   * Papel ARIA. Só passe se `img` não servir — ver o porquê do padrão
+   * na implementação.
+   */
   role?: string;
   'aria-label'?: string;
   'data-testid'?: string;
@@ -69,12 +73,22 @@ export function HudPill({
   'aria-label': ariaLabel,
   'data-testid': testId,
 }: HudPillProps) {
+  /* Um `aria-label` num <div> sem papel é PROIBIDO pela especificação
+     ARIA: o leitor de tela descarta o rótulo e lê o conteúdo cru — "K
+     Kira ESPERANDO" no lugar de "Kira: esperando". A pílula é um dado
+     composto (identidade + rótulo + estado) que só faz sentido lido de
+     uma vez, então `img` é o papel certo: ele substitui a subárvore pelo
+     rótulo. Fica no COMPONENTE, e não em cada chamada, porque é
+     exatamente o tipo de detalhe que se esquece — e a falha é silenciosa
+     para quem enxerga. */
+  const resolvedRole = role ?? (ariaLabel != null ? 'img' : undefined);
+
   return (
     <motion.div
       className={`hud-pill hud-pill--${variant} ${className}`}
       data-state={state}
       data-testid={testId}
-      role={role}
+      role={resolvedRole}
       aria-label={ariaLabel}
       animate={animate}
       transition={transition}
