@@ -303,6 +303,67 @@ test('foco de teclado: todo controle acende o anel âmbar', async ({ page }) => 
   expect(sheetChecked.length, `visitou só ${sheetChecked.join(', ')}`).toBeGreaterThanOrEqual(4);
 });
 
+/**
+ * Geometria do pote no feltro: ele mora na faixa livre ENTRE as duas
+ * mãos, e essa faixa é o recurso mais escasso da tela — mede 92px de
+ * altura num aparelho de 640px. Nada disso se verifica lendo CSS: só
+ * medindo no navegador, com a aposta mais alta que o pote comporta.
+ */
+async function medirPote(page: Page) {
+  return page.evaluate(() => {
+    const caixa = (s: string) => {
+      const el = document.querySelector(s);
+      return el ? el.getBoundingClientRect() : null;
+    };
+    const pote = document.querySelector('[data-testid="felt-pot"]');
+    if (!pote) throw new Error('sem pote no feltro');
+    const p = pote.getBoundingClientRect();
+    const rival = caixa('[data-testid="hand-opponent"]');
+    const voce = caixa('[data-testid="hand-player"]');
+    const centro = document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2);
+    return {
+      fichas: document.querySelectorAll('[data-testid="felt-pot"] .chip').length,
+      largura: Math.round(p.width),
+      altura: Math.round(p.height),
+      folgaAcima: rival ? Math.round(p.top - rival.bottom) : -1,
+      folgaAbaixo: voce ? Math.round(voce.top - p.bottom) : -1,
+      dentroDaTela: p.left >= 0 && p.right <= window.innerWidth,
+      // O pote é cenário: um toque no meio dele atravessa.
+      atravessaOToque: !pote.contains(centro),
+    };
+  });
+}
+
+test('o pote de fichas cabe na faixa livre e não rouba toque', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+  await page.getByTestId('play-button').click();
+  await forceNegoAutoAccept(page);
+  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
+  // 400 créditos são 16 fichas — o monte mais largo que se vê jogando.
+  await negotiateStake(page, 400);
+  await expect(page.getByTestId('turn-clock')).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(600);
+
+  const alto = await medirPote(page);
+  expect(alto.fichas, 'aposta de 400 põe 16 fichas na mesa').toBe(16);
+  expect(alto.atravessaOToque, 'o pote é cenário, não controle').toBe(true);
+  expect(alto.dentroDaTela).toBe(true);
+  expect(alto.folgaAcima, 'o pote encostou na mão do rival').toBeGreaterThan(0);
+  expect(alto.folgaAbaixo, 'o pote encostou na sua mão').toBeGreaterThan(0);
+
+  // O caso que aperta: viewport de 640px, onde a faixa livre cai para
+  // ~92px. O pote encolhe junto (o termo em dvh do clamp) e continua
+  // sem encostar em carta nenhuma.
+  await page.setViewportSize({ width: 412, height: 640 });
+  await page.waitForTimeout(400);
+  const baixo = await medirPote(page);
+  expect(baixo.fichas, 'a contagem NÃO muda com o aparelho').toBe(16);
+  expect(baixo.altura, 'o pote tem de caber nos 92px da faixa').toBeLessThan(70);
+  expect(baixo.folgaAcima, 'o pote encostou na mão do rival na tela baixa').toBeGreaterThan(0);
+  expect(baixo.folgaAbaixo, 'o pote encostou na sua mão na tela baixa').toBeGreaterThan(0);
+});
+
 test('alvo de toque: os atalhos +10/+100 respondem além do próprio selo', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');

@@ -16,6 +16,7 @@ import type {
 } from '../engine/types';
 import type { DoubleBetState, GamePhase, TurnClock, TurnReveal } from '../store/gameStore';
 import { TURN_SECONDS, useGameStore } from '../store/gameStore';
+import { ChipStack } from './table/ChipStack';
 import { HandRow } from './table/HandRow';
 import { HandTotal } from './table/HandTotal';
 import { povHand } from './table/pov';
@@ -540,11 +541,23 @@ export function HandsArena({
       </section>
 
       {/* Faixa livre do feltro: é aqui que o brasão da casa respira — e
-          onde a mesa fala. A nuvem do pedido de dobra fica no alto, com
-          o bico virado para o rival; o anúncio do lance, no miolo. Os
-          dois são absolutos dentro da faixa: entram e saem sem mexer um
-          milímetro nas duas mãos. */}
+          onde a mesa fala. O POTE assenta no meio dela, sobre o brasão; a
+          nuvem do pedido de dobra fica no alto, com o bico virado para o
+          rival; o anúncio do lance, no miolo. Todos são absolutos dentro
+          da faixa: entram e saem sem mexer um milímetro nas duas mãos, e
+          se empilham nesta ordem — pote embaixo (z 1), nuvem (z 2),
+          anúncio por cima de tudo (z 3). */}
       <div className="relative w-full grow">
+        {/* O pote sobrevive à rodada inteira e NÃO é remontado quando o
+            valor muda: as fichas que já estão na mesa ficam onde estão e
+            só as novas caem nela. É o que faz a dobra aceita parecer o
+            rival empurrando fichas para o centro, em vez de a mesa se
+            redesenhar. Sem `key`, portanto — de propósito. */}
+        {match.stake > 0 && (
+          <div className="felt-pot" data-testid="felt-pot">
+            <ChipStack stake={match.stake} variant="felt" instant={reducedMotion} />
+          </div>
+        )}
         <AnimatePresence>
           {doubleBet?.open && (
             <DoubleBubble

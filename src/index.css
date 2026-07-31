@@ -4486,22 +4486,18 @@ h2 {
 
 /* ---------- Fichas na mesa (ChipStack) ---------- */
 
-/* Tamanho de uma ficha: acompanha a carta da mesa (mesma família de
-   clamp, com o MESMO guard de altura dvh — fallback só-largura em
-   navegadores sem dvh), então a pilha nunca briga com o feltro nem
-   estoura o palco em telas baixas.
+/* O POTE. A mesma peça em duas cenas: o feltro vazio da negociação, onde
+   ele é o assunto, e a faixa livre do duelo, onde divide o couro com
+   duas mãos de cartas. O que muda entre as duas é a DENSIDADE (tamanho
+   da ficha e altura das colunas), nunca a CONTAGEM — as fichas que você
+   empurrou na negociação são as que continuam na mesa. Ver
+   components/table/ChipStack.tsx e pot.ts.
 
-   `isolation: isolate` é obrigatório: as fichas usam z-index 0–8 por
-   degrau (via style no TSX) e, sem um stacking context próprio, os
-   degraus altos venceriam o balão de proposta (z 7) no contexto do
-   palco. Isolada, a pilha vira UMA camada — balão e anúncio sempre por
-   cima. */
+   `isolation: isolate` é obrigatório: as fichas usam z-index por degrau
+   (via style no TSX) e, sem um stacking context próprio, os degraus
+   altos venceriam o balão de proposta (z 7) no contexto do palco.
+   Isolado, o pote vira UMA camada — balão e anúncio sempre por cima. */
 .chip-stack {
-  --chip-size: clamp(3.4rem, 15vw, 4.3rem);
-  --chip-size: clamp(3.4rem, min(15vw, 8.5dvh), 4.3rem);
-  /* Degrau entre uma ficha e a de baixo. Vive aqui porque a ALTURA da
-     pilha deriva dele: a caixa abraça exatamente as fichas que existem. */
-  --chip-step: 7px;
   isolation: isolate;
   display: flex;
   /* As fichas não cedem: quem encolhe numa tela baixa é o viés do palco. */
@@ -4511,16 +4507,64 @@ h2 {
   gap: 0.55rem;
 }
 
+/* Negociação: o feltro está vazio, então as fichas são grandes e as
+   torres sobem alto (até 10 por coluna). Mesma família de clamp da carta
+   da mesa, com o MESMO guard de altura dvh — fallback só-largura em
+   navegadores sem dvh. */
+.chip-stack--nego {
+  --chip-size: clamp(3.4rem, 15vw, 4.3rem);
+  --chip-size: clamp(3.4rem, min(15vw, 8.5dvh), 4.3rem);
+  --chip-gap: 0.5rem;
+}
+
+/* Duelo: a faixa livre entre as duas mãos mede 92px de altura no
+   aparelho mais baixo que suportamos (viewport de 640px) — medido no
+   navegador, não estimado. Ficha de ~29px e colunas de até 6 dão uma
+   coluna de 49px: cabe com folga e nunca encosta nas cartas. */
+.chip-stack--felt {
+  --chip-size: clamp(1.7rem, 8.5vw, 2.8rem);
+  /* O termo em `dvh` é o que protege a tela baixa: nela ele vence o de
+     largura e segura a ficha em ~31px, mantendo a coluna de seis em
+     ~51px dentro dos 92px da faixa. Na tela alta quem manda é a largura,
+     e o pote ganha corpo sem risco nenhum. */
+  --chip-size: clamp(1.7rem, min(8.5vw, 4.8dvh), 2.8rem);
+  --chip-gap: 0.3rem;
+}
+
+/* As colunas do pote, assentadas numa linha de chão comum. */
+.chip-stack__pot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--chip-gap, 0.4rem);
+}
+
+/* O pote no feltro do DUELO: centrado na faixa livre entre as duas mãos,
+   sobre o brasão. Absoluto e sem toque — ele é cenário, e a faixa
+   pertence às mãos: nada do que entra aqui pode mover uma carta.
+   z-index 1 o põe embaixo da nuvem da dobra (2) e do anúncio do lance
+   (3), que precisam ser lidos por cima dele. */
+.felt-pot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  translate: -50% -50%;
+  pointer-events: none;
+}
+
 /* O poço da pilha: as fichas são absolutas na base e sobem degrau a
    degrau (7px por ficha, via transform no framer). A altura reserva o
    curso inteiro da pilha — nada salta quando fichas entram. */
 .chip-stack__pile {
   position: relative;
+  flex: none;
   width: var(--chip-size);
-  /* A caixa mede a PILHA QUE EXISTE (a ficha de baixo + um degrau por
-     ficha acima dela), não o teto de 9 fichas: com uma altura fixa
-     sobrava vazio no topo e o conjunto assentava alto no feltro, sem
-     nunca estar de fato centrado no que se vê. */
+  /* A caixa mede a COLUNA QUE EXISTE (a ficha de baixo + um degrau por
+     ficha acima dela), não um teto fixo: com altura fixa sobrava vazio
+     no topo e o conjunto assentava alto no feltro, sem nunca estar de
+     fato centrado no que se vê. O degrau vem por style do TSX, junto do
+     mesmo número que o framer usa para mover cada ficha. */
   height: calc(var(--chip-size) + (var(--chip-count, 1) - 1) * var(--chip-step));
   display: grid;
   align-items: end;

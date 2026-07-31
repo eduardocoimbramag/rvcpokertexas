@@ -358,6 +358,40 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
       />,
     );
 
+  /** Fichas desenhadas no pote do feltro. */
+  const fichasNoPote = (container: HTMLElement) =>
+    container.querySelectorAll('[data-testid="felt-pot"] .chip').length;
+
+  it('o pote fica na mesa durante o duelo, com as fichas da aposta', () => {
+    // As fichas que a negociação pôs na mesa continuam lá enquanto as
+    // cartas correm: antes elas sumiam e o valor em jogo virava um
+    // número que ninguém via.
+    const { container } = renderArena({ match: { ...match, stake: 100 } });
+    expect(screen.getByTestId('felt-pot')).toBeInTheDocument();
+    expect(fichasNoPote(container)).toBe(4);
+    expect(screen.getByRole('img', { name: /Pote na mesa: 100 créditos/ })).toBeInTheDocument();
+  });
+
+  it('a dobra aceita DOBRA as fichas na mesa', () => {
+    // A dobra aceita reescreve `match.stake` no store; o pote é derivado
+    // dele, então dobrar o valor tem de dobrar o monte — é o retrato do
+    // gesto, e o motivo de a contagem ser proporcional (ver pot.ts).
+    const simples = renderArena({ match: { ...match, stake: 100 } });
+    expect(fichasNoPote(simples.container)).toBe(4);
+    simples.unmount();
+
+    const dobrada = renderArena({ match: { ...match, stake: 200 } });
+    expect(fichasNoPote(dobrada.container)).toBe(8);
+  });
+
+  it('sem valor na mesa não há pote — é o caso do torneio', () => {
+    // No torneio a mesa vale a taxa de entrada do chaveamento, que não
+    // fica em fichas no feltro: o match entra com stake 0.
+    const { container } = renderArena({ match: { ...match, stake: 0 } });
+    expect(screen.queryByTestId('felt-pot')).not.toBeInTheDocument();
+    expect(fichasNoPote(container)).toBe(0);
+  });
+
   it('a mesa tem duas mãos e só duas: rival em cima, você embaixo', () => {
     renderArena();
 

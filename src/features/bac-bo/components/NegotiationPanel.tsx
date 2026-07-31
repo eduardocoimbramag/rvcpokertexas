@@ -1,6 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import type { CSSProperties } from 'react';
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
@@ -15,13 +14,11 @@ import { AmountStepper } from './AmountStepper';
 import { AvatarBadge } from './AvatarBadge';
 import { GoldAnnounce } from './GoldAnnounce';
 import { HudPill } from './HudPill';
+import { ChipStack } from './table/ChipStack';
 
 export interface NegotiationPanelProps {
   match: Match;
 }
-
-/** Altura de um degrau da pilha de fichas, em px. */
-const CHIP_STEP_PX = 7;
 
 /**
  * Situação do rival na mesa, na ordem de precedência em que ela é lida
@@ -73,81 +70,6 @@ export function NegotiationHud({ match }: NegotiationPanelProps) {
     >
       {match.opponent.name}
     </HudPill>
-  );
-}
-
-/**
- * A pilha de fichas no centro do feltro: o retrato físico do valor que
- * a mesa vale agora. As fichas DESLIZAM do lado do jogador ao centro em
- * mola, uma a uma — e a pilha inteira volta a entrar a cada mudança de
- * valor (o componente é re-montado por `key={stake}` no pai), que é o
- * gesto de "fichas sendo postas na mesa" pedido pela fase.
- *
- * Rotações e derivas são DETERMINÍSTICAS (derivadas do índice): a
- * bagunça natural de uma pilha real, sem Math.random — os testes e o
- * reduced motion veem sempre a mesma mesa.
- */
-function ChipStack({ stake, instant }: { stake: number; instant: boolean }) {
-  const chips = useMemo(() => {
-    const count = Math.min(9, Math.max(3, 2 + Math.round(stake / 50)));
-    return Array.from({ length: count }, (_, index) => ({
-      rotate: ((index * 47) % 25) - 12,
-      drift: ((index * 31) % 11) - 5,
-      gold: index % 3 === 2,
-    }));
-  }, [stake]);
-
-  return (
-    <div
-      className="chip-stack"
-      data-testid="nego-table"
-      role="group"
-      aria-label={`Aposta na mesa: ${formatCredits(stake)} créditos`}
-    >
-      {/* --chip-count: a caixa da pilha abraça as fichas que existem
-          (ver .chip-stack__pile) — sem espaço morto no topo, o conjunto
-          assenta de fato no centro do feltro. */}
-      <div
-        className="chip-stack__pile"
-        aria-hidden="true"
-        style={{ '--chip-count': chips.length } as CSSProperties}
-      >
-        {chips.map((chip, index) => (
-          <motion.span
-            key={index}
-            className={`chip ${chip.gold ? 'chip--gold' : ''}`}
-            style={{ zIndex: index }}
-            initial={
-              instant
-                ? false
-                : { opacity: 0, y: 120, x: chip.drift * 7, rotate: chip.rotate * 3, scale: 0.6 }
-            }
-            animate={{ opacity: 1, y: -index * CHIP_STEP_PX, x: 0, rotate: chip.rotate, scale: 1 }}
-            transition={
-              instant
-                ? { duration: 0 }
-                : { delay: index * 0.07, type: 'spring', stiffness: 320, damping: 23 }
-            }
-          />
-        ))}
-      </div>
-      {/* aria-hidden: o rótulo do grupo já conta o valor — sem ele o
-          leitor de tela ouviria a mesma cifra duas vezes. */}
-      <div className="chip-stack__plate" aria-hidden="true">
-        <motion.span
-          className="chip-stack__value"
-          data-testid="nego-table-stake"
-          initial={instant ? false : { scale: 1.35, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={
-            instant ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 20, delay: 0.15 }
-          }
-        >
-          <Icon name="chip" size="1em" /> {formatCredits(stake)}
-        </motion.span>
-        <span className="chip-stack__label">na mesa</span>
-      </div>
-    </div>
   );
 }
 
@@ -371,8 +293,20 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
             Nos dois ANÚNCIOS o feltro fica só com o letreiro: as fichas e
             a placa saem de cena para o título não dividir o palco com
             nada (nem com uma versão apagada delas). */}
+        {/* `key={tableStake}`: a cada valor novo o pote inteiro volta a
+            entrar — é o gesto de "fichas sendo postas na mesa" que a fase
+            pede. No duelo é o contrário (ver HandsArena): lá as fichas
+            que já estão na mesa ficam paradas e só as novas chegam. */}
         {!announcing && !starting && (
-          <ChipStack key={tableStake} stake={tableStake} instant={instant} />
+          <ChipStack
+            key={tableStake}
+            stake={tableStake}
+            variant="nego"
+            instant={instant}
+            plate
+            data-testid="nego-table"
+            valueTestId="nego-table-stake"
+          />
         )}
 
         <AnimatePresence>
