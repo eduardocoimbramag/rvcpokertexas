@@ -398,6 +398,46 @@ test('alvo de toque: os atalhos +10/+100 respondem além do próprio selo', asyn
   expect(probe.alvo, 'o alvo somado tem de chegar aos 44px').toBeGreaterThanOrEqual(44);
 });
 
+test('o sonar da busca está de fato emitindo, não parado numa pose', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+  await page.getByTestId('play-button').click();
+  await expect(page.locator('.sonar')).toBeVisible();
+
+  /* Uma animação MORTA não quebra teste nenhum: o elemento existe, a
+     classe está lá, a tela parece certa num print. Este teste é o único
+     jeito de saber que ela roda — amostra o estado computado duas vezes
+     e cobra que tenha MUDADO. Já pegou um bug real: a opacidade dos
+     anéis apagando em 0,3 s e nunca mais voltando, porque um
+     `transition.opacity` parcial SUBSTITUI o de fora em vez de
+     completá-lo — a escala rodava sozinha com a tinta apagada. */
+  const amostrar = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.sonar__ping')].map((el) => {
+        const cs = getComputedStyle(el);
+        return {
+          opacidade: Number(cs.opacity),
+          escala: new DOMMatrixReadOnly(cs.transform).a,
+        };
+      }),
+    );
+
+  const antes = await amostrar();
+  await page.waitForTimeout(450);
+  const depois = await amostrar();
+
+  expect(antes.length, 'o sonar tem de emitir mais de um anel').toBeGreaterThan(1);
+
+  // Em algum dos dois instantes tem de haver anel ACESO e ABERTO. O
+  // piso é baixo de propósito: a emissão é discreta por decisão de
+  // design, e o que este teste guarda é que ela EXISTE.
+  const aceso = [...antes, ...depois].some((anel) => anel.opacidade > 0.1 && anel.escala > 0.5);
+  expect(aceso, 'nenhum anel aceso: a emissão do sonar está muda').toBe(true);
+  // E a emissão avança: o anel mais aberto do primeiro instante cresceu.
+  const maior = (a: { escala: number }[]) => Math.max(...a.map((x) => x.escala));
+  expect(maior(depois), 'os anéis não se abriram').toBeGreaterThan(maior(antes));
+});
+
 test('cancelar a busca não debita créditos e volta ao menu', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');
