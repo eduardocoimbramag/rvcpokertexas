@@ -7,7 +7,12 @@ export interface HandTotalProps {
    * Passar a mão inteira do rival aqui seria vazar a oculta pelo total.
    */
   cards: readonly Card[];
-  /** A conta ainda não fechou: falta a carta virada ("+?"). */
+  /**
+   * A conta ainda não fechou: há carta virada fora dela. NÃO se escreve
+   * na placa — o número que ela mostra é o das cartas abertas, e ponto.
+   * Fica no DOM (`data-partial`) para quem precisa saber se aquele total
+   * é o final ou o do meio da mão.
+   */
   partial: boolean;
   /**
    * Onde este total mora. `duel` é a borda interna de uma das duas mãos
@@ -22,7 +27,13 @@ export interface HandTotalProps {
 }
 
 /**
- * O total de uma mão.
+ * O total de uma mão — uma PLACA dourada gravada no feltro.
+ *
+ * O número deitado direto no verde não se lia: tinta escura sobre uma
+ * mesa clara, à mercê do brasão e da luz zenital por baixo dele. Agora
+ * ele mora numa peça do ouro da casa, com a tinta escura por cima — o
+ * mesmo contraste das pastilhas do chaveamento, e o único elemento da
+ * mesa que se lê de relance sem procurar.
  *
  * Tipografia: a condensada da casa (Oswald), em algarismos tabulares para
  * o número não dançar de largura ao trocar de 9 para 11. Uma mão soft
@@ -31,9 +42,15 @@ export interface HandTotalProps {
  * dois dígitos de largura ela vira mancha, e o que importa ali é o total
  * que está valendo.
  *
+ * O que a placa NUNCA escreve é o que falta: a conta do rival é a das
+ * cartas ABERTAS dele, e ela se apresenta como um número limpo. O "+?"
+ * que ficava colado no total dizia duas coisas ao mesmo tempo e não se
+ * lia bem nenhuma delas — quem conta que existe carta virada é a própria
+ * carta virada, deitada na mesa ao lado das outras.
+ *
  * A CONTA é a mesma nos dois modos, e é por isso que ela mora num lugar
- * só: o "+?" e o corte da oculta são a face visível da regra de POV, e
- * duas implementações dela é uma a mais.
+ * só: o corte da oculta é a face visível da regra de POV, e duas
+ * implementações dela é uma a mais.
  */
 export function HandTotal({
   cards,
@@ -55,6 +72,7 @@ export function HandTotal({
     <span
       className={`${block} ${modifier} ${value.total > 21 ? 'is-bust' : ''}`}
       data-testid={testid ?? (variant === 'duel' ? `${side}-total` : undefined)}
+      data-partial={partial}
     >
       {soft && !compact && (
         <>
@@ -63,9 +81,6 @@ export function HandTotal({
         </>
       )}
       {value.total}
-      {/* A conta do rival é sempre parcial até o showdown: o "+?" é a
-          carta que ele guarda virada. */}
-      {partial && <span className={`${block}__partial`}>+?</span>}
     </span>
   );
 }

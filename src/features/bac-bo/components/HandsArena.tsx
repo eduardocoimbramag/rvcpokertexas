@@ -73,7 +73,8 @@ export interface HandsArenaProps {
  *   assentamento de cada uma — o Card3D cuida do próprio beat).
  * - `turn`: o relógio corre e a barra PEDIR/PARAR abre; o total da sua
  *   mão acompanha ao vivo (soft mostra as duas leituras, "7/17") e o do
- *   rival mostra só o que está aberto, com um "+?" lembrando o que falta.
+ *   rival mostra só o que está aberto — quem lembra que falta carta é a
+ *   carta virada na mesa dele, não um sinal colado no número.
  * - `settle`: showdown — as ocultas viram e os totais finais aparecem.
  * - `completed` (câmera frontal): o placar migra para as placas que
  *   flanqueiam a crupiê; com cenário desligado ele fica na faixa.
@@ -536,7 +537,7 @@ export function HandsArena({
           delayFor={opponentDelay}
         />
         {/* O total do rival é o das cartas ABERTAS enquanto houver
-            oculta — com o "+?" lembrando que falta carta para fechar. */}
+            oculta: um número limpo do que já está na mesa. */}
         <HandTotal side="opponent" cards={opponentPov.counted} partial={!revealed} />
       </section>
 
@@ -581,12 +582,17 @@ export function HandsArena({
         data-testid="hand-player"
       >
         <HandTotal side="player" cards={playerCards} partial={false} />
+        {/* O espelho da regra de POV, do SEU lado: a última carta da sua
+            mão está aberta aqui e virada na tela dele. Nada nela denuncia
+            isso — então o selo do olho cortado o faz (ver CardVeil). No
+            showdown ele sai de cena junto com o segredo. */}
         <HandRow
           cards={playerCards}
           testid="hand-player-cards"
           labelPrefix="Sua carta"
           delayFor={playerDelay}
           ablaze={playerAblaze}
+          veiledAt={(index) => !revealed && index === playerCards.length - 1}
         />
         {/* A SUA placa não anuncia a sua vez: você sabe se já escolheu —
             quem precisa de aviso é o outro lado da mesa. O que entra aqui

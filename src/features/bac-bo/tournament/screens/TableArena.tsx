@@ -253,6 +253,9 @@ export function TableArena({
               <div className="table-arena__you-score">
                 <HandTotal variant="seat" cards={yourCards} partial={false} testid="table-total-you" />
               </div>
+              {/* A regra de POV vale nos dois sentidos: a última carta da
+                  sua mão está virada para TODOS os assentos da mesa. O
+                  selo do olho cortado é o que conta isso (ver CardVeil). */}
               <HandRow
                 cards={yourCards}
                 cardSize="var(--card-w)"
@@ -261,6 +264,7 @@ export function TableArena({
                 ablaze={isNaturalBlackjack(yourCards)}
                 labelPrefix="Sua carta"
                 testid="table-hand-you"
+                veiledAt={(index) => !revealed && index === yourCards.length - 1}
               />
             </>
           ) : (

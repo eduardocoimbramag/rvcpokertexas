@@ -49,6 +49,7 @@ export type IconName =
   | 'moon'
   | 'gem'
   | 'medal'
+  | 'eye-off'
   | 'feather';
 
 /* Partes preenchidas (pips, pupilas) usam fill=currentColor sem traço,
@@ -268,6 +269,17 @@ const GLYPHS: Record<IconName, ReactNode> = {
       <path d="M20.2 3.8a6.1 6.1 0 0 0-8.6 0L5 10.4V19h8.6l6.6-6.6a6.1 6.1 0 0 0 0-8.6z" />
       <path d="M15.8 8.2 3.5 20.5" />
       <path d="M17.3 14.6H9.4" />
+    </>
+  ),
+  /* Olho cortado: "isto não está sendo visto". A amêndoa é simétrica e a
+     pupila, cheia — a ~14px (o selo da carta velada) o traço da íris
+     sumiria e sobraria um anel vazio. O corte atravessa a amêndoa inteira,
+     de canto a canto, porque é ele que carrega o sentido do ícone. */
+  'eye-off': (
+    <>
+      <path d="M2.6 12c2-3.6 5.3-5.9 9.4-5.9s7.4 2.3 9.4 5.9c-2 3.6-5.3 5.9-9.4 5.9S4.6 15.6 2.6 12z" />
+      {dot(12, 12, 2.5)}
+      <path d="M4.2 19.8 19.8 4.2" />
     </>
   ),
   /* Medalha do pódio: as duas fitas e o disco. Sem estrela nem número

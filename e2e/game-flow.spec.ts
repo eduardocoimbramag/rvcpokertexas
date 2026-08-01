@@ -156,11 +156,16 @@ test('derrota: você para com 20 e o blackjack do rival leva a aposta', async ({
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
   await negotiateStake(page, 25);
 
-  // A vez do jogador abre com a REGRA DE POV em cena: a última carta do
-  // rival está virada para baixo, e o total dele é só o que está aberto.
+  // A vez do jogador abre com a REGRA DE POV em cena, dos DOIS lados: a
+  // última carta do rival está virada para baixo e o total dele é só o
+  // que está aberto (um número limpo, sem "+?"); a última das SUAS leva o
+  // selo do olho cortado, porque ele também não a vê.
   await expect(page.getByTestId('action-stand')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('img', { name: /carta oculta/ })).toBeVisible();
-  await expect(page.getByTestId('opponent-total')).toContainText('+?');
+  const opponentTotal = page.getByTestId('opponent-total');
+  await expect(opponentTotal).toHaveAttribute('data-partial', 'true');
+  await expect(opponentTotal).not.toContainText('+?');
+  await expect(page.getByTestId('card-veil')).toBeVisible();
 
   await page.getByTestId('action-stand').click();
 

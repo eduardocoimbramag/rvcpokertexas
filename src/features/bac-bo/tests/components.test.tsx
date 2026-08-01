@@ -445,21 +445,55 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     expect(screen.queryByTestId('action-stand')).not.toBeInTheDocument();
   });
 
-  it('totais ao vivo: o do rival é parcial, com o "+?" da carta oculta', () => {
+  it('totais ao vivo: o do rival conta só o que está aberto, sem "+?"', () => {
     renderArena();
 
     expect(screen.getByTestId('player-total')).toHaveTextContent('19');
     // 10♣ aberta + a oculta: nada de somar o que ainda não virou.
-    expect(screen.getByTestId('opponent-total')).toHaveTextContent('10+?');
+    const total = screen.getByTestId('opponent-total');
+    expect(total).toHaveTextContent('10');
+    // A placa mostra um NÚMERO LIMPO: quem conta que falta carta é a
+    // carta virada na mesa, não um sinal colado no total.
+    expect(total.textContent).toBe('10');
+    expect(total).toHaveAttribute('data-partial', 'true');
   });
 
   it('no showdown as ocultas viram e o total do rival fecha de verdade', () => {
     renderArena({ phase: 'settle', round: null, result: sampleResult });
 
-    expect(screen.getByTestId('opponent-total')).toHaveTextContent('17');
-    expect(screen.getByTestId('opponent-total').textContent).not.toContain('+?');
+    const total = screen.getByTestId('opponent-total');
+    expect(total).toHaveTextContent('17');
+    expect(total).toHaveAttribute('data-partial', 'false');
     expect(screen.getByTestId('player-total')).toHaveTextContent('19');
     expect(screen.getByRole('img', { name: 'Carta de Luna 2: 7 de ouros' })).toBeInTheDocument();
+  });
+
+  it('a última carta da SUA mão leva o selo de que o rival não a vê', async () => {
+    const user = userEvent.setup();
+    renderArena();
+
+    // Uma só: a regra de POV vela exatamente a última da mão.
+    expect(screen.getAllByTestId('card-veil')).toHaveLength(1);
+    const veil = screen.getByTestId('card-veil');
+    expect(veil).toHaveAccessibleName(
+      'Essa carta não está sendo visualizada pelo seu oponente',
+    );
+
+    // E ela é a da DIREITA — a carta 2, dentro da casa dela na fileira.
+    expect(screen.getByTestId('hand-player-cards-card-2')).toContainElement(veil);
+
+    // No celular não há hover: o toque abre e fecha a legenda.
+    expect(veil).toHaveAttribute('aria-expanded', 'false');
+    await user.click(veil);
+    expect(veil).toHaveAttribute('aria-expanded', 'true');
+    await user.click(veil);
+    expect(veil).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('no showdown o segredo acaba e o selo sai da mesa', () => {
+    renderArena({ phase: 'settle', round: null, result: sampleResult });
+
+    expect(screen.queryByTestId('card-veil')).not.toBeInTheDocument();
   });
 
   it('no settle cada mão ganha o seu selo de veredito', () => {

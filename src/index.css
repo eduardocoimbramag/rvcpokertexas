@@ -104,9 +104,13 @@ h2 {
   /* As duas bordas de uma mão. A placa de nome fica na de FORA e o total
      na de DENTRO; como as duas mãos têm a mesma composição espelhada, a
      faixa livre entre elas (onde o brasão respira) fica exatamente no
-     meio — ver .table-crest--overhead. */
+     meio — ver .table-crest--overhead.
+     --arena-total-h é a ALTURA da placa do total, e é dela que sai toda
+     a geometria da peça (corpo + respiros fecham exatamente 1 — ver
+     .hand-total). Enquanto o total era um número solto no feltro, ele
+     era o tamanho da fonte; virou altura quando o número ganhou placa. */
   --arena-nameplate-h: 1.4rem;
-  --arena-total-h: 2.2rem;
+  --arena-total-h: 1.65rem;
 
   /* COLUNA DE CENA: a faixa central onde o salão é desenhado. No
      celular ela É a tela — nada muda em relação ao que sempre existiu.
@@ -1245,6 +1249,162 @@ h2 {
   color: #232a35;
 }
 
+/* ---------- A carta VELADA: o selo do olho cortado ---------- */
+
+/* A casa de uma carta na fileira (ver HandRow). Só existe para ancorar o
+   selo: a carta em si continua sendo o .card-scene lá dentro. */
+.hand-slot {
+  position: relative;
+}
+
+/* O selo, encostado na quina de cima da carta e transbordando um triz
+   para fora dela — assim ele lê como PEÇA DA MESA e não como parte da
+   arte da carta. Fica na quina DIREITA porque é sempre a carta da
+   direita (a última da mão) que o rival não vê. */
+.card-veil {
+  position: absolute;
+  top: calc(var(--card-size, var(--card-w)) * -0.08);
+  right: calc(var(--card-size, var(--card-w)) * -0.08);
+  z-index: 4;
+  line-height: 0;
+}
+
+/* Disco de vinho com aro e olho dourados: pequeno e discreto, mas com
+   contraste próprio — o papel-marfim da carta apagaria um ouro chapado. */
+.card-veil__badge {
+  position: relative;
+  display: grid;
+  width: clamp(0.95rem, calc(var(--card-size, var(--card-w)) * 0.3), 1.4rem);
+  height: clamp(0.95rem, calc(var(--card-size, var(--card-w)) * 0.3), 1.4rem);
+  place-items: center;
+  border-radius: 9999px;
+  padding: 0;
+  border: none;
+  color: var(--color-gold);
+  background: linear-gradient(180deg, rgba(72, 14, 25, 0.94) 0%, rgba(26, 6, 11, 0.94) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(245, 183, 111, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition:
+    color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+}
+
+/* O DESENHO é pequeno (~14px) porque tem de ser discreto; a área
+   TOCÁVEL não pode ser. Este pseudo-elemento a estica para perto dos
+   44px recomendados sem inchar o selo um pixel — o mesmo truque do × de
+   expulsar da sala. */
+.card-veil__badge::after {
+  content: '';
+  position: absolute;
+  inset: -0.62rem;
+  border-radius: inherit;
+}
+
+.card-veil__badge:hover,
+.card-veil.is-open .card-veil__badge {
+  color: var(--color-gold-bright);
+  box-shadow:
+    inset 0 0 0 1px rgba(252, 217, 160, 0.9),
+    0 0 10px rgba(245, 183, 111, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.5);
+  transform: scale(1.06);
+}
+
+/* A legenda: nuvem de vinho com fio dourado, subindo do selo com o bico
+   apontado para ele. Ancorada pela DIREITA (o selo mora na quina direita
+   da mão, que é o lado com menos tela pela frente) e limitada pela
+   viewport, então ela nunca sai de quadro em celular. */
+.card-veil__tip {
+  position: absolute;
+  right: calc(var(--card-size, var(--card-w)) * -0.02);
+  bottom: calc(100% + 0.5rem);
+  z-index: 5;
+  width: max-content;
+  max-width: min(15.5rem, 62vw);
+  padding: 0.42rem 0.6rem;
+  border-radius: 0.7rem;
+  background: linear-gradient(180deg, rgba(38, 10, 16, 0.97) 0%, rgba(18, 5, 8, 0.97) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(245, 183, 111, 0.5),
+    0 10px 24px rgba(0, 0, 0, 0.55);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  text-align: left;
+  color: var(--color-ivory);
+  opacity: 0;
+  visibility: hidden;
+  translate: 0 4px;
+  transition:
+    opacity 0.2s ease,
+    translate 0.2s ease,
+    visibility 0.2s;
+}
+
+/* O bico, alinhado com o selo. */
+.card-veil__tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  right: calc(var(--card-size, var(--card-w)) * 0.13);
+  width: 0.55rem;
+  height: 0.55rem;
+  translate: 50% -55%;
+  rotate: 45deg;
+  background: rgba(18, 5, 8, 0.97);
+  box-shadow:
+    1px 1px 0 rgba(245, 183, 111, 0.5),
+    2px 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+/* Os três caminhos de abertura (ver CardVeil): toque (`is-open`, o único
+   que passa por JavaScript), teclado (`:focus-visible`) e mouse (o
+   `:hover` logo abaixo, sob media query — em telas de toque `:hover`
+   gruda depois do tap e a legenda ficaria presa na tela). */
+.card-veil.is-open .card-veil__tip,
+.card-veil__badge:focus-visible + .card-veil__tip {
+  opacity: 1;
+  visibility: visible;
+  translate: 0 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card-veil:hover .card-veil__tip {
+    opacity: 1;
+    visibility: visible;
+    translate: 0 0;
+  }
+}
+
+/* Mão mini (assentos da mesa única): o selo encolhe junto com a carta e
+   a legenda perde o exagero de largura. */
+.card-veil--mini .card-veil__badge {
+  width: clamp(0.8rem, calc(var(--card-size, var(--card-w)) * 0.42), 1.05rem);
+  height: clamp(0.8rem, calc(var(--card-size, var(--card-w)) * 0.42), 1.05rem);
+}
+
+.card-veil--mini .card-veil__tip {
+  max-width: min(12rem, 56vw);
+  font-size: 0.56rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-veil__badge,
+  .card-veil__tip {
+    transition: none;
+  }
+
+  .card-veil__badge:hover,
+  .card-veil.is-open .card-veil__badge {
+    transform: none;
+  }
+}
+
 /* ---------- Tipografia sobre o feltro ---------- */
 
 /* Tinta gravada: sombra clara rente embaixo = impressão prensada no
@@ -1613,53 +1773,74 @@ h2 {
 
 /* ---------- Total da mão (borda interna, apontado para o centro) ---------- */
 
-/* A condensada da casa em algarismos tabulares: o número não dança de
-   largura ao trocar de 9 para 11, e a mesma caixa serve aos dois lados.
-   A tinta é gravada no feltro (luz rente embaixo) como o resto da
-   tipografia da mesa. */
+/* A PLACA do total: uma peça de ouro deitada no feltro, não um número
+   solto nele. Gravado no verde o número disputava a leitura com o brasão
+   e com a luz zenital — tinta escura sobre superfície clara é o pior
+   contraste da mesa. Aqui ele inverte: corpo dourado cheio, tinta escura
+   por dentro, quina de luz em cima e sombra rente embaixo.
+   O ouro é o MESMO das pastilhas cheias da casa (.bk-match__tag,
+   .phase-step__dot--current): a mesa não inventa um dourado só dela.
+   Toda a geometria sai de --arena-total-h, que é a ALTURA da peça: o
+   corpo (0,74) mais os dois respiros (2 × 0,13) fecham exatamente 1 — a
+   placa cabe no orçamento vertical do espelho sem conta à parte.
+   Os dois lados usam a mesma peça de propósito, e é por isso que
+   .hand-total--player e .hand-total--opponent existem no DOM sem regra
+   nenhuma aqui: quem diz de quem é a mão é a posição no feltro e a placa
+   de nome atrás dela. Um total azul e um vermelho eram justamente as
+   duas únicas tintas da mesa fora da paleta da casa. */
 .hand-total {
   display: inline-flex;
   align-items: baseline;
+  justify-content: center;
+  /* A largura mínima existe para a placa NÃO pular de tamanho entre um
+     dígito e dois — ela é justa em cima do par de algarismos, e não uma
+     folga em volta dele. Uma mão soft ("7/17") passa dela e a peça
+     cresce; é o único caso em que isso acontece. */
+  min-width: calc(var(--arena-total-h) * 1.35);
+  padding: calc(var(--arena-total-h) * 0.13) calc(var(--arena-total-h) * 0.22);
+  border-radius: calc(var(--arena-total-h) * 0.32);
   font-family: var(--font-display);
-  font-size: var(--arena-total-h);
+  font-size: calc(var(--arena-total-h) * 0.74);
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums lining-nums;
-  text-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.45),
-    0 3px 6px rgba(9, 42, 26, 0.22);
+  color: #2a1206;
+  background: linear-gradient(180deg, #fff1d6 0%, #fcd9a0 26%, #f5b76f 62%, #dd9d51 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1px 0 rgba(122, 58, 20, 0.32),
+    0 0 0 1px rgba(122, 58, 20, 0.45),
+    0 3px 10px rgba(9, 42, 26, 0.35);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
+  transition:
+    background 0.35s ease,
+    box-shadow 0.35s ease,
+    color 0.35s ease;
 }
 
-.hand-total--player {
-  color: #1b3d86;
-}
-
-.hand-total--opponent {
-  color: #7f1d1d;
-}
-
+/* Estourou: a placa inteira vira brasa. O vermelho não precisa competir
+   com o verde do feltro — ele tem a peça toda para si. */
 .hand-total.is-bust {
-  color: #8f1616;
+  color: #ffe7dd;
+  background: linear-gradient(180deg, #c8302a 0%, #9a1a1a 55%, #6d0f12 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 0 0 1px rgba(255, 157, 157, 0.45),
+    0 3px 12px rgba(80, 8, 8, 0.5);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 /* Mão soft: as duas leituras, com a menor em segundo plano — o que vale
    é a de cima, e a de baixo é só o lembrete de que o Ás ainda escolhe. */
 .hand-total__soft {
-  font-size: 0.6em;
+  font-size: 0.62em;
   opacity: 0.5;
 }
 
 .hand-total__slash {
-  margin: 0 0.06em;
-  font-size: 0.5em;
-  opacity: 0.32;
-}
-
-/* A carta que o rival guarda virada. */
-.hand-total__partial {
-  margin-left: 0.16em;
-  font-size: 0.45em;
-  opacity: 0.55;
+  margin: 0 0.07em;
+  font-size: 0.52em;
+  opacity: 0.34;
 }
 
 /* ---------- Revelação da vez ---------- */
@@ -3616,10 +3797,25 @@ h2 {
   justify-items: stretch;
   gap: 0.5rem;
   overflow-y: auto;
-  /* O selo "Sua partida" flutua 9px ACIMA da carta: sem este respiro no
-     topo, a primeira fileira encostada na origem do scroll teria o selo
-     permanentemente clipado (a região acima da origem não rola). */
-  padding-block: 0.75rem 0.25rem;
+  /* RESPIRO DE SANGRIA — não é espaçamento, é o que impede o corte.
+     `overflow-y: auto` faz o eixo horizontal virar `auto` junto (a regra
+     do CSS: um eixo recortado arrasta o outro), e um contêiner de
+     rolagem recorta no PADDING BOX. Sem respiro nenhum, o padding box
+     caía exatamente na borda das cartas e comia tudo o que vive fora
+     delas: o aro dourado de 1,5px da sua partida, o halo de 18px em
+     volta dele, a sombra de baixo e o selo "Sua partida" (que flutua
+     9px acima da carta). O respiro cobre o maior deles; a margem
+     negativa o devolve ao px-6 do <main>, então as cartas continuam
+     exatamente onde estavam — quem cresceu foi só a área não recortada.
+     A barra de rolagem fica fora de cena (ela roubaria essa sangria de
+     volta no desktop, e a fase atual quase nunca rola). */
+  padding: 1.15rem 1.15rem 0.9rem;
+  margin-inline: -1.15rem;
+  scrollbar-width: none;
+}
+
+.active-round--dense::-webkit-scrollbar {
+  display: none;
 }
 
 .active-round--dense .bk-match {
@@ -4279,38 +4475,62 @@ h2 {
 
 /* ---------- Total de uma mão na mesa única ---------- */
 
+/* A MESMA placa dourada do duelo (ver .hand-total), na escala da mesa de
+   até seis: a peça cheia na sua mão e a miúda nos assentos de rival. A
+   altura própria (--seat-total-h) existe porque aqui há dois tamanhos no
+   mesmo feltro; a proporção interna é idêntica à do duelo. */
 .seat-total {
+  --seat-total-h: 2.05rem;
   display: inline-flex;
   align-items: baseline;
-  gap: 0.1rem;
+  justify-content: center;
+  min-width: calc(var(--seat-total-h) * 1.35);
+  padding: calc(var(--seat-total-h) * 0.13) calc(var(--seat-total-h) * 0.22);
+  border-radius: calc(var(--seat-total-h) * 0.32);
   font-family: var(--font-display);
-  font-size: 1.5rem;
+  font-size: calc(var(--seat-total-h) * 0.74);
   font-weight: 700;
   line-height: 1;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-ivory);
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  font-variant-numeric: tabular-nums lining-nums;
+  color: #2a1206;
+  background: linear-gradient(180deg, #fff1d6 0%, #fcd9a0 26%, #f5b76f 62%, #dd9d51 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1px 0 rgba(122, 58, 20, 0.32),
+    0 0 0 1px rgba(122, 58, 20, 0.45),
+    0 3px 10px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
+/* Assento de rival: a mesma peça, lida de longe. */
 .seat-total--mini {
-  font-size: 0.9rem;
+  --seat-total-h: 1.24rem;
+  min-width: calc(var(--seat-total-h) * 1.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 0 0 1px rgba(122, 58, 20, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 .seat-total.is-bust {
-  color: #ff9d9d;
+  color: #ffe7dd;
+  background: linear-gradient(180deg, #c8302a 0%, #9a1a1a 55%, #6d0f12 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 0 0 1px rgba(255, 157, 157, 0.45),
+    0 3px 12px rgba(80, 8, 8, 0.5);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-.seat-total__soft,
-.seat-total__slash {
+.seat-total__soft {
   font-size: 0.62em;
-  color: var(--color-lavender);
+  opacity: 0.5;
 }
 
-.seat-total__partial {
-  margin-left: 0.1rem;
-  font-size: 0.5em;
-  font-weight: 800;
-  color: var(--color-lavender);
+.seat-total__slash {
+  margin: 0 0.07em;
+  font-size: 0.52em;
+  opacity: 0.34;
 }
 
 /* ---------- A sua mão, em tamanho cheio ---------- */
@@ -4333,6 +4553,14 @@ h2 {
   min-height: var(--arena-total-h);
   display: grid;
   place-items: center;
+}
+
+/* A SUA placa na mesa única é a mesma peça do duelo, no mesmo tamanho:
+   é a sua mão em tamanho cheio nos dois modos. E como o slot já reserva
+   --arena-total-h de altura, crescer até ela não custa um pixel de
+   layout — só fecha a diferença que sobrava dentro do próprio slot. */
+.table-arena__you-score .seat-total {
+  --seat-total-h: var(--arena-total-h);
 }
 
 /* Você fora da mão (desempate alheio): a mesa avisa em vez de deixar um

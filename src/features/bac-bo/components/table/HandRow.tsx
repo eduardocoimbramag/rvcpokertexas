@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { handStep, miniHandStep } from '../../animations/cards';
 import type { Card } from '../../engine/types';
 import { Card3D } from '../Card3D';
+import { CardVeil } from './CardVeil';
 
 export interface HandRowProps {
   cards: readonly (Card | null)[];
@@ -25,6 +26,12 @@ export interface HandRowProps {
   delayFor?: (index: number) => number;
   /** A mão é um blackjack: as cartas ganham o contorno em brasa. */
   ablaze?: boolean;
+  /**
+   * Esta carta está aberta para VOCÊ e virada para o rival — a última da
+   * sua mão, pela regra de POV (ver ./pov). Ela recebe o selo do olho
+   * cortado, o único aviso da mesa de que o outro lado não a vê.
+   */
+  veiledAt?: (index: number) => boolean;
 }
 
 /**
@@ -49,6 +56,7 @@ export function HandRow({
   faceDownAt,
   delayFor,
   ablaze,
+  veiledAt,
 }: HandRowProps) {
   const step = mini ? miniHandStep(cards.length) : handStep(cards.length);
   return (
@@ -56,29 +64,38 @@ export function HandRow({
       className={`flex justify-center ${align === 'end' ? 'items-end' : 'items-center'}`}
       data-testid={testid}
     >
-      {cards.map((card, index) => (
-        <div
-          key={index}
-          data-testid={`${testid}-card-${index + 1}`}
-          style={
-            {
-              marginLeft: index > 0 ? `calc(${cardSize} * ${step})` : undefined,
-              // Só conta quando a mão aperta: a carta nova cobre a anterior.
-              zIndex: index,
-            } as CSSProperties
-          }
-        >
-          <Card3D
-            card={card}
-            size={cardSize}
-            compact={mini}
-            faceDown={faceDownAt?.(index) ?? false}
-            dealDelayMs={delayFor?.(index) ?? 0}
-            ablaze={ablaze}
-            label={`${labelPrefix} ${index + 1}`}
-          />
-        </div>
-      ))}
+      {cards.map((card, index) => {
+        const veiled = veiledAt?.(index) ?? false;
+        return (
+          <div
+            key={index}
+            className="hand-slot"
+            data-testid={`${testid}-card-${index + 1}`}
+            style={
+              {
+                // O selo da carta velada se dimensiona pela CARTA, não pela
+                // tipografia da página: é o que o mantém proporcional da mão
+                // cheia à mini.
+                '--card-size': cardSize,
+                marginLeft: index > 0 ? `calc(${cardSize} * ${step})` : undefined,
+                // Só conta quando a mão aperta: a carta nova cobre a anterior.
+                zIndex: index,
+              } as CSSProperties
+            }
+          >
+            <Card3D
+              card={card}
+              size={cardSize}
+              compact={mini}
+              faceDown={faceDownAt?.(index) ?? false}
+              dealDelayMs={delayFor?.(index) ?? 0}
+              ablaze={ablaze}
+              label={`${labelPrefix} ${index + 1}`}
+            />
+            {veiled && <CardVeil compact={mini} />}
+          </div>
+        );
+      })}
     </div>
   );
 }
