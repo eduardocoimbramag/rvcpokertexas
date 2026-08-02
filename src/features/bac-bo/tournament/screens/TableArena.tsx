@@ -145,6 +145,10 @@ function RivalSeat({
               mão dele assenta — é o que faz a fileira ler como cadeira
               em volta da mesa, e não como linha de placar. */}
           <span className="rival-seat__spot" aria-hidden="true" />
+          {/* O blackjack do rival também queima — mas só no SHOWDOWN. A
+              labareda é da mão, e a mão dele só é mão inteira depois que
+              a oculta vira; acesa antes, ela entregaria os 21 dele com a
+              carta ainda de bruços. Mesmo contrato do duelo 1v1. */}
           <HandRow
             cards={pov.shown}
             cardSize="var(--card-mini)"
@@ -153,6 +157,7 @@ function RivalSeat({
             faceDownAt={(index) => !revealed && index === pov.shown.length - 1}
             labelPrefix={`Carta de ${seat.player.name}`}
             testid={`table-hand-${seat.player.id}`}
+            ablaze={revealed && isNaturalBlackjack(cards)}
           />
           <div className="rival-seat__foot">
             <HandTotal

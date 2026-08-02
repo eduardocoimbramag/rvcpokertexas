@@ -634,7 +634,7 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     expect(screen.getByTestId('turn-call')).toHaveTextContent('ESTOUROU');
   });
 
-  it('a brasa do blackjack é SÓ SUA — a mão do rival nunca acende aqui', () => {
+  it('a labareda é da MÃO: a sua na hora, a do rival só no showdown', () => {
     const natural: RoundResult = {
       ...sampleResult,
       playerHand: [card('A', 'hearts'), card('K', 'spades')],
@@ -654,14 +654,26 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     // sua frente e você já sabe o que tirou.
     const live = renderArena({ round: naturalRound });
     expect(ablaze(live.container, 'hand-player')).toBe(2);
+    // A dele NÃO: com a oculta ainda de bruços, uma labareda acesa ali
+    // entregaria os 21 dele — o mesmo vazamento que o total parcial e o
+    // estouro escondido evitam. É a regra de POV, agora também no fogo.
     expect(ablaze(live.container, 'hand-opponent')).toBe(0);
     live.unmount();
 
-    // E a dele não acende NEM no showdown: o efeito é de quem joga, não
-    // da mesa — o blackjack do rival queima na tela dele.
+    // Virada a oculta, o segredo acabou e a mão dele acende igual: o
+    // efeito é da mão, não de quem está olhando para ela.
     const showdown = renderArena({ phase: 'settle', round: null, result: natural });
-    expect(ablaze(showdown.container, 'hand-opponent')).toBe(0);
+    expect(ablaze(showdown.container, 'hand-opponent')).toBe(2);
     expect(screen.getByTestId('verdict-opponent')).toHaveTextContent('BLACKJACK');
+  });
+
+  it('showdown sem blackjack do rival não acende mão nenhuma dele', () => {
+    const ablaze = (root: HTMLElement) =>
+      root.querySelectorAll('[data-testid^="hand-opponent-cards-card"] .card-scene--ablaze').length;
+
+    // `sampleResult` fecha o rival em 17 — sem natural, sem fogo.
+    const { container } = renderArena({ phase: 'settle', round: null, result: sampleResult });
+    expect(ablaze(container)).toBe(0);
   });
 
   it('o relógio zerado é anunciado como PAROU, sem falar do tempo', () => {
@@ -696,6 +708,62 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     expect(screen.getByTestId('action-double')).toHaveTextContent('APOSTA DOBRADA · 200');
     // O invólucro em brasa é quem desenha o fogo nas bordas.
     expect(accepted.container.querySelector('.double-cta--accepted')).toBeInTheDocument();
+    // E o fogo não fica só no seu rodapé: o POTE queima no meio do
+    // feltro, que é onde os dois lados da mesa o veem.
+    expect(screen.getByTestId('felt-pot')).toHaveAttribute('data-ablaze', 'true');
+  });
+
+  it('a combustão é um EVENTO: só existe onde algo acabou de acontecer', () => {
+    const burstsIn = (root: HTMLElement, sel: string) =>
+      root.querySelectorAll(`${sel} [data-testid="blaze-burst"]`).length;
+
+    // Mesa parada: nenhum estouro em lugar nenhum.
+    const calma = renderArena({ onRequestDouble: () => undefined });
+    expect(calma.container.querySelectorAll('[data-testid="blaze-burst"]')).toHaveLength(0);
+    calma.unmount();
+
+    // Dobra aceita: estoura no botão E no pote — o botão é seu, o pote é
+    // da mesa, e é o pote que o rival enxerga.
+    const dobrou = renderArena({
+      onRequestDouble: () => undefined,
+      doubleBet: { status: 'accepted', amount: 200, open: false },
+    });
+    expect(burstsIn(dobrou.container, '.double-cta')).toBe(1);
+    expect(burstsIn(dobrou.container, '.felt-pot')).toBe(1);
+    // E não contamina as mãos: ninguém tirou blackjack aqui.
+    expect(burstsIn(dobrou.container, '[data-testid="hand-player"]')).toBe(0);
+  });
+
+  it('o blackjack estoura na mão que o tirou, e em nenhuma outra', () => {
+    const natural: BlackjackRoundState = {
+      ...sampleRound,
+      playerHand: [card('A', 'hearts'), card('K', 'spades')],
+    };
+    const { container } = renderArena({ round: natural });
+
+    expect(
+      container.querySelectorAll('[data-testid="hand-player"] [data-testid="blaze-burst"]'),
+    ).toHaveLength(1);
+    expect(
+      container.querySelectorAll('[data-testid="hand-opponent"] [data-testid="blaze-burst"]'),
+    ).toHaveLength(0);
+  });
+
+  it('durante a distribuição a mão ainda não estoura — as cartas estão no ar', () => {
+    const natural: BlackjackRoundState = {
+      ...sampleRound,
+      playerHand: [card('A', 'hearts'), card('K', 'spades')],
+    };
+    const { container } = renderArena({ phase: 'dealing', round: natural });
+    expect(container.querySelectorAll('[data-testid="blaze-burst"]')).toHaveLength(0);
+  });
+
+  it('sem dobra aceita o pote não pega fogo', () => {
+    renderArena({
+      onRequestDouble: () => undefined,
+      doubleBet: { status: 'declined', amount: 100, open: false },
+    });
+    expect(screen.getByTestId('felt-pot')).toHaveAttribute('data-ablaze', 'false');
   });
 
   it('com a dobra no ar a mesa inteira espera a resposta do rival', () => {

@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { handStep, miniHandStep } from '../../animations/cards';
 import type { Card } from '../../engine/types';
 import { Card3D } from '../Card3D';
+import { BlazeBurst } from './BlazeBurst';
 import { CardVeil } from './CardVeil';
 
 export interface HandRowProps {
@@ -60,42 +61,52 @@ export function HandRow({
 }: HandRowProps) {
   const step = mini ? miniHandStep(cards.length) : handStep(cards.length);
   return (
-    <div
-      className={`flex justify-center ${align === 'end' ? 'items-end' : 'items-center'}`}
-      data-testid={testid}
-    >
-      {cards.map((card, index) => {
-        const veiled = veiledAt?.(index) ?? false;
-        return (
-          <div
-            key={index}
-            className="hand-slot"
-            data-testid={`${testid}-card-${index + 1}`}
-            style={
-              {
-                // O selo da carta velada se dimensiona pela CARTA, não pela
-                // tipografia da página: é o que o mantém proporcional da mão
-                // cheia à mini.
-                '--card-size': cardSize,
-                marginLeft: index > 0 ? `calc(${cardSize} * ${step})` : undefined,
-                // Só conta quando a mão aperta: a carta nova cobre a anterior.
-                zIndex: index,
-              } as CSSProperties
-            }
-          >
-            <Card3D
-              card={card}
-              size={cardSize}
-              compact={mini}
-              faceDown={faceDownAt?.(index) ?? false}
-              dealDelayMs={delayFor?.(index) ?? 0}
-              ablaze={ablaze}
-              label={`${labelPrefix} ${index + 1}`}
-            />
-            {veiled && <CardVeil compact={mini} />}
-          </div>
-        );
-      })}
+    // O palco existe SEMPRE, mesmo sem fogo: ele é a caixa da mão, e é
+    // dela que o BlazeBurst tira o que está queimando. Criá-lo só na
+    // hora do estouro faria a mão trocar de caixa no instante mais
+    // sensível da cena.
+    <div className="blaze-stage">
+      {/* A combustão é montada e desmontada pelo `ablaze` — é o
+          desmonte, e não um relógio, que apaga o fogo. Mãos mini
+          (assentos da mesa única) ganham a mesma cena em escala. */}
+      {ablaze && <BlazeBurst scale={mini ? 0.55 : 1} />}
+      <div
+        className={`relative flex justify-center ${align === 'end' ? 'items-end' : 'items-center'}`}
+        data-testid={testid}
+      >
+        {cards.map((card, index) => {
+          const veiled = veiledAt?.(index) ?? false;
+          return (
+            <div
+              key={index}
+              className="hand-slot"
+              data-testid={`${testid}-card-${index + 1}`}
+              style={
+                {
+                  // O selo da carta velada se dimensiona pela CARTA, não pela
+                  // tipografia da página: é o que o mantém proporcional da mão
+                  // cheia à mini.
+                  '--card-size': cardSize,
+                  marginLeft: index > 0 ? `calc(${cardSize} * ${step})` : undefined,
+                  // Só conta quando a mão aperta: a carta nova cobre a anterior.
+                  zIndex: index,
+                } as CSSProperties
+              }
+            >
+              <Card3D
+                card={card}
+                size={cardSize}
+                compact={mini}
+                faceDown={faceDownAt?.(index) ?? false}
+                dealDelayMs={delayFor?.(index) ?? 0}
+                ablaze={ablaze}
+                label={`${labelPrefix} ${index + 1}`}
+              />
+              {veiled && <CardVeil compact={mini} />}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

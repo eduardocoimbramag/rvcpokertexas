@@ -947,53 +947,192 @@ h2 {
   transform-style: preserve-3d;
 }
 
-/* ---------- Blackjack: a carta pega fogo ----------
+/* ==================== A COMBUSTÃO DOURADA ====================
 
-   A MESMA brasa do botão da dobra aceita, agora contornando as cartas —
-   é o selo da mão perfeita. Duas línguas de chama girando em sentidos e
-   velocidades diferentes (o desencontro é o que o olho lê como fogo),
-   uma nítida rente à borda e outra borrada e pulsando por fora.
+   O selo da mão perfeita — e da mesa que dobrou — tem duas partes: um
+   ESTOURO que bate uma vez e uma FOGUEIRA que fica. O estouro dura
+   ~1,9s; a fogueira, enquanto a mão for blackjack ou a mesa estiver
+   dobrada.
 
-   O `--fire-angle` e o `fire-turn` são os mesmos declarados na dobra:
-   uma brasa só na casa, usada nos dois lugares em que a mesa esquenta. */
-.card-scene--ablaze::before,
-.card-scene--ablaze::after {
-  content: '';
+   A versão anterior era um contorno de CSS aceso enquanto a mão
+   durasse, e errava em tudo o que um efeito assim pode errar:
+   acompanhava o retângulo da carta (então lia como sombra laranja, não
+   como fogo), subia e descia em bloco (então lia como um elemento
+   flutuando) e não tinha clímax nenhum — sem começo não há impacto.
+
+   Agora o fogo mora num CANVAS (ver BlazeBurst.tsx): até 40 línguas com
+   ruído próprio, 6 a 10 raios e até 38 faíscas com trajetória
+   individual, tudo em UM nó de DOM. As mesmas peças em elementos seriam
+   ~88 camadas para o compositor cuidar por quadro.
+
+   O CSS daqui cuida de duas coisas só: o palco onde o canvas mora e o
+   que acontece com a CARTA. Documentação completa: docs/labareda.md. */
+
+/* O PALCO. A caixa dele é exatamente a da mão — é o que o BlazeBurst
+   mede para saber o que está queimando — e o canvas transborda dela por
+   todos os lados, porque faísca precisa de céu.
+   O céu é parametrizado: um botão-pílula precisa de muito espaço em
+   cima e quase nenhum dos lados; uma mão de cartas, o contrário. */
+.blaze-stage {
+  /* Razões SEM unidade, e de propósito: quem as aplica é o BlazeBurst,
+     em px, porque <canvas> é elemento substituído e não obedece a
+     `inset` (ver a nota lá). O CSS segue dono do desenho; só a
+     aritmética mudou de casa. */
+  --blaze-sky-x: 0.42;
+  --blaze-sky-top: 0.9;
+  --blaze-sky-bottom: 0.5;
+  position: relative;
+  display: flex;
+}
+
+/* Atrás de tudo (z-index 0, abaixo da carta) e sem toque. O canvas ficar
+   ATRÁS não é detalhe de empilhamento: é o que faz o flash não cobrir os
+   números e naipes — a luz nasce no centro inferior da mão, o corpo das
+   cartas a oculta e ela só escapa em volta, que é como fogo atrás de um
+   objeto se comporta. */
+.blaze-burst {
   position: absolute;
-  inset: calc(var(--card-size, var(--card-w)) * -0.045);
+  /* left/top/width/height entram por style no BlazeBurst. */
   z-index: 0;
-  border-radius: calc(var(--card-size, var(--card-w)) * 0.15);
-  background: conic-gradient(
-    from var(--fire-angle),
-    #ff3d00,
-    #ffb300,
-    #fff1a8,
-    #ff6d00,
-    #b71c1c,
-    #ff3d00
-  );
-  animation: fire-turn 2.6s linear infinite;
   pointer-events: none;
 }
 
-/* O halo da brasa. O raio é CURTO: com ele largo a luz de uma carta
-   alcançava a vizinha e as duas pareciam encostadas — o contorno tem de
-   dizer "esta mão está pegando fogo", não pintar o feltro em volta. */
+/* ---------- O contorno das cartas ----------
+
+   A carta é BANHADA, não sacudida: ela não pula, não gira, não balança
+   e termina exatamente onde estava.
+
+   O que ENTRA uma vez é o impacto — a sombra que se aprofunda no soco e
+   o reflexo que atravessa. O que FICA é o aro dourado, num nível baixo,
+   pelo mesmo motivo que a chama fica: enquanto a mão for blackjack, a
+   carta está em brasa. Um aro que apagasse sozinho com a fogueira ainda
+   queimando atrás deixaria a carta desconectada do próprio efeito. */
+.card-scene--ablaze {
+  animation: card-ignite 1.5s cubic-bezier(0.12, 0.7, 0.25, 1) forwards;
+}
+
+/* O `forwards` aqui não custa nada depois de terminar: o quadro final
+   fica ESTÁTICO na camada, sem recalcular filtro por quadro. */
+@keyframes card-ignite {
+  0% {
+    filter: drop-shadow(0 5px 9px rgba(10, 24, 16, 0.38));
+  }
+  9% {
+    filter: drop-shadow(0 10px 20px rgba(48, 14, 2, 0.55))
+      drop-shadow(0 0 15px rgba(255, 184, 0, 0.6));
+  }
+  100% {
+    filter: drop-shadow(0 6px 11px rgba(30, 12, 4, 0.42))
+      drop-shadow(0 0 7px rgba(255, 184, 0, 0.28));
+  }
+}
+
+/* O aro: um fio de ouro por DENTRO da borda, mais o brilho rente a ela.
+   Fica por cima da carta (z-index acima do .card3d) porque é luz caindo
+   nela, não algo atrás dela. */
+.card-scene--ablaze::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: calc(var(--card-size, var(--card-w)) * 0.11);
+  box-shadow:
+    inset 0 0 0 1.3px rgba(255, 215, 106, 0.95),
+    inset 0 0 12px rgba(255, 184, 0, 0.42);
+  opacity: 0;
+  animation: card-rim 1.5s cubic-bezier(0.12, 0.7, 0.25, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes card-rim {
+  0% {
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.62;
+  }
+}
+
+/* O REFLEXO: uma faixa estreita de luz que atravessa a carta na
+   diagonal, UMA vez. O recorte arredondado é do próprio pseudo-elemento
+   (overflow hidden), então a faixa morre na quina da carta em vez de
+   sair por fora dela. */
 .card-scene--ablaze::after {
-  inset: calc(var(--card-size, var(--card-w)) * -0.085);
-  filter: blur(calc(var(--card-size, var(--card-w)) * 0.075));
-  opacity: 0.62;
-  animation:
-    fire-turn 4.1s linear infinite reverse,
-    fire-breathe 1.3s ease-in-out infinite;
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  border-radius: calc(var(--card-size, var(--card-w)) * 0.11);
+  /* DOURADO, e não branco: a faixa atravessa uma carta de papel-marfim,
+     e branco sobre marfim não é reflexo — é nada. O miolo champagne só
+     existe para dar o fio de luz no meio do ouro. */
+  background: linear-gradient(
+    108deg,
+    rgba(255, 215, 106, 0) 38%,
+    rgba(255, 184, 0, 0.5) 45%,
+    rgba(255, 248, 220, 0.92) 50%,
+    rgba(255, 184, 0, 0.46) 55%,
+    rgba(255, 215, 106, 0) 62%
+  );
+  /* A CONTA da travessia, porque ela não é óbvia: com a imagem a 300%
+     da carta, o miolo da faixa fica a 1,5 largura da esquerda dela, e o
+     deslocamento de uma posição p vale −2·largura·p. O miolo cruza a
+     carta enquanto p vai de 75% a 25% — ou seja, o terço do meio da
+     animação. Sair de 115% e ir a −15% põe essa janela exatamente no
+     meio do percurso; foi errando isto que a faixa passou três vezes
+     fora do quadro sem ninguém ver. */
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 115% 0;
+  animation: card-sheen 0.95s cubic-bezier(0.32, 0, 0.2, 1) 0.1s forwards;
+  pointer-events: none;
+}
+
+@keyframes card-sheen {
+  to {
+    background-position: -15% 0;
+  }
+}
+
+/* A luz atravessa a MÃO, não cada carta por conta própria: a segunda
+   recebe o reflexo um beat depois da primeira, e o olho lê uma faixa
+   só passando por cima das duas. */
+.hand-slot:nth-child(2) .card-scene--ablaze::after {
+  animation-delay: 0.19s;
+}
+
+.hand-slot:nth-child(3) .card-scene--ablaze::after {
+  animation-delay: 0.28s;
+}
+
+.hand-slot:nth-child(n + 4) .card-scene--ablaze::after {
+  animation-delay: 0.36s;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .card-scene--ablaze,
   .card-scene--ablaze::before,
   .card-scene--ablaze::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+
+  /* Sem a varredura, o aro é o que carrega a informação — e ele FICA,
+     porque a mão continua sendo blackjack. */
+  .card-scene--ablaze::before {
     animation: none;
+    opacity: 0.62;
+  }
+
+  .card-scene--ablaze::after {
+    display: none;
   }
 }
+
 
 .card3d__face {
   position: absolute;
@@ -2196,65 +2335,23 @@ h2 {
   box-shadow: inset 0 0 0 1px rgba(125, 98, 85, 0.2);
 }
 
-/* Aceite: a mesa dobrou e o botão PEGA FOGO. Duas camadas de chama
-   girando em sentidos e velocidades diferentes (é o desencontro que o
-   olho lê como fogo, não uma só girando), mais o brasido pulsando por
-   baixo e a tinta em champagne. Fica assim até o fim da mão: o valor em
-   jogo virou outro, e a mesa não deixa ninguém esquecer. */
-@property --fire-angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
+/* ---------- A dobra aceita ----------
+
+   O botão recebe a MESMA combustão das cartas (o palco é o próprio
+   invólucro .double-cta) e queima enquanto a mesa estiver dobrada — o
+   valor em jogo virou outro, e isso vale pela mão inteira.
+
+   O céu do estouro aqui é o oposto do da mão: a pílula já tem 330px de
+   largura, então o que falta é altura. A DENSIDADE das línguas se
+   ajusta sozinha ao perímetro maior (ver `density` em blaze.ts); sem
+   isso o mesmo punhado de chamas se perdia numa borda três vezes mais
+   longa e o botão queimava ralo. */
+.double-cta--accepted {
+  --blaze-sky-x: 0.05;
+  --blaze-sky-top: 1.75;
+  --blaze-sky-bottom: 1.3;
 }
 
-.double-cta--accepted::before,
-.double-cta--accepted::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  z-index: 0;
-  border-radius: 1.15rem;
-  background: conic-gradient(
-    from var(--fire-angle),
-    #ff3d00,
-    #ffb300,
-    #fff1a8,
-    #ff6d00,
-    #b71c1c,
-    #ff3d00
-  );
-  animation: fire-turn 2.6s linear infinite;
-  pointer-events: none;
-}
-
-/* A segunda língua de fogo: mais larga, borrada e girando ao contrário —
-   é ela que dá volume à chama e a faz "lamber" a borda. O raio é curto de
-   propósito: com o halo largo a brasa passava do botão e sujava o feltro
-   em volta. */
-.double-cta--accepted::after {
-  inset: -3.5px;
-  filter: blur(5px);
-  opacity: 0.7;
-  animation:
-    fire-turn 4.1s linear infinite reverse,
-    fire-breathe 1.3s ease-in-out infinite;
-}
-
-@keyframes fire-turn {
-  to {
-    --fire-angle: 360deg;
-  }
-}
-
-@keyframes fire-breathe {
-  0%,
-  100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 0.95;
-  }
-}
 
 /* A tinta do botão em brasa: fundo de carvão quente e letra champagne,
    para o texto continuar legível dentro da chama. */
@@ -2264,13 +2361,6 @@ h2 {
   box-shadow:
     inset 0 1px 0 rgba(255, 196, 130, 0.3),
     inset 0 0 18px rgba(255, 109, 0, 0.35);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .double-cta--accepted::before,
-  .double-cta--accepted::after {
-    animation: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4875,6 +4965,41 @@ h2 {
   translate: -50% -50%;
   pointer-events: none;
 }
+
+/* ---------- O pote que dobrou ----------
+
+   A dobra aceita estoura AQUI também, e não só no botão do seu rodapé.
+   O botão é seu: ele não existe na tela do rival. O pote é da MESA —
+   está no meio do feltro, à vista dos dois lados, e é literalmente o
+   valor que dobrou. É o que faz a dobra ser um fato da mesa em vez de
+   um aviso privado.
+
+   O rastro que fica é uma poça de brasa parada sob as fichas, sem
+   contorno: as fichas são discos soltos e não preenchem retângulo
+   nenhum — um aro nítido apareceria como uma pílula pálida atravessando
+   o monte. */
+.felt-pot.is-ablaze {
+  --blaze-sky-x: 0.42;
+  --blaze-sky-top: 1.45;
+  --blaze-sky-bottom: 0.85;
+}
+
+.felt-pot.is-ablaze::before {
+  content: '';
+  position: absolute;
+  inset: -22% -14%;
+  z-index: -1;
+  border-radius: 999px;
+  background: radial-gradient(
+    72% 82% at 50% 56%,
+    rgba(255, 184, 0, 0.4) 0%,
+    rgba(255, 138, 0, 0.24) 46%,
+    rgba(232, 74, 0, 0.08) 74%,
+    rgba(140, 33, 0, 0) 100%
+  );
+  pointer-events: none;
+}
+
 
 /* O poço da pilha: as fichas são absolutas na base e sobem degrau a
    degrau (7px por ficha, via transform no framer). A altura reserva o

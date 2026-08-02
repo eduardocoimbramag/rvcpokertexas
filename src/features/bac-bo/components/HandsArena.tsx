@@ -16,6 +16,7 @@ import type {
 } from '../engine/types';
 import type { DoubleBetState, GamePhase, TurnClock, TurnReveal } from '../store/gameStore';
 import { TURN_SECONDS, useGameStore } from '../store/gameStore';
+import { BlazeBurst } from './table/BlazeBurst';
 import { ChipStack } from './table/ChipStack';
 import { HandRow } from './table/HandRow';
 import { HandTotal } from './table/HandTotal';
@@ -277,7 +278,13 @@ function DoubleCta({
           : 'DOBRAR APOSTA';
 
   return (
-    <div className={`double-cta double-cta--${status}`} data-double-status={status}>
+    <div
+      className={`double-cta blaze-stage double-cta--${status}`}
+      data-double-status={status}
+    >
+      {/* O aceite ESTOURA aqui — a mesma combustão das cartas, uma vez
+          só. O que fica depois é o aro morno e parado do botão. */}
+      {status === 'accepted' && <BlazeBurst scale={1} />}
       {/* `secondary`, não `ghost`: o convite da dobra é uma peça CHAPADA
           do vinho da casa em qualquer estado. O fantasma translúcido lia
           como botão desligado sobre o feltro claro mesmo quando estava
@@ -427,14 +434,34 @@ export function HandsArena({
 
   if (playerCards.length === 0 || opponentCards.length === 0) return null;
 
-  /* Blackjack na mesa: o contorno das cartas pega fogo — e a brasa é
-     SÓ SUA. Ela mora na sua tela, para você saber o que tem na mão; a
-     mão do rival nunca acende aqui, nem no showdown, porque o efeito é
-     de quem joga, não da mesa. Do outro lado é igual: o blackjack dele
-     queima na tela dele, não na sua.
-     Acende na hora, sem esperar o showdown: as suas duas cartas estão
-     abertas na sua frente e você já sabe o que tirou. */
-  const playerAblaze = isNaturalBlackjack(playerCards);
+  /* Blackjack na mesa: o contorno das cartas pega fogo. A labareda é da
+     MÃO, não de quem olha — as DUAS acendem, cada uma no instante em que
+     a mesa pode mostrá-la sem mentir:
+
+     - a sua, na hora: as suas duas cartas estão abertas na sua frente e
+       você já sabe o que tirou;
+     - a do rival, no SHOWDOWN. Nem um beat antes. A mão dele tem uma
+       carta virada (a regra de POV, ver ./table/pov), e uma labareda
+       acesa ali diria "ele tem 21" com a oculta ainda de bruços — o
+       duelo acabaria naquele instante, com você sabendo que basta não
+       estourar. O corte é o mesmo que já esconde o total dele e o
+       estouro dele: a mesa nunca conta pelas beiradas o que só as
+       cartas podem contar.
+
+     A regra é simétrica, e é isso que faz dela uma regra: na tela dele o
+     contrato é idêntico, com os papéis trocados. */
+  // O estouro espera as cartas ASSENTAREM: durante a distribuição elas
+  // ainda estão voando, e uma combustão em cima de carta no ar não tem
+  // onde acontecer. O clímax é quando a mão fecha e a vez abre.
+  const playerAblaze = !dealing && isNaturalBlackjack(playerCards);
+  const opponentAblaze = revealed && (result?.opponentNatural ?? false);
+
+  /* A dobra aceita põe FOGO NO POTE, não só no botão. O botão é seu — ele
+     vive no seu rodapé e não existe na tela do rival. O pote é da MESA:
+     está no meio do feltro, à vista dos dois, e é literalmente o valor
+     que dobrou. Acender ali é o que faz a dobra ser um fato da mesa em
+     vez de um aviso privado. */
+  const stakeAblaze = doubleBet?.status === 'accepted';
 
   /* Atrasos de entrada e de virada por carta. Só a distribuição tem
      coreografia: dali em diante cada carta pedida é um lance sozinho na
@@ -535,6 +562,7 @@ export function HandsArena({
           labelPrefix={`Carta de ${match.opponent.name}`}
           faceDownAt={(index) => !revealed && index === opponentCards.length - 1}
           delayFor={opponentDelay}
+          ablaze={opponentAblaze}
         />
         {/* O total do rival é o das cartas ABERTAS enquanto houver
             oculta: um número limpo do que já está na mesa. */}
@@ -555,7 +583,12 @@ export function HandsArena({
             rival empurrando fichas para o centro, em vez de a mesa se
             redesenhar. Sem `key`, portanto — de propósito. */}
         {match.stake > 0 && (
-          <div className="felt-pot" data-testid="felt-pot">
+          <div
+            className={`felt-pot blaze-stage ${stakeAblaze ? 'is-ablaze' : ''}`}
+            data-testid="felt-pot"
+            data-ablaze={stakeAblaze}
+          >
+            {stakeAblaze && <BlazeBurst scale={0.7} />}
             <ChipStack stake={match.stake} variant="felt" instant={reducedMotion} />
           </div>
         )}
