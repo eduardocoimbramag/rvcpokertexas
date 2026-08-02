@@ -212,12 +212,19 @@ export const BLAZE_VARIANTS: Record<BlazeVariant, BlazeVariantConfig> = {
   },
   'double-button': {
     zones: [
-      // As quinas de cima: as chamas maiores da coroa. 0,30–0,40 de
-      // 44px ≈ 13–18px acima da borda — o teto vem do viewport e do
-      // gap de 12px até PEDIR CARTA/PARAR (as pontas que passam disso
-      // somem ATRÁS dos controles, nunca por cima).
-      { kind: 'top-corner', weight: 0.3, x: [0.01, 0.09], y: [0, 0.12], len: [0.3, 0.4] },
-      { kind: 'top-corner', weight: 0.3, x: [0.91, 0.99], y: [0, 0.12], len: [0.3, 0.4] },
+      /* As quinas de cima: as chamas maiores da coroa. 0,30–0,40 de
+         44px ≈ 13–18px acima da borda — o teto vem do viewport e do gap
+         de 12px até PEDIR CARTA/PARAR (as pontas que passam disso somem
+         ATRÁS dos controles, nunca por cima).
+
+         O x começa em 0,08 e não na ponta: o botão é uma PÍLULA com
+         `border-radius: 1rem`, e 16px de raio numa largura de ~330px
+         são ~4,85%. Chama nascida antes disso fica no vazio fora da
+         curva e lê como se estivesse FLUTUANDO ao lado do botão. 0,08
+         (~26px) põe a base na parte reta do topo, com folga para a
+         meia-largura da própria chama. */
+      { kind: 'top-corner', weight: 0.3, x: [0.08, 0.15], y: [0, 0.12], len: [0.3, 0.4] },
+      { kind: 'top-corner', weight: 0.3, x: [0.85, 0.92], y: [0, 0.12], len: [0.3, 0.4] },
       // A borda superior: chamas médias, com vãos entre elas.
       { kind: 'top-edge', weight: 0.4, x: [0.12, 0.88], y: [0, 0.08], len: [0.16, 0.26] },
     ],

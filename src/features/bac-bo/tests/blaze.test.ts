@@ -246,6 +246,25 @@ describe('blaze — as duas variantes', () => {
     }
   });
 
+  it('double-button: a coroa nasce na parte RETA do topo, não na curva', () => {
+    /* O botão é uma pílula com `border-radius: 1rem`. Numa largura de
+       ~330px isso são ~4,85% de cada lado em que a borda de cima já
+       desceu — chama nascida ali fica no vazio e lê como se estivesse
+       flutuando ao lado do botão. A base de cada chama (e a folga da
+       meia-largura dela) tem de cair na parte reta. */
+    const radiusFrac = 16 / BUTTON.w;
+    const halfWMax = BUTTON.h * BLAZE_VARIANTS['double-button'].tongueHalfW[1];
+    for (let seed = 0; seed < 30; seed += 1) {
+      const model = buildBurst(new SeededRng(seed), BUTTON, 'double-button');
+      for (const t of model.tongues) {
+        const left = (t.x - halfWMax - BUTTON.x) / BUTTON.w;
+        const right = (t.x + halfWMax - BUTTON.x) / BUTTON.w;
+        expect(left).toBeGreaterThanOrEqual(radiusFrac);
+        expect(right).toBeLessThanOrEqual(1 - radiusFrac);
+      }
+    }
+  });
+
   it('a hierarquia é explícita: o blackjack pesa mais que o botão', () => {
     expect(BLAZE_VARIANTS.blackjack.intensity).toBe(1);
     expect(BLAZE_VARIANTS['double-button'].intensity).toBeLessThan(

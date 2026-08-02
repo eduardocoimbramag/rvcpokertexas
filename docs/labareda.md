@@ -404,8 +404,17 @@ no perímetro:
 
 | Zona | Peso | Onde | Altura |
 | --- | :-: | --- | --- |
-| Quinas superiores (×2) | 0,3 cada | pontas do topo | **30–40%** (≈13–18px acima da borda) |
-| Borda superior | 0,4 | topo, com vãos | 16–26% |
+| Quinas superiores (×2) | 0,3 cada | x em 8–15% e 85–92% | **30–40%** (≈13–18px acima da borda) |
+| Borda superior | 0,4 | x em 12–88%, com vãos | 16–26% |
+
+> **Por que as quinas começam em 8% e não na ponta.** O botão é uma
+> pílula com `border-radius: 1rem`: 16px de raio numa largura de ~330px
+> são ~4,85% de cada lado em que a borda de cima já desceu. Chama
+> nascida antes disso fica no vazio fora da curva e lê como se
+> estivesse **flutuando** ao lado do botão. 8% (~26px) põe a base na
+> parte reta do topo, com folga para a meia-largura da própria chama —
+> e há teste (30 sementes) conferindo que nem a base nem os flancos
+> caem na curva.
 
 Nada na borda de baixo: ali é o fim do viewport, e chama cortada é pior
 que chama nenhuma.
@@ -690,7 +699,7 @@ Apagar tudo tiraria a informação junto com a animação.
 
 ## 12. Testes
 
-### Modelo — `src/features/bac-bo/tests/blaze.test.ts` (30)
+### Modelo — `src/features/bac-bo/tests/blaze.test.ts` (31)
 
 Todos com `SeededRng`, portanto determinísticos. Sem `Math.random`, sem
 `Date.now`.
@@ -701,7 +710,7 @@ sem `sustains` assenta em zero; flash é soco e morre antes do
 assentamento; `settleProgress` vai de 0 a 1; `entranceMs` cobre todos
 os beats.
 
-**Variantes (9)**
+**Variantes (10)**
 
 | Teste | Invariante |
 | --- | --- |
@@ -713,6 +722,7 @@ os beats.
 | blackjack: alturas por zona | laterais 30–45%, base 18–30%, vão ≤16% |
 | blackjack: **base não contínua** | terço central da base < 15% dos sorteios |
 | double-button: **coroa de cima** | 30 sementes, nada nasce abaixo de 20% da altura — chama nem faísca |
+| double-button: **nasce na parte reta** | 30 sementes: base e flancos das chamas fora do raio da pílula (nada flutuando) |
 | double-button: composição e teto | 10–14 chamas, quinas maiores que o meio, tudo dentro do céu de 0,45 (nada cortado), 14–22 faíscas, sem raios, com linha de luz |
 
 **Faíscas (8)** — nascem nas zonas, sobem e freiam; raio ≥ ~2px na mão
