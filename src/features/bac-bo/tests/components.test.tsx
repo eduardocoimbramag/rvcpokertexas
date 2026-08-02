@@ -706,32 +706,53 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
       doubleBet: { status: 'accepted', amount: 200, open: false },
     });
     expect(screen.getByTestId('action-double')).toHaveTextContent('APOSTA DOBRADA · 200');
-    // O invólucro em brasa é quem desenha o fogo nas bordas.
+    // O invólucro em brasa é quem carrega a coroa de fogo do botão.
     expect(accepted.container.querySelector('.double-cta--accepted')).toBeInTheDocument();
-    // E o fogo não fica só no seu rodapé: o POTE queima no meio do
-    // feltro, que é onde os dois lados da mesa o veem.
-    expect(screen.getByTestId('felt-pot')).toHaveAttribute('data-ablaze', 'true');
   });
 
-  it('a combustão é um EVENTO: só existe onde algo acabou de acontecer', () => {
+  it('a labareda só existe onde algo aconteceu: no botão, e SÓ nele', () => {
     const burstsIn = (root: HTMLElement, sel: string) =>
       root.querySelectorAll(`${sel} [data-testid="blaze-burst"]`).length;
 
-    // Mesa parada: nenhum estouro em lugar nenhum.
+    // Mesa parada: nenhum fogo em lugar nenhum.
     const calma = renderArena({ onRequestDouble: () => undefined });
     expect(calma.container.querySelectorAll('[data-testid="blaze-burst"]')).toHaveLength(0);
     calma.unmount();
 
-    // Dobra aceita: estoura no botão E no pote — o botão é seu, o pote é
-    // da mesa, e é o pote que o rival enxerga.
+    // Dobra aceita: a coroa acende no botão — e em nenhum outro lugar.
     const dobrou = renderArena({
       onRequestDouble: () => undefined,
       doubleBet: { status: 'accepted', amount: 200, open: false },
     });
     expect(burstsIn(dobrou.container, '.double-cta')).toBe(1);
-    expect(burstsIn(dobrou.container, '.felt-pot')).toBe(1);
+    expect(
+      dobrou.container.querySelector('.double-cta [data-testid="blaze-burst"]'),
+    ).toHaveAttribute('data-variant', 'double-button');
     // E não contamina as mãos: ninguém tirou blackjack aqui.
     expect(burstsIn(dobrou.container, '[data-testid="hand-player"]')).toBe(0);
+  });
+
+  it('o POTE nunca pega fogo — nem com a dobra aceita', () => {
+    /* Decisão de direção: nenhum efeito nas fichas. A dobra é
+       comunicada exclusivamente pelo botão APOSTA DOBRADA — a poça de
+       brasa que já morou no pote virava um bloco amarelo sobre o monte
+       e brigava com a mão de blackjack pela atenção. */
+    for (const status of ['accepted', 'declined'] as const) {
+      const view = renderArena({
+        onRequestDouble: () => undefined,
+        doubleBet: { status, amount: 200, open: false },
+      });
+      const pot = screen.getByTestId('felt-pot');
+      // Sem canvas de fogo dentro do componente das fichas...
+      expect(pot.querySelector('canvas')).toBeNull();
+      expect(pot.querySelector('[data-testid="blaze-burst"]')).toBeNull();
+      // ...sem a classe de brasa e sem palco de fogo.
+      expect(pot.classList.contains('is-ablaze')).toBe(false);
+      expect(pot.classList.contains('blaze-stage')).toBe(false);
+      // As fichas continuam lá, intactas.
+      expect(pot.querySelectorAll('.chip').length).toBeGreaterThan(0);
+      view.unmount();
+    }
   });
 
   it('o blackjack estoura na mão que o tirou, e em nenhuma outra', () => {
@@ -758,15 +779,50 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     expect(container.querySelectorAll('[data-testid="blaze-burst"]')).toHaveLength(0);
   });
 
-  it('sem dobra aceita o pote não pega fogo', () => {
-    renderArena({
+  it('a labareda só existe onde algo aconteceu: no botão, e SÓ nele', () => {
+    const burstsIn = (root: HTMLElement, sel: string) =>
+      root.querySelectorAll(`${sel} [data-testid="blaze-burst"]`).length;
+
+    // Mesa parada: nenhum fogo em lugar nenhum.
+    const calma = renderArena({ onRequestDouble: () => undefined });
+    expect(calma.container.querySelectorAll('[data-testid="blaze-burst"]')).toHaveLength(0);
+    calma.unmount();
+
+    // Dobra aceita: a coroa acende no botão — e em nenhum outro lugar.
+    const dobrou = renderArena({
       onRequestDouble: () => undefined,
-      doubleBet: { status: 'declined', amount: 100, open: false },
+      doubleBet: { status: 'accepted', amount: 200, open: false },
     });
-    expect(screen.getByTestId('felt-pot')).toHaveAttribute('data-ablaze', 'false');
+    expect(burstsIn(dobrou.container, '.double-cta')).toBe(1);
+    expect(
+      dobrou.container.querySelector('.double-cta [data-testid="blaze-burst"]'),
+    ).toHaveAttribute('data-variant', 'double-button');
+    // E não contamina as mãos: ninguém tirou blackjack aqui.
+    expect(burstsIn(dobrou.container, '[data-testid="hand-player"]')).toBe(0);
   });
 
-  it('com a dobra no ar a mesa inteira espera a resposta do rival', () => {
+  it('o POTE nunca pega fogo — nem com a dobra aceita', () => {
+    /* Decisão de direção: nenhum efeito nas fichas. A dobra é
+       comunicada exclusivamente pelo botão APOSTA DOBRADA — a poça de
+       brasa que já morou no pote virava um bloco amarelo sobre o monte
+       e brigava com a mão de blackjack pela atenção. */
+    for (const status of ['accepted', 'declined'] as const) {
+      const view = renderArena({
+        onRequestDouble: () => undefined,
+        doubleBet: { status, amount: 200, open: false },
+      });
+      const pot = screen.getByTestId('felt-pot');
+      // Sem canvas de fogo dentro do componente das fichas...
+      expect(pot.querySelector('canvas')).toBeNull();
+      expect(pot.querySelector('[data-testid="blaze-burst"]')).toBeNull();
+      // ...sem a classe de brasa e sem palco de fogo.
+      expect(pot.classList.contains('is-ablaze')).toBe(false);
+      expect(pot.classList.contains('blaze-stage')).toBe(false);
+      // As fichas continuam lá, intactas.
+      expect(pot.querySelectorAll('.chip').length).toBeGreaterThan(0);
+      view.unmount();
+    }
+  });  it('com a dobra no ar a mesa inteira espera a resposta do rival', () => {
     renderArena({
       onRequestDouble: () => undefined,
       canRequestDouble: false,

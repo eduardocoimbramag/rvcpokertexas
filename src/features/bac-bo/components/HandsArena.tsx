@@ -284,7 +284,7 @@ function DoubleCta({
     >
       {/* O aceite ESTOURA aqui — a mesma combustão das cartas, uma vez
           só. O que fica depois é o aro morno e parado do botão. */}
-      {status === 'accepted' && <BlazeBurst scale={1} />}
+      {status === 'accepted' && <BlazeBurst variant="double-button" />}
       {/* `secondary`, não `ghost`: o convite da dobra é uma peça CHAPADA
           do vinho da casa em qualquer estado. O fantasma translúcido lia
           como botão desligado sobre o feltro claro mesmo quando estava
@@ -456,12 +456,10 @@ export function HandsArena({
   const playerAblaze = !dealing && isNaturalBlackjack(playerCards);
   const opponentAblaze = revealed && (result?.opponentNatural ?? false);
 
-  /* A dobra aceita põe FOGO NO POTE, não só no botão. O botão é seu — ele
-     vive no seu rodapé e não existe na tela do rival. O pote é da MESA:
-     está no meio do feltro, à vista dos dois, e é literalmente o valor
-     que dobrou. Acender ali é o que faz a dobra ser um fato da mesa em
-     vez de um aviso privado. */
-  const stakeAblaze = doubleBet?.status === 'accepted';
+  /* A dobra aceita é comunicada EXCLUSIVAMENTE pelo botão APOSTA
+     DOBRADA — decisão de direção: nenhum efeito nas fichas nem no pote.
+     A poça de brasa que já morou aqui virava um bloco amarelo sobre o
+     monte e brigava com a mão de blackjack pela atenção. */
 
   /* Atrasos de entrada e de virada por carta. Só a distribuição tem
      coreografia: dali em diante cada carta pedida é um lance sozinho na
@@ -566,7 +564,12 @@ export function HandsArena({
         />
         {/* O total do rival é o das cartas ABERTAS enquanto houver
             oculta: um número limpo do que já está na mesa. */}
-        <HandTotal side="opponent" cards={opponentPov.counted} partial={!revealed} />
+        <HandTotal
+          side="opponent"
+          cards={opponentPov.counted}
+          partial={!revealed}
+          ablaze={opponentAblaze}
+        />
       </section>
 
       {/* Faixa livre do feltro: é aqui que o brasão da casa respira — e
@@ -583,12 +586,7 @@ export function HandsArena({
             rival empurrando fichas para o centro, em vez de a mesa se
             redesenhar. Sem `key`, portanto — de propósito. */}
         {match.stake > 0 && (
-          <div
-            className={`felt-pot blaze-stage ${stakeAblaze ? 'is-ablaze' : ''}`}
-            data-testid="felt-pot"
-            data-ablaze={stakeAblaze}
-          >
-            {stakeAblaze && <BlazeBurst scale={0.7} />}
+          <div className="felt-pot" data-testid="felt-pot">
             <ChipStack stake={match.stake} variant="felt" instant={reducedMotion} />
           </div>
         )}
@@ -614,7 +612,7 @@ export function HandsArena({
         aria-label="Sua mão"
         data-testid="hand-player"
       >
-        <HandTotal side="player" cards={playerCards} partial={false} />
+        <HandTotal side="player" cards={playerCards} partial={false} ablaze={playerAblaze} />
         {/* O espelho da regra de POV, do SEU lado: a última carta da sua
             mão está aberta aqui e virada na tela dele. Nada nela denuncia
             isso — então o selo do olho cortado o faz (ver CardVeil). No
@@ -666,7 +664,11 @@ export function HandsArena({
             transition={reducedMotion ? { duration: 0 } : { duration: 0.3, ease: 'easeOut' }}
           >
             <TurnClockBar seconds={turn?.seconds ?? TURN_SECONDS} />
-            <div className="flex w-full gap-3">
+            {/* relative + z: as pontas da coroa de fogo do botão da
+                dobra sobem por trás DESTES controles — nunca por cima.
+                É o que deixa as chamas passarem da borda sem cobrir
+                PEDIR CARTA nem PARAR. */}
+            <div className="relative z-10 flex w-full gap-3">
               <Button
                 onClick={onHit}
                 disabled={!canAct}

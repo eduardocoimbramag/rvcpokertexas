@@ -10,7 +10,10 @@
 > Nada é estimativa.
 >
 > Estado: implementado e em produção. Última revisão do documento:
-> 01/08/2026.
+> 02/08/2026 — reescrita para o **fogo cartoon** (línguas de Bézier em
+> camadas chapadas, no lugar dos discos aditivos), para as **duas
+> variantes** (`blackjack`, `double-button`) e para a **remoção total
+> do efeito do pote**.
 
 ---
 
@@ -20,7 +23,8 @@
 2. [Onde mora — mapa dos arquivos](#2-onde-mora--mapa-dos-arquivos)
 3. [Quando acende e quando apaga](#3-quando-acende-e-quando-apaga)
 4. [A forma: entrada + regime](#4-a-forma-entrada--regime)
-5. [As cinco camadas](#5-as-cinco-camadas)
+5. [As camadas](#5-as-camadas)
+5b. [As três variantes](#5b-as-três-variantes)
 6. [O modelo (`blaze.ts`)](#6-o-modelo-blazets)
 7. [O renderizador (`BlazeBurst.tsx`)](#7-o-renderizador-blazebursttsx)
 8. [O CSS: palco e cartas](#8-o-css-palco-e-cartas)
@@ -36,16 +40,22 @@
 
 ## 1. O que é, em uma frase
 
-Um **estouro de luz dourada que bate uma vez e vira fogueira**, desenhado
-em canvas atrás da mão de cartas (ou atrás do botão da dobra), e que
-queima enquanto o motivo dele existir.
+Um **fogo cartoon que estoura uma vez e fica queimando** — línguas com
+silhueta clara desenhadas em canvas atrás do hospedeiro, enquanto o
+motivo existir.
 
-Os dois motivos são:
+São **dois desenhos diferentes**, não o mesmo efeito em duas escalas:
 
-| Gatilho | Onde queima |
-| --- | --- |
-| **Blackjack natural** (21 nas duas primeiras cartas) | A mão que o tirou |
-| **Aposta dobrada aceita** pelo rival | O botão da dobra **e** o pote no feltro |
+| Gatilho | Variante | Onde queima |
+| --- | --- | --- |
+| **Blackjack natural** (21 nas duas primeiras cartas) | `blackjack` | A mão inteira, como um grupo |
+| **Aposta dobrada aceita** | `double-button` | A coroa do botão APOSTA DOBRADA |
+
+**O pote não queima.** Decisão de direção: nenhum efeito nas fichas —
+a poça de brasa que já morou ali virava um bloco amarelo sobre o monte
+e brigava com a mão pela atenção. A dobra aceita é comunicada
+exclusivamente pelo botão, e há teste garantindo que nenhum canvas
+monta dentro de `felt-pot`.
 
 ---
 
@@ -53,12 +63,13 @@ Os dois motivos são:
 
 | Arquivo | Papel | Linhas |
 | --- | --- | :-: |
-| `src/features/bac-bo/animations/blaze.ts` | **Modelo**: física, coreografia e paleta, em números puros. Sem desenho. | 414 |
-| `src/features/bac-bo/components/table/BlazeBurst.tsx` | **Renderizador**: o `<canvas>`, os sprites e o laço de animação. | 372 |
+| `src/features/bac-bo/animations/blaze.ts` | **Modelo**: física, coreografia, paleta e a tabela das variantes (zonas), em números puros. Sem desenho. | 590 |
+| `src/features/bac-bo/components/table/BlazeBurst.tsx` | **Renderizador**: o `<canvas>`, as línguas de Bézier e o laço de animação. | 502 |
 | `src/index.css` (bloco `A COMBUSTÃO DOURADA`) | **Palco** (`.blaze-stage`, `.blaze-burst`) e o tratamento das **cartas**. | ~175 |
 | `src/index.css` (`.double-cta--accepted`) | Céu do estouro no botão da dobra. | ~12 |
-| `src/index.css` (`.felt-pot.is-ablaze`) | Céu do estouro no pote + a poça de brasa sob as fichas. | ~30 |
-| `src/features/bac-bo/tests/blaze.test.ts` | 14 testes do modelo. | 210 |
+| `src/index.css` (nota em `.felt-pot`) | O registro de que o pote NÃO pega fogo. | 1 |
+| `src/index.css` (`.hand-total--ablaze`) | O clímax da placa do "21". | ~80 |
+| `src/features/bac-bo/tests/blaze.test.ts` | 30 testes do modelo. | 402 |
 
 **Por que modelo e renderizador são separados.** Um efeito que só existe
 dentro de um `requestAnimationFrame` não se verifica. Este tem regra
@@ -106,42 +117,53 @@ ablaze={isNaturalBlackjack(yourCards)}
 ### Aposta dobrada
 
 ```tsx
-// HandsArena.tsx
-const stakeAblaze = doubleBet?.status === 'accepted';
+// HandsArena.tsx (DoubleCta)
+{status === 'accepted' && <BlazeBurst variant="double-button" />}
 ```
 
-Acende em **dois** lugares:
-
-- o **botão** (`.double-cta--accepted`) — que é seu, e não existe na
-  tela do rival;
-- o **pote** (`.felt-pot.is-ablaze`) — que é da mesa, está no meio do
-  feltro à vista dos dois lados, e é literalmente o valor que dobrou.
-
-É o pote que faz a dobra ser um fato da mesa em vez de um aviso privado.
+Acende **só no botão**. O pote fica exatamente como sempre foi — sem
+canvas, sem classe, sem brilho. O rival não vê o seu botão, e tudo bem:
+o que ele precisa saber (o valor da mesa) já está no pote e no placar.
 
 ---
+
 
 ## 4. A forma: entrada + regime
 
 ```
  força
-   │        ╭──╮  ← chamas no pico
- 1 ─┤       ╱    ╲___________________________________  ← regime (0,78)
-   │      ╱
+   │        ╭──╮  ← ~20 línguas, núcleo branco-quente
+ 1 ─┤       ╱    ╲___________________________________  ← 12–16 línguas, ouro
+   │      ╱                                              (regime, 0,62)
    │  ╱╲ ╱                     ENTRADA          REGIME
    │ ╱  ╳  ← flash              ~1,9s        até desmontar
  0 └─┴──┴──────────────────────────┼─────────────────────────▶ tempo
      0  400ms                    1900ms
 ```
 
-| Fase | Duração | O que roda | Cadência |
+| Fase | Duração | Composição | Cadência |
 | --- | --- | --- | :-: |
-| **Entrada** | `BLAZE.entranceMs` = **1900ms** | flash, anel de impacto, raios, chamas subindo ao pico, leva inteira de faíscas | 60fps |
-| **Regime** | enquanto o componente viver | chamas em `flameSustain`, faíscas reciclando | ~30fps |
+| **Entrada** | `BLAZE.entranceMs` = **1900ms** | flash, anel, raios, faixa de borda, **todas** as línguas, núcleo branco-quente, leva inteira de faíscas | 60fps |
+| **Regime** | enquanto o componente viver | **subconjunto** de línguas, maiores e espaçadas; ouro no lugar do branco; poucas brasas | ~30fps |
 
-O que é **impacto** — flash, anel e raios — acontece uma vez só. Um soco
-que se repetisse a cada dois segundos viraria estroboscópio, não
-fogueira.
+O ponto que carrega esta versão: **regime não é o clímax congelado**. São
+duas composições diferentes, e a passagem de uma para a outra tem três
+mecanismos, não um:
+
+1. **Menos línguas.** Cada língua nasce com `sustains: true|false`. As que
+   não sobrevivem recebem `sustain = 0` no envelope e somem passada a
+   entrada. Blackjack: ~20 → 12–16. É o corte que abre o espaço negativo.
+2. **Núcleo recolhido.** `settleProgress` interpola o limite do sprite
+   branco de 13% da língua (pico) para **2%** (regime), e alarga a faixa
+   do dourado. É o que tira a lâmpada branca de baixo das cartas.
+3. **As sobreviventes crescem.** No regime elas ganham +50% de
+   comprimento e raio. Sem isso as três reduções se somavam e a mão
+   virava um sussurro — foi medido: aos 5s sobrava um brilho tímido nas
+   quinas.
+
+O que é **impacto** — flash, anel, raios, faixa de borda — acontece uma
+vez só. Um soco que se repetisse a cada dois segundos viraria
+estroboscópio.
 
 `entranceMs` é **derivado**, nunca escrito à mão:
 
@@ -150,6 +172,7 @@ get entranceMs(): number {
   return Math.max(
     this.flashInMs + this.flashOutMs,              //  455
     this.rayInMs + this.rayLifeMaxMs,              //  630
+    this.edgeSweepMs,                              //  760
     this.flameInMs + this.flameHoldMs + this.flameOutMs, // 1320
     this.particleStaggerMs + this.particleLifeMaxMs,     // 1900  ← manda
   );
@@ -161,12 +184,13 @@ teste cobrindo exatamente essa invariante.
 
 ---
 
-## 5. As cinco camadas
+## 5. As camadas
 
-A ordem de pintura é **raios → chamas → flash → faíscas**, tudo em
-`globalCompositeOperation = 'lighter'` (aditivo). Aditivo importa: duas
-chamas que se cruzam **clareiam** em vez de se cobrir, e é assim que o
-núcleo branco-quente aparece na base sem ninguém pintar branco.
+A ordem de pintura é **impacto (flash + anel) → raios → chamas → linha
+de luz → faíscas**, com o blending dividido de propósito: o que é LUZ
+(impacto, raios, faíscas) roda em `lighter`; as CHAMAS rodam em
+`source-over`, cor chapada sobre cor chapada — é o que preserva a
+silhueta. Somar as chamas era o erro da versão anterior.
 
 ### 5.1 Impacto de luz
 
@@ -174,8 +198,11 @@ Um clarão radial no **centro inferior** da mão, mais um **anel** que
 corre para fora.
 
 - Sobe em 55ms, some em 400ms.
-- Núcleo branco (`#FFF8DC`) num miolo pequeno, depois dourado, ouro e
-  âmbar; o branco não domina.
+- Creme (`#FFF2A6`) num miolo curto, depois amarelo, dourado e laranja
+  — flash dourado, não branco.
+- No botão o clarão é **achatado** (escala 0,3 em y): um círculo numa
+  pílula de 330×44 viraria uma bola de luz no meio; achatado, ele corre
+  a extensão como um filamento acendendo.
 - O anel é uma casca de gradiente (não um traço) que expande até ~1,15×
   o raio do flash em 300ms e apaga. Casca e não traço de propósito: um
   círculo de 1px lido sobre o feltro parece elemento de interface, não
@@ -189,35 +216,44 @@ O flash **não cobre os números e naipes** por construção: o canvas está
 atrás das cartas, a luz nasce embaixo delas e só escapa em volta — que é
 como fogo atrás de um objeto se comporta.
 
-### 5.2 Chamas estilizadas
+### 5.2 Chamas cartoon
 
-O coração do efeito. Cada língua é uma **pluma de discos macios**
-carimbados ao longo de uma espinha curva:
+O coração do efeito. Cada língua é uma **forma fechada** — duas Bézier
+cúbicas convergindo na ponta e uma quadrática arredondando a base — e
+não um empilhado de brilhos:
 
 ```
-        ·        ← u=1  ponta: âmbar, raio pequeno, alfa baixo
-       ○
-      ◯          ← a espinha pende para fora (u²) e recebe
-     ◯◯             a deformação lateral do ruído
-    ◯◯◯
-   ●●●●●         ← u=0  base: núcleo, raio grande, alfa alto
-  ═══════        ← a borda da mão
+      ▲          ← ponta estreita (as Bézier convergem)
+     ◤█◥
+    ◤███◥        ← corpo curvo: o "S" vem do bend por ruído
+   ◤█████◥
+  ◤███████◥      ← base larga, fechada por uma quadrática
+  ═════════      ← âncora: a base NUNCA se move
 ```
 
-- **6 carimbos** por língua (`STAMPS`).
-- Raio: `halfW × (2,3 − 1,7·u)` — encolhe subindo.
-- Alfa: `env × (1−u)^1,2 × 0,62` — some subindo.
-- Sprite por temperatura: núcleo até `u<0,13`, ouro até `u<0,58`, âmbar
-  daí para cima.
-- Nascem só na **base e nas laterais** (`perimeterPoint`) — 56% na base.
-  O topo fica de fora: chama não nasce em cima do que ela está queimando.
-- Pendem para **fora** do centro: fogo em volta de um objeto abre.
-- Quem nasce longe do centro é mais alta, porque a chama que aparece é a
-  que escapa da silhueta.
+**Camadas de cor chapada**, pintadas em `source-over` (nunca aditivo):
 
-O que se move é a **forma de cada língua**, nunca o efeito inteiro —
-subir e descer em bloco foi o que fez a versão anterior parecer um
-elemento flutuando.
+| Camada | Escala | Cor | Papel |
+| --- | :-: | --- | --- |
+| Externa | 1,0 | laranja `#FF7A00`, α 0,82 | A silhueta |
+| Corpo | 0,68 | amarelo `#FFD43B` (⅓ em dourado `#FFB000`), α 0,92 | A cor dominante |
+| Núcleo | 0,30 | creme `#FFF2A6` | Pequeno, na base — e recolhe 75% no regime |
+
+Pintadas **por camada através de todas as línguas** (todos os laranjas,
+depois todos os amarelos, depois os cremes): é o que funde silhuetas
+vizinhas num contorno só, como fogo cartoon se desenha. Por língua,
+cada chama cobriria o miolo da vizinha com a própria borda laranja.
+
+**O movimento é do corpo, nunca do canvas.** A base é ancorada; por
+língua e por quadro: a ponta bamboleia (`sway`, duas senoides
+incomensuráveis), a altura respira ±12%, a largura contrai fora de fase
+e a curvatura muda devagar (`bend`). Tudo contínuo por construção —
+nenhum ciclo "reinicia", nada anda em ping-pong.
+
+**Por que não os discos de gradiente da versão anterior:** somados em
+`lighter`, eles produziam luz sem forma — a "nuvem amarela desfocada".
+Forma vem de contorno, e contorno não sobrevive à soma.
+
 
 ### 5.3 Explosão radial
 
@@ -234,15 +270,17 @@ elemento flutuando.
 
 ### 5.4 Partículas e faíscas
 
-15 a 38 no pool, conforme a densidade e a escala do hospedeiro (ver
-§6.3), em quatro tipos:
+20–30 no pool do blackjack, 14–22 no do botão (ver §5b), em cinco
+tipos — e **grandes o bastante para se verem num celular**: o raio na
+mão fica entre ~2 e ~4,8px, com um piso de 1,1px no desenho:
 
 | Tipo | Desenho | Notas |
 | --- | --- | --- |
-| `dot` | sprite dourado | ~50% da mistura |
-| `spark` | risco alongado na direção do movimento, encolhendo com a velocidade | ~30% |
-| `ember` | sprite laranja profundo, mais fraco | ~20% |
-| `star` | dois riscos cruzados, só nos primeiros 45% da vida | **2 ou 3, e só na entrada** |
+| `dot` | disco nítido amarelo + halo curto | ~38% da mistura |
+| `spark` | risco alongado na direção do movimento, encolhendo com a velocidade | ~24% |
+| `ember` | disco laranja + halo | ~22% |
+| `puff` | só halo dourado, grande e macio | ~16% |
+| `star` | dois riscos cruzados, só nos primeiros 45% da vida | **≤2, e só na entrada do blackjack** |
 
 Física:
 
@@ -254,14 +292,15 @@ alfa = fadeIn · (1 − k)^1,5             some sem corte
 ```
 
 A faísca é definida pelo **quanto ela sobe**, não pela velocidade
-inicial: `vy = alcance × arrasto`, com alcance ≤ 0,78 do lado menor da
-mão. Ver §14 para o bug que isso corrigiu.
+inicial: `vy = alcance × arrasto`, com o alcance declarado pela
+variante — sempre dentro do céu do canvas. Ver §14 para o bug que isso
+corrigiu.
 
-**Reciclagem.** No regime permanente, cada faísca que morre renasce no
-perímetro com trajetória, tipo e tamanho novos, e um descanso sorteado
-até `particleRestMs` (2200ms). Com vida média ~1,15s e descanso médio
-~1,1s, sobra **menos da metade viva** a cada instante — brasa subindo de
-uma fogueira, e não chuveiro para sempre.
+**Reciclagem.** No regime, cada faísca marcada (`recycles`) que morre
+renasce numa zona nova, com trajetória, tipo e tamanho sorteados de
+novo, e um descanso até `restMs` da variante. A conta fecha em **2–8
+vivas por vez** (há teste) — brasa subindo em intervalos irregulares,
+não chuveiro.
 
 `respawnParticle` **muta** o objeto recebido em vez de alocar um novo: o
 pool tem tamanho fixo do começo ao fim, porque o laço roda enquanto a
@@ -278,13 +317,33 @@ não pula, não gira, não balança e termina exatamente onde estava.
 | Peça | Seletor | Comportamento |
 | --- | --- | --- |
 | Sombra mais funda + halo quente | `.card-scene--ablaze` (`card-ignite`) | Aprofunda em 9% do tempo, assenta num valor levemente mais quente que o base |
-| Aro dourado + brilho interno | `::before` (`card-rim`) | Entra em 8%, **fica** em `opacity: 0,62` |
+| Aro dourado + brilho interno | `::before` (`card-rim`) | Entra em 8%, **fica** em `opacity: 0,42` |
 | Reflexo diagonal | `::after` (`card-sheen`) | Atravessa a carta **uma vez**, em 0,95s |
 
 O aro fica pelo mesmo motivo que a chama fica: enquanto a mão for
 blackjack, a carta está em brasa. Um aro que apagasse sozinho com a
 fogueira ainda queimando atrás deixaria a carta desconectada do próprio
 efeito.
+
+**0,42 e não 0,62.** Em 0,62 o aro somava com o fogo por trás e
+embranquecia a carta — o marfim do papel já é claro, e um contorno forte
+por cima dele fecha a leitura do naipe.
+
+### A placa do "21"
+
+O indicador estava alheio à cena: o fogo subia logo abaixo e ele seguia
+igual. Hoje entra no beat, em `.hand-total--ablaze`:
+
+| Peça | Comportamento |
+| --- | --- |
+| Pulo | `scale` 1 → **1,08** → 1, e **volta ao lugar** |
+| Preenchimento | mais metálico no pico (realce interno mais forte) |
+| Aro | fio champagne, que **fica** discreto no regime |
+| Sombra | um pouco mais profunda |
+| Reflexo | faixa dourada atravessando **uma vez** |
+
+No regime sobra só o aro. Um indicador que pulsasse sem parar competiria
+com as cartas pela atenção durante a mão inteira.
 
 O reflexo é **dourado, não branco**: a faixa atravessa uma carta de
 papel-marfim, e branco sobre marfim não é reflexo — é nada. O miolo
@@ -296,6 +355,86 @@ da quarta em diante), e o olho lê uma faixa só passando pelas duas.
 
 ---
 
+## 5b. As duas variantes
+
+A tabela vive em `BLAZE_VARIANTS` (`blaze.ts`). Cada variante declara
+**zonas** — onde o fogo nasce, com que peso e com que altura (frações
+da caixa do hospedeiro). O sorteio é **estratificado**: cada zona
+recebe a sua cota (peso × total) antes do sorteio livre, então uma
+semente azarada nunca acende só um lado da mão.
+
+| | `blackjack` | `double-button` |
+| --- | :-: | :-: |
+| Línguas (entrada → regime) | 13–18 → **10–14** | 10–14 → **8–12** |
+| Meia-largura¹ | 0,05–0,095 | 0,09–0,15 |
+| `flameSustain` | 0,62 | 0,55 |
+| `intensity` | **1** | 0,8 |
+| Impacto | radial + anel + 6–10 raios | horizontal + linha de luz |
+| Faíscas (entrada / reciclam) | 20–30 / 8–11 | 14–22 / 6–8 |
+| Alcance da faísca¹ | 0,30–0,70 | 0,15–0,40 |
+| Raio da faísca¹ | 0,022–0,05 (≥ ~2px) | 0,05–0,09 |
+| Descanso máx. | 2200ms | 1000ms |
+| Céu (x / cima / baixo)² | 0,42 / 0,90 / 0,50 | 0,06 / **0,45** / 0,04 |
+
+¹ fração da **altura** do hospedeiro. ² custom properties CSS.
+
+### As zonas do `blackjack`
+
+A caixa é o **container das duas cartas** — a mão queima como um grupo.
+
+| Zona | Peso | Onde | Altura da chama |
+| --- | :-: | --- | --- |
+| Quinas inferiores (×2) | 0,22 cada | cantos de baixo, transbordando | 24–40% da altura |
+| Laterais (×2) | 0,15 cada | metade de baixo das bordas | **30–45%** |
+| Base (×2) | 0,09 cada | trechos com vãos | 18–30% |
+| Vão central | 0,08 | entre as cartas | **10–16%** (não esconde naipe) |
+
+Nada nasce no topo. O miolo da base fica quase vazio — o espaço
+negativo é a regra, não a exceção.
+
+**Quem sobrevive ao regime são as línguas MAIORES** (ordenadas por
+altura, decidido uma vez na montagem): as curtinhas do vão morrem com a
+entrada e o que fica é uma coroa de chamas grandes e espaçadas, que
+ainda crescem +45% ao assentar.
+
+### As zonas do `double-button`
+
+Uma coroa na borda de **cima** — o formato 330×44 não recebe fogueira
+no perímetro:
+
+| Zona | Peso | Onde | Altura |
+| --- | :-: | --- | --- |
+| Quinas superiores (×2) | 0,3 cada | pontas do topo | **30–40%** (≈13–18px acima da borda) |
+| Borda superior | 0,4 | topo, com vãos | 16–26% |
+
+Nada na borda de baixo: ali é o fim do viewport, e chama cortada é pior
+que chama nenhuma.
+
+> **Os controles ficam por cima.** A fileira PEDIR CARTA/PARAR tem
+> `relative z-10` (HandsArena): as pontas que invadem a folga de 12px
+> somem **atrás** dos botões — a coroa passa da borda sem nunca cobrir
+> texto.
+
+**Entrada do botão** (~650ms): flash horizontal achatado, a linha de
+luz percorrendo a borda superior da esquerda para a direita
+(`edgeSweep`), o pulo do texto 1 → 1,04 → 1 (`double-pop`, CSS) e o
+reflexo metálico atravessando o rótulo uma vez (`double-sheen`, CSS).
+
+**Rastro** (CSS, `.double-cta--accepted > .btn:disabled`): fundo de
+carvão quente, fio champagne de 1,5px, underglow âmbar — o botão fraco
+e escuro era metade da reclamação, e o rastro é o que garante a leitura
+numa captura estática.
+
+### A linha de luz, e por que não é mais `setLineDash`
+
+A entrada do botão desenha um segmento brilhante correndo a borda
+SUPERIOR (não o perímetro): gradiente linear com cabeça de brilho,
+`x = w × k` ao longo de `edgeSweepMs`. Mais simples e mais legível que
+a volta completa — a coroa é de cima, a luz também.
+
+---
+
+
 ## 6. O modelo (`blaze.ts`)
 
 ### 6.1 Paleta
@@ -305,12 +444,12 @@ compõe `rgba(${cor}, ${alfa})` a cada uso.
 
 | Token | Hex | Papel |
 | --- | --- | --- |
-| `core` | `#FFF8DC` | Núcleo branco-quente |
-| `lightGold` | `#FFD76A` | Dourado claro |
-| `gold` | `#FFB800` | **Ouro principal — a cor que manda na cena** |
-| `amber` | `#FF8A00` | Âmbar |
-| `deepOrange` | `#E84A00` | Laranja profundo — **só extremidade** |
-| `ember` | `#8C2100` | Brasa — ponto isolado, nunca massa |
+| `cream` | `#FFF2A6` | Núcleo pequeno — praticamente só da entrada |
+| `yellow` | `#FFD43B` | **O corpo da chama — a cor dominante** |
+| `gold` | `#FFB000` | Corpo (⅓ das línguas) e brilhos |
+| `orange` | `#FF7A00` | A camada externa — a silhueta |
+| `deepOrange` | `#E64A00` | Detalhe de ponta |
+| `ember` | `#9E2600` | Brasa — partícula isolada |
 
 ### 6.2 Coreografia (`BLAZE`)
 
@@ -320,48 +459,41 @@ compõe `rgba(${cor}, ${alfa})` a cada uso.
 | `flashOutMs` | 400 | Queda do flash |
 | `rayInMs` | 70 | Entrada dos raios |
 | `rayLifeMinMs` / `rayLifeMaxMs` | 380 / 560 | Vida de cada raio |
-| `flameInMs` | 160 | Chamas subindo ao pico |
-| `flameHoldMs` | 520 | Pico sustentado |
-| `flameOutMs` | 640 | Assentamento até o regime |
+| `flameInMs` | 140 | Chamas crescendo da base |
+| `flameHoldMs` | 260 | Pico sustentado |
+| `flameOutMs` | 480 | Assentamento até o regime (clímax resolve em ~880ms) |
 | `flameSustain` | **0,78** | Nível do regime permanente |
 | `particleStaggerMs` | 320 | Escalonamento da leva de entrada |
 | `particleLifeMinMs` / `MaxMs` | 720 / 1580 | Vida de cada faísca |
 | `particleRestMs` | 2200 | Descanso máximo antes de renascer |
-| `entranceMs` | **1900** (derivado) | Fim da entrada |
+| `entranceMs` | **1900** (derivado) | Fim da entrada — cadência cai para ~30fps |
 
-### 6.3 Densidade por perímetro
+### 6.3 Densidade por perímetro — **removida**
 
-Uma contagem fixa serve a uma mão de cartas e **some** numa pílula de
-330×44: o mesmo punhado de línguas espalhado por uma borda três vezes
-mais longa vira fogo ralo.
+Existia uma `density` que ajustava a contagem de línguas ao perímetro do
+hospedeiro. Ela era um remendo: servia para o botão não queimar ralo com
+a contagem da mão. Com `BLAZE_VARIANTS` cada hospedeiro declara a sua
+contagem, e o mecanismo saiu inteiro — a spec pedia exatamente isso
+("Não use apenas `scale` para adaptar o mesmo desenho a hospedeiros
+completamente diferentes").
 
-```ts
-const burningEdge = rect.w * 1.16 + rect.h * 0.92 * 2;  // base + laterais
-const density = burningEdge / (unit * 3.6);             // 1 num hospedeiro quadrado
-const tongueCount = clamp(8, round(lerp(18, 23) * scale * density), 40);
-```
+`scale` continua existindo, e só para o que sempre foi: **tamanho**. Uma
+mão mini de assento (`scale: 0,55`) é a mesma cena menor.
 
-| Hospedeiro | Caixa (px) | `scale` | `density` | Línguas | Faíscas |
-| --- | --- | :-: | :-: | :-: | :-: |
-| Mão do duelo | ~143 × 95 | 1 | 1,00 | ~20 | ~28 |
-| Botão da dobra | ~330 × 44 | 1 | 2,93 | **40** (teto) | **38** (teto) |
-| Pote | ~90 × 40 | 0,7 | 1,24 | ~18 | ~24 |
-| Mão mini (assento) | ~63 × 42 | 0,55 | 0,99 | ~11 | ~15 |
-
-O **teto de 40** existe porque cada língua custa seis carimbos por
-quadro e o regime dura a mão inteira.
 
 ### 6.4 Funções exportadas
 
 | Função | O que faz |
 | --- | --- |
-| `buildBurst(rng, rect, scale)` | Monta o modelo inteiro (línguas, raios, faíscas, flash, centro) |
-| `respawnParticle(rng, rect, scale, p, opts)` | (Re)nasce uma faísca **mutando** o objeto |
-| `perimeterPoint(rect, t)` | Ponto no perímetro que queima, ponderado |
-| `flameEnvelope(ms)` | Sobe → segura → assenta em `flameSustain`. **Nunca volta a zero** |
+| `buildBurst(rng, rect, variant, scale)` | Monta o modelo inteiro para a variante |
+| `respawnParticle(rng, rect, variant, scale, p, opts)` | (Re)nasce uma faísca **mutando** o objeto |
+| `pickZone(rng, zones)` | Sorteia uma zona pelo peso (o sorteio estratificado usa as cotas antes) |
+| `flameEnvelope(ms, sustain?)` | Sobe → segura → assenta em `sustain`. `sustain: 0` faz a língua sumir no regime |
 | `flashEnvelope(ms)` | Sobe quase instantâneo, cai suave, chega a zero |
+| `settleProgress(ms)` | 0 no pico, 1 no regime — a **régua da troca de composição** |
 | `tongueNoise(tongue, s)` | Ruído barato: duas senoides de frequências que não se dividem |
 | `easeOutCubic(k)` | `1 − (1−k)³` |
+| `BLAZE_VARIANTS` | A tabela dos três desenhos |
 
 Sobre o ruído: não é Perlin. Para deformar a ponta de uma língua o olho
 não distingue, e custa duas multiplicações em vez de uma tabela de
@@ -374,15 +506,23 @@ gradientes.
 ### 7.1 API
 
 ```tsx
-<BlazeBurst scale={1} />
+<BlazeBurst variant="blackjack" scale={1} />
+<BlazeBurst variant="double-button" />
 ```
 
 | Prop | Padrão | O que faz |
 | --- | :-: | --- |
-| `scale` | `1` | Régua do hospedeiro. Encolhe **contagem e tamanho** juntos |
+| `variant` | `'blackjack'` | **Qual desenho.** Escolhe a linha de `BLAZE_VARIANTS` |
+| `scale` | `1` | Régua do **tamanho**. Encolhe contagem e tamanho juntos |
 
-Valores em uso: `1` (mão do duelo, botão da dobra), `0,7` (pote), `0,55`
-(mão mini de assento).
+Onde cada uma é montada:
+
+| Hospedeiro | Chamada | Arquivo |
+| --- | --- | --- |
+| Mão de cartas | `variant="blackjack" scale={mini ? 0.55 : 1}` | `HandRow.tsx` |
+| Botão da dobra | `variant="double-button"` | `HandsArena.tsx` (`DoubleCta`) |
+
+O canvas leva `data-variant`, o que torna a escolha verificável no DOM.
 
 O componente sempre renderiza um `<canvas class="blaze-burst"
 aria-hidden data-testid="blaze-burst">`. Ele **precisa** ter um pai com
@@ -390,12 +530,11 @@ aria-hidden data-testid="blaze-burst">`. Ele **precisa** ter um pai com
 
 ### 7.2 Sprites
 
-Quatro `<canvas>` de 64×64 com um gradiente radial, desenhados **uma
-vez** na montagem (núcleo, ouro, âmbar, brasa). Depois é só `drawImage`.
-
-Criar um `createRadialGradient` por partícula por quadro seriam ~1900
-gradientes por segundo. É a diferença entre um efeito que cabe no
-orçamento e um que não cabe.
+Dois `<canvas>` de 64×64 com gradiente radial (dourado e creme),
+desenhados **uma vez** na montagem — usados só nos halos das faíscas,
+no `puff` e na cabeça da linha de luz. **As chamas não usam sprite
+nenhum**: são caminho de Bézier preenchido, e é disso que vem a
+silhueta.
 
 ### 7.3 O laço
 
@@ -449,13 +588,9 @@ Céu por hospedeiro:
 | Hospedeiro | `sky-x` | `sky-top` | `sky-bottom` | Por quê |
 | --- | :-: | :-: | :-: | --- |
 | Mão (padrão) | 0,42 | 0,90 | 0,50 | Faísca sobe; precisa de céu em cima |
-| `.double-cta--accepted` | 0,05 | 1,75 | 1,30 | A pílula já tem 330px de largura; o que falta é altura |
-| `.felt-pot.is-ablaze` | 0,42 | 1,45 | 0,85 | Monte baixo no meio do feltro |
+| `.double-cta--accepted` | 0,06 | **0,45** | 0,04 | A coroa passa ~13–18px da borda de cima; embaixo é o fim do viewport |
 
-O pote ainda ganha uma **poça de brasa parada** sob as fichas
-(`::before`, `z-index: -1`), sem contorno: as fichas são discos soltos e
-não preenchem retângulo nenhum — um aro nítido apareceria como uma
-pílula pálida atravessando o monte.
+O pote não está na tabela porque **não tem canvas** — ver §1.
 
 ---
 
@@ -504,44 +639,38 @@ Metodologia: Pixel 7 emulado, `Emulation.setCPUThrottlingRate: 4`,
 contagem de quadros via `requestAnimationFrame` em janela fixa. Três
 execuções por configuração.
 
-### Regime permanente (2,5s, depois da entrada)
+### Com o fogo cartoon (Bézier)
 
-| | quadros |
-| --- | --- |
-| **com fogo** | 105, 108, 111 |
-| sem fogo | 111, 113, 116 |
+| Janela | com fogo | sem fogo |
+| --- | --- | --- |
+| **Entrada** (1,9s) | 76, 85, 89 | 90, 91, 94 |
+| **Regime** (2,5s) | 107, 109, 125 | 110, 127, 135 |
 
-**~5% de custo.** É o número que importa, porque é o que dura.
+~7% na entrada, ~8% no regime — e **mais barato que a versão de discos
+aditivos** (que media 53–60 quadros na mesma janela de entrada):
+preencher ~30 caminhos de Bézier pequenos custa menos que carimbar
+~120 sprites com blending aditivo.
 
-### Entrada (janela de 1,9s)
-
-| | quadros |
-| --- | --- |
-| **com estouro** | 56, 61, 65 |
-| sem estouro | 72, 74, 80 |
-
-~20% durante o clímax, e por tempo limitado.
-
-### O que baixou o custo
+### O que mantém o custo baixo
 
 | Medida | Efeito |
 | --- | --- |
-| `MAX_DPR = 1,5` (em vez de 2) | Área a preencher por quadro cai **~45%**. Num efeito de brilhos macios ninguém vê a diferença |
-| Cadência de 30fps no regime | Metade do custo, justamente na parte permanente |
-| Sprites pré-renderizados | Elimina ~1900 `createRadialGradient`/s |
-| `STAMPS = 6` por língua | Entrada: 47 → 61 quadros na mesma janela |
-| Pular carimbo com `alpha < 0,015` | Carimbo que não se vê não se paga |
-| Teto de 40 línguas / 38 faíscas | Limita o pior caso do botão da dobra |
+| `MAX_DPR = 1,5` | área a preencher por quadro cai ~45% |
+| Cadência de ~30fps no regime | metade do custo permanente |
+| Scratch pré-alocado (`Float64Array`) | zero alocação por quadro no laço das línguas |
+| Pool fixo de faíscas + `respawnParticle` mutando | zero alocação por quadro nas partículas |
+| Sprites de halo pré-renderizados | nenhum `createRadialGradient` por partícula |
 
-### Uma medida que **não** valeu
+### Duas medidas que **não** valeram (história)
 
-Uma tentativa anterior (a labareda em CSS puro, hoje removida) animava
-`background-position` sob um `filter: blur()`. Medido: p95 do quadro
-subia de **16,8ms para 33,3ms** — exatamente um quadro perdido a cada
-tanto — porque o filtro era refeito quadro a quadro. É o mesmo motivo
-pelo qual o canvas hoje não usa `filter` nenhum.
+1. A labareda em CSS puro animava `background-position` sob um
+   `filter: blur()` — o p95 do quadro dobrava (16,8 → 33,3ms). Por isso
+   o efeito não usa `filter` nenhum, animado ou não.
+2. Discos de gradiente em `lighter` — mais caros E sem silhueta. A
+   forma de Bézier resolveu o visual e o custo juntos.
 
 ---
+
 
 ## 11. Acessibilidade e movimento reduzido
 
@@ -561,41 +690,68 @@ Apagar tudo tiraria a informação junto com a animação.
 
 ## 12. Testes
 
-### Modelo — `src/features/bac-bo/tests/blaze.test.ts` (14)
+### Modelo — `src/features/bac-bo/tests/blaze.test.ts` (30)
 
-Com `SeededRng`, então são determinísticos.
+Todos com `SeededRng`, portanto determinísticos. Sem `Math.random`, sem
+`Date.now`.
+
+**Coreografia (7)** — envelope assenta e nunca apaga sozinho; clímax
+resolve em 800–1000ms; regime < pico (e nem apagado, nem igual); língua
+sem `sustains` assenta em zero; flash é soco e morre antes do
+assentamento; `settleProgress` vai de 0 a 1; `entranceMs` cobre todos
+os beats.
+
+**Variantes (9)**
 
 | Teste | Invariante |
 | --- | --- |
-| envelope das chamas | sobe, segura, **assenta** em `flameSustain` e nunca volta a zero |
-| envelope do flash | pico em `flashInMs`, zero antes das chamas assentarem |
-| `perimeterPoint` | nada nasce acima do topo do retângulo |
-| peso do perímetro | mais da metade das chamas na base |
-| contagens | 6–10 raios, ≤3 estrelas, ≥3 tipos de partícula |
-| faíscas | nascem coladas na mão, sobem (`vy < 0`), freiam (`drag > 0`) |
-| dispersão | ≥8 velocidades e ≥4 instantes de nascimento distintos |
-| **entrada cobre os beats** | `entranceMs` ≥ cada beat — nada cortado no ar |
-| alturas | ≥6 comprimentos distintos; desvio aponta para fora |
-| escala | encolhe contagem **e** tamanho; piso de 6 raios |
-| ruído | limitado a ±1 e diferente entre línguas vizinhas |
-| determinismo | mesma semente → mesmo modelo |
-| **reciclagem** | `respawnParticle` devolve o **mesmo** objeto, com trajetória nova |
-| estrela no regime | nunca reaparece em 200 renascimentos |
+| **seleção da variante** | `model.variant` e `model.config` batem com a pedida |
+| pesos das zonas | somam 1 em cada variante |
+| blackjack: contagens | 13–18 na entrada, 10–14 no regime, regime < entrada, e **as sobreviventes são as maiores** |
+| blackjack: impacto | flash radial, anel, 6–10 raios |
+| blackjack: **sem fogo no topo** | 30 sementes, nenhuma língua acima da metade da altura |
+| blackjack: alturas por zona | laterais 30–45%, base 18–30%, vão ≤16% |
+| blackjack: **base não contínua** | terço central da base < 15% dos sorteios |
+| double-button: **coroa de cima** | 30 sementes, nada nasce abaixo de 20% da altura — chama nem faísca |
+| double-button: composição e teto | 10–14 chamas, quinas maiores que o meio, tudo dentro do céu de 0,45 (nada cortado), 14–22 faíscas, sem raios, com linha de luz |
+
+**Faíscas (8)** — nascem nas zonas, sobem e freiam; raio ≥ ~2px na mão
+(nada microscópico); leva da entrada cabe na entrada; **2–8 vivas por
+vez** no regime (ciclo de trabalho); reciclagem muta o mesmo objeto com
+trajetória nova; **nenhuma estrela reciclada** (150 renascimentos × 2
+variantes); ≤2 estrelas, só na entrada do blackjack; mistura tem
+pontos, riscos e brasas.
+
+**Geometria e determinismo (4)** — alturas variadas e desvio para fora;
+escala encolhe contagem e tamanho; bamboleio limitado, contínuo e
+diferente entre vizinhas; mesma semente → mesmo modelo.
+
+**Hierarquia (1)** — `intensity` do blackjack (1) > botão (0,8).
 
 ### Componentes — `components.test.tsx`
 
 | Teste | O que trava |
 | --- | --- |
-| a combustão é um evento | mesa parada não tem canvas nenhum |
-| dobra aceita | canvas no botão **e** no pote, e em nenhuma mão |
+| a labareda só existe onde algo aconteceu | mesa parada não tem canvas nenhum; dobra aceita acende **só** o botão, com `data-variant="double-button"` |
+| **o pote NUNCA pega fogo** | com dobra aceita ou recusada: sem `canvas` dentro de `felt-pot`, sem `is-ablaze`, sem `blaze-stage`, fichas intactas |
 | blackjack | canvas só na mão que o tirou |
 | distribuição | nada acende com as cartas no ar |
 | POV | mão do rival não acende antes do showdown; acende depois |
 
+### Desmontagem e limpeza do `requestAnimationFrame`
+
+Coberto pela estrutura, não por asserção: em jsdom o `getContext('2d')`
+devolve `null` e o efeito sai antes de agendar qualquer coisa (foi
+verificado com uma sonda: zero chamadas de rAF no mount), então um
+teste de unidade da limpeza passaria mesmo com o `cancelAnimationFrame`
+removido. O que protege é o `return () => cancelAnimationFrame(raf)` no
+mesmo escopo do `raf` e a dependência do efeito ser só
+`[variant, scale]`.
+
 ### Como filmar o efeito
 
 Screenshot comum não serve: cada captura leva ~150ms numa animação de
-1,9s. Para instantes exatos é preciso congelar **os dois relógios**:
+~0,9s. Para instantes exatos é preciso congelar **os dois relógios**:
 
 ```js
 // 1. o do JavaScript
@@ -611,85 +767,89 @@ window.__step = (to) => {
 };
 
 // 2. o do CSS — que corre na linha do tempo do NAVEGADOR e ignora o de cima
-for (const a of document.getAnimations()) {
-  if (['card-ignite', 'card-rim', 'card-sheen'].includes(a.animationName)) {
-    a.pause();
-    a.currentTime = ms;
-  }
-}
+for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms; }
 ```
 
-Foi por esquecer o segundo que o reflexo diagonal passou três rodadas
-sendo fotografado depois de já ter atravessado.
+### Instantes de validação
+
+Capturas em **120ms, 450ms, 1,2s, 2,2s e 5s**, Pixel 7, CPU 4× mais
+lenta. O contrato dos 5s:
+
+- a mão continua claramente em brasa, com silhuetas de chama nos dois lados;
+- não há massa branca nem nuvem amarela sob as cartas;
+- o botão tem a coroa acesa e o rastro quente — obviamente especial;
+- nenhuma chama aparece cortada pelo viewport;
+- PEDIR CARTA e PARAR continuam limpos (as pontas somem atrás deles);
+- **o pote está exatamente como sempre foi**.
 
 ---
+
 
 ## 13. Como mexer sem quebrar
 
 | Quero… | Mexa em | Cuidado |
 | --- | --- | --- |
-| Fogo mais/menos forte no regime | `BLAZE.flameSustain` | Abaixo de ~0,6 vira brilho tímido (medido em 0,58) |
-| Estouro mais longo | `flameHoldMs` / `flameOutMs` | `entranceMs` acompanha sozinho |
-| Faísca mais densa no regime | `BLAZE.particleRestMs` (menor = mais) | Custo do regime sobe junto |
-| Chama mais alta | `len` em `buildBurst` | Precisa caber no céu (`--blaze-sky-*`), senão corta |
-| Faísca mais alta | o `climb` em `respawnParticle` | **Idem** — o teto é o `padTop` |
-| Novo hospedeiro | `.blaze-stage` + `<BlazeBurst scale=… />` | O palco tem de ter **exatamente** a caixa do que queima |
-| Cor | `BLAZE_PALETTE` | O ouro tem de continuar dominando; laranja só em extremidade |
-| Suavidade | `STAMPS`, raio dos carimbos | Custo por quadro é linear em `STAMPS × línguas` |
+| Regime mais/menos forte | `flameSustain` da variante | Sozinho não resolve: o `grown` (+45%) e o corte de línguas fazem metade da presença |
+| Mais/menos fogo no regime | `tonguesSustain` da variante | As sobreviventes são sempre as MAIORES |
+| Mudar onde o fogo nasce | as `zones` da variante | Os pesos têm de somar 1 (há teste); o sorteio estratificado depende disso |
+| Chama mais alta | `len` da zona | Precisa caber no céu (`--blaze-sky-*`), senão corta — no botão o teto é o viewport |
+| Faísca mais/menos ativa | `particlesSustain` + `restMs` | O teste de vivas-por-vez trava entre 2 e 8 |
+| Silhueta mais gorda/magra | `tongueHalfW` da variante | — |
+| Novo hospedeiro | Nova linha em `BLAZE_VARIANTS` + `.blaze-stage` + `<BlazeBurst variant=… />` | Não adapte um desenho existente só com `scale` |
+| Cor | `BLAZE_PALETTE` | Amarelo/dourado dominam; creme é núcleo; laranja é silhueta |
 
-**Três armadilhas.**
+**Cinco armadilhas.**
 
-1. **Não use `filter` no canvas nem no que anima junto dele.** Foi
-   medido: dobra o p95 do quadro.
-2. **Não dimensione o canvas por CSS.** Elemento substituído, laço de
+1. **Não volte ao blending aditivo nas chamas.** `lighter` soma luz e
+   dissolve o contorno — é a receita da nuvem amarela.
+2. **Não use `filter` no canvas nem no que anima junto dele.** Medido:
+   dobra o p95 do quadro.
+3. **Não dimensione o canvas por CSS.** Elemento substituído, laço de
    crescimento — ver §9.
-3. **Não deixe faísca ultrapassar o céu.** O alcance vem do `climb`, e o
-   céu vem do `--blaze-sky-top`; se um crescer, o outro tem de crescer.
+4. **Não anime o container.** A base de cada chama é ancorada; o que
+   dança é o corpo. Transform no canvas inteiro = "elemento flutuando".
+5. **Não devolva fogo ao pote.** É decisão de direção com teste
+   guardando a porta.
 
 ---
 
 ## 14. Histórico: o que já falhou e por quê
 
-Vale registrar, porque cada erro aqui parecia razoável no papel.
-
 | # | Tentativa | Como ficou | Diagnóstico |
 | :-: | --- | --- | --- |
-| 1 | Anel de `conic-gradient` girando (CSS) | Glow arco-íris girando | Anel de cor uniforme é um LED, não uma labareda |
-| 2 | Máscara **cônica** recortando línguas | **Sunburst** | Num botão de 330×44, alguns graus de ângulo valem meia borda no meio e quase nada nas quinas |
-| 3 | Faixas verticais de período fixo | **Código de barras** | Dentes de topo reto, todos do mesmo comprimento |
-| 4 | Gotas em `radial-gradient` na máscara | Meia-lua com base descontínua | Máscara é recortada **depois** do filtro: a borda sai dura faça o que fizer |
-| 5 | Línguas pintadas no fundo + blur | Funcionou — mas custava um quadro | `background-position` animado sob `filter` refaz o blur por quadro |
-| 6 | Polígono preenchido no canvas | **Caco de vidro amarelo** | Polígono tem borda dura; fogo não tem borda nenhuma |
-| 7 | Pluma de sprites (atual) | Fogo | — |
+| 1 | Anel de `conic-gradient` girando (CSS) | Glow arco-íris | Anel uniforme é um LED, não fogo |
+| 2 | Máscara cônica recortando línguas | Sunburst | Ângulo não distribui por perímetro num retângulo largo |
+| 3 | Faixas verticais de período fixo | Código de barras | Dentes retos, mesma altura |
+| 4 | Gotas em `radial-gradient` na máscara | Meia-lua dura | Máscara recorta depois do filtro |
+| 5 | Línguas pintadas no fundo + blur | Funcionou, mas custava um quadro | `background-position` sob `filter` repinta o blur |
+| 6 | Polígono duro no canvas | Caco de vidro amarelo | Borda dura sem curva |
+| 7 | Pluma de discos aditivos | **Nuvem amarela desfocada** | Luz somada não tem contorno |
+| 8 | Poça de brasa no pote | Bloco amarelo sobre as fichas | Fichas são opacas; e o pote não pode competir com a mão |
+| 9 | Regime = clímax congelado | Massa parada | Composições diferentes, não brilho menor |
+| 10 | **Bézier em camadas chapadas (atual)** | Fogo cartoon com silhueta | — |
 
-Bugs corrigidos pelo caminho, que a medição achou e o olho não:
-
-- **Canvas dobrando de tamanho** a cada passagem (§9).
-- **Faíscas cortadas na borda**: as mais rápidas viajavam ~150px num céu
-  de 90px. Corrigido definindo a faísca pelo alcance (`vy = alcance ×
-  arrasto`) em vez da velocidade.
-- **`totalMs` curto demais**: `particleStagger + lifeMax` (1900ms)
-  passava do desligamento (1850ms). Hoje o número é derivado e há teste.
-- **Botão queimando ralo**: contagem fixa de línguas num perímetro 3×
-  maior. Corrigido com a densidade por perímetro (§6.3).
+Bugs que a medição achou e o olho não: canvas dobrando de tamanho por
+`width:auto` em elemento substituído; faíscas cortadas na borda do céu;
+`totalMs` menor que o último beat; regime aceso só de um lado por
+sorteio azarado (resolvido com cotas por zona).
 
 ---
 
 ## 15. Limitações conhecidas
 
-1. **O botão da dobra fica no rodapé**, então as chamas nascidas na base
-   dele caem fora do viewport (`#root` tem `overflow: hidden`). O que se
-   vê é a linha de fogo na borda e o brilho escapando por cima. É
-   aceitável, mas é menos fogo do que o efeito desenha.
-2. **O canvas mede o palco uma vez**, na montagem. Se a caixa da mão
-   mudar de tamanho com o fogo aceso (não acontece hoje: as cartas têm
-   tamanho fixo e a mão só cresce entre rodadas, quando o efeito
-   remonta), o fogo ficaria fora de lugar. Um `ResizeObserver`
-   resolveria, ao custo de complexidade que ainda não se paga.
-3. **A luz do botão passa por cima de PEDIR CARTA / PARAR.** É aditiva e
-   sutil, e lê como brilho de fogo espalhando — mas é sobreposição real,
-   não ilusão.
-4. **Vários fogos simultâneos não foram medidos.** O pior caso plausível
-   é a mesa única do torneio com vários blackjacks no showdown (até 6
-   canvas mini). O `scale: 0,55` reduz cada um, mas o total não tem
-   medição própria.
+1. **A coroa do botão invade ~5px atrás dos controles.** As pontas das
+   quinas (até ~18px) passam da folga de 12px e somem atrás de PEDIR
+   CARTA/PARAR (`relative z-10`). É intencional — mas se o layout do
+   rodapé mudar, o céu (`--blaze-sky-top`) e as `zones` do botão têm de
+   ser recalculados juntos.
+2. **O canvas mede o palco uma vez, na montagem.** Se a caixa da mão
+   mudar de tamanho com o fogo aceso (hoje não muda: o efeito remonta
+   entre rodadas), o fogo ficaria fora de lugar.
+3. **A composição do regime é determinística por montagem.** As
+   sobreviventes são as maiores — dois estouros diferem na entrada, mas
+   o regime tende a composições parecidas (quinas + laterais). É o
+   preço de garantir presença; se cansar, o desempate entre línguas de
+   altura próxima pode voltar a ser sorteado.
+4. **Vários fogos simultâneos não têm medição própria.** O pior caso é
+   a mesa única com vários blackjacks no showdown (até 6 canvas mini a
+   `scale: 0,55`).

@@ -65,11 +65,11 @@ export function HandRow({
     // dela que o BlazeBurst tira o que está queimando. Criá-lo só na
     // hora do estouro faria a mão trocar de caixa no instante mais
     // sensível da cena.
-    <div className="blaze-stage">
+    <div className={`blaze-stage ${ablaze ? 'blaze-stage--lit' : ''}`}>
       {/* A combustão é montada e desmontada pelo `ablaze` — é o
           desmonte, e não um relógio, que apaga o fogo. Mãos mini
           (assentos da mesa única) ganham a mesma cena em escala. */}
-      {ablaze && <BlazeBurst scale={mini ? 0.55 : 1} />}
+      {ablaze && <BlazeBurst variant="blackjack" scale={mini ? 0.55 : 1} />}
       <div
         className={`relative flex justify-center ${align === 'end' ? 'items-end' : 'items-center'}`}
         data-testid={testid}

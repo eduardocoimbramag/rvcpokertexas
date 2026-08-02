@@ -947,26 +947,20 @@ h2 {
   transform-style: preserve-3d;
 }
 
-/* ==================== A COMBUSTÃO DOURADA ====================
+/* ==================== A LABAREDA ====================
 
    O selo da mão perfeita — e da mesa que dobrou — tem duas partes: um
-   ESTOURO que bate uma vez e uma FOGUEIRA que fica. O estouro dura
-   ~1,9s; a fogueira, enquanto a mão for blackjack ou a mesa estiver
-   dobrada.
+   ESTOURO que bate uma vez (~0,9s de clímax) e um FOGO CARTOON que
+   fica, fluido, enquanto a mão for blackjack ou a mesa estiver dobrada.
 
-   A versão anterior era um contorno de CSS aceso enquanto a mão
-   durasse, e errava em tudo o que um efeito assim pode errar:
-   acompanhava o retângulo da carta (então lia como sombra laranja, não
-   como fogo), subia e descia em bloco (então lia como um elemento
-   flutuando) e não tinha clímax nenhum — sem começo não há impacto.
+   O fogo mora num CANVAS (ver BlazeBurst.tsx): línguas com silhueta de
+   Bézier em camadas de cor chapada — laranja fora, amarelo/dourado no
+   corpo, creme num núcleo pequeno — mais faíscas visíveis a olho. Duas
+   variantes, dois desenhos: a coroa da MÃO (blackjack) e a coroa do
+   BOTÃO da dobra. O pote não tem fogo, por decisão de direção.
 
-   Agora o fogo mora num CANVAS (ver BlazeBurst.tsx): até 40 línguas com
-   ruído próprio, 6 a 10 raios e até 38 faíscas com trajetória
-   individual, tudo em UM nó de DOM. As mesmas peças em elementos seriam
-   ~88 camadas para o compositor cuidar por quadro.
-
-   O CSS daqui cuida de duas coisas só: o palco onde o canvas mora e o
-   que acontece com a CARTA. Documentação completa: docs/labareda.md. */
+   O CSS daqui cuida do palco onde o canvas mora e do que acontece com
+   a CARTA e com o BOTÃO. Documentação completa: docs/labareda.md. */
 
 /* O PALCO. A caixa dele é exatamente a da mão — é o que o BlazeBurst
    mede para saber o que está queimando — e o canvas transborda dela por
@@ -995,6 +989,26 @@ h2 {
   /* left/top/width/height entram por style no BlazeBurst. */
   z-index: 0;
   pointer-events: none;
+}
+
+/* O PULO da mão no clímax do blackjack: o grupo inteiro cresce a
+   1,035 e VOLTA, uma vez — reação de impacto, não respiração. A classe
+   só existe com o fogo aceso (ver HandRow), então mão apagada não
+   anima nada. */
+.blaze-stage--lit {
+  animation: hand-pop 0.6s cubic-bezier(0.2, 0.85, 0.3, 1);
+}
+
+@keyframes hand-pop {
+  0% {
+    transform: scale(1);
+  }
+  22% {
+    transform: scale(1.035);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* ---------- O contorno das cartas ----------
@@ -1044,6 +1058,10 @@ h2 {
   pointer-events: none;
 }
 
+/* O aro FICA, mas baixo. Em 0,62 ele somava com o fogo por trás e
+   embranquecia a carta — o marfim do papel já é claro, e um contorno
+   forte por cima dele fecha a leitura do naipe. Em 0,42 ele continua
+   dizendo "esta carta está em brasa" sem lavar a carta. */
 @keyframes card-rim {
   0% {
     opacity: 0;
@@ -1052,7 +1070,7 @@ h2 {
     opacity: 1;
   }
   100% {
-    opacity: 0.62;
+    opacity: 0.42;
   }
 }
 
@@ -1114,6 +1132,10 @@ h2 {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .blaze-stage--lit {
+    animation: none;
+  }
+
   .card-scene--ablaze,
   .card-scene--ablaze::before,
   .card-scene--ablaze::after {
@@ -1125,7 +1147,7 @@ h2 {
      porque a mão continua sendo blackjack. */
   .card-scene--ablaze::before {
     animation: none;
-    opacity: 0.62;
+    opacity: 0.42;
   }
 
   .card-scene--ablaze::after {
@@ -1957,6 +1979,93 @@ h2 {
     color 0.35s ease;
 }
 
+/* ---------- A placa do total no clímax do blackjack ----------
+
+   O "21" fazia parte da cena e estava alheio a ela: o fogo subia logo
+   abaixo e a placa seguia igual. Aqui ela entra no beat — um pulo curto
+   (1 → 1,08 → 1, e VOLTA ao lugar; a placa não fica pulando), um
+   reflexo dourado que atravessa uma vez, o aro champagne e um pouco
+   mais de profundidade na sombra. Passado o clímax fica só o aro: um
+   indicador que pulsasse sem parar competiria com as cartas pela
+   atenção durante a mão inteira. */
+.hand-total--ablaze {
+  position: relative;
+  animation: total-ignite 1.05s cubic-bezier(0.2, 0.85, 0.3, 1) forwards;
+}
+
+@keyframes total-ignite {
+  0% {
+    scale: 1;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      inset 0 -1px 0 rgba(122, 58, 20, 0.32),
+      0 0 0 1px rgba(122, 58, 20, 0.45),
+      0 3px 10px rgba(9, 42, 26, 0.35);
+  }
+  22% {
+    scale: 1.08;
+    /* O preenchimento fica mais METÁLICO no pico: o realce interno sobe
+       e ganha um fio champagne por fora. */
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.95),
+      inset 0 -2px 4px rgba(122, 58, 20, 0.4),
+      0 0 0 1.4px rgba(255, 215, 106, 0.95),
+      0 6px 18px rgba(30, 12, 4, 0.5);
+  }
+  100% {
+    scale: 1;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),
+      inset 0 -1px 0 rgba(122, 58, 20, 0.32),
+      0 0 0 1.1px rgba(255, 215, 106, 0.6),
+      0 4px 12px rgba(20, 10, 4, 0.42);
+  }
+}
+
+/* O reflexo da placa: mesma faixa diagonal da carta, mesma conta de
+   travessia (imagem a 300%, miolo cruzando entre 75% e 25%), uma vez. */
+.hand-total--ablaze::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background: linear-gradient(
+    108deg,
+    rgba(255, 248, 220, 0) 38%,
+    rgba(255, 248, 220, 0.72) 48%,
+    rgba(255, 255, 255, 0.9) 50%,
+    rgba(255, 248, 220, 0.66) 52%,
+    rgba(255, 248, 220, 0) 62%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 115% 0;
+  animation: total-sheen 0.8s cubic-bezier(0.32, 0, 0.2, 1) 0.08s forwards;
+  pointer-events: none;
+}
+
+@keyframes total-sheen {
+  to {
+    background-position: -15% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand-total--ablaze {
+    animation: none;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),
+      inset 0 -1px 0 rgba(122, 58, 20, 0.32),
+      0 0 0 1.1px rgba(255, 215, 106, 0.6),
+      0 4px 12px rgba(20, 10, 4, 0.42);
+  }
+
+  .hand-total--ablaze::after {
+    display: none;
+  }
+}
+
 /* Estourou: a placa inteira vira brasa. O vermelho não precisa competir
    com o verde do feltro — ele tem a peça toda para si. */
 .hand-total.is-bust {
@@ -2337,36 +2446,97 @@ h2 {
 
 /* ---------- A dobra aceita ----------
 
-   O botão recebe a MESMA combustão das cartas (o palco é o próprio
-   invólucro .double-cta) e queima enquanto a mesa estiver dobrada — o
-   valor em jogo virou outro, e isso vale pela mão inteira.
+   O botão recebe uma COROA de labaredas cartoon (variante
+   `double-button` do BlazeBurst): chamas maiores nas duas quinas de
+   cima, médias ao longo da borda superior, com vãos entre elas — e
+   nada embaixo, que ali é o fim do viewport.
 
-   O céu do estouro aqui é o oposto do da mão: a pílula já tem 330px de
-   largura, então o que falta é altura. A DENSIDADE das línguas se
-   ajusta sozinha ao perímetro maior (ver `density` em blaze.ts); sem
-   isso o mesmo punhado de chamas se perdia numa borda três vezes mais
-   longa e o botão queimava ralo. */
+   O CÉU de cima é 0,45 × 44px ≈ 20px: as chamas das quinas passam
+   ~13–18px da borda, como manda a direção. As pontas que invadem a
+   folga de 12px até PEDIR CARTA/PARAR somem ATRÁS deles — os controles
+   têm z-index próprio (ver HandsArena) — então nenhum brilho cobre
+   texto. Embaixo é 0,04: qualquer desenho ali sairia cortado. */
 .double-cta--accepted {
-  --blaze-sky-x: 0.05;
-  --blaze-sky-top: 1.75;
-  --blaze-sky-bottom: 1.3;
+  --blaze-sky-x: 0.06;
+  --blaze-sky-top: 0.45;
+  --blaze-sky-bottom: 0.04;
 }
 
 
-/* A tinta do botão em brasa: fundo de carvão quente e letra champagne,
-   para o texto continuar legível dentro da chama. */
+/* O RASTRO do botão, que dura a mão inteira: fundo de carvão QUENTE
+   (não apagado — o botão fraco e escuro era a reclamação), fio
+   champagne nítido na borda e um underglow âmbar subindo do rodapé
+   interno. O recado é "o valor foi multiplicado", e ele tem de se ler
+   numa captura estática cinco segundos depois do aceite. */
 .double-cta--accepted > .btn:disabled {
-  background: linear-gradient(180deg, #4a1206 0%, #24080a 100%);
-  color: var(--color-gold-bright);
+  background:
+    radial-gradient(130% 100% at 50% 120%, rgba(255, 122, 0, 0.5), transparent 62%),
+    linear-gradient(180deg, #7a2007 0%, #401006 100%);
+  color: #ffd43b;
   box-shadow:
-    inset 0 1px 0 rgba(255, 196, 130, 0.3),
-    inset 0 0 18px rgba(255, 109, 0, 0.35);
+    inset 0 0 0 1.5px rgba(255, 212, 59, 0.75),
+    inset 0 1px 0 rgba(255, 242, 166, 0.4),
+    inset 0 -10px 18px -8px rgba(255, 122, 0, 0.6),
+    0 0 14px rgba(255, 176, 0, 0.3);
+}
+
+/* O PULO do aceite: o texto cresce a 1,04 e VOLTA — uma vez, na
+   entrada. A posição final é exatamente a original. */
+.double-cta--accepted > .btn {
+  animation: double-pop 0.55s cubic-bezier(0.2, 0.85, 0.3, 1);
+}
+
+@keyframes double-pop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* O BRILHO METÁLICO no texto, uma vez só. O `.btn` já tem
+   `overflow: hidden` e `isolation: isolate`, então a faixa morre dentro
+   da pílula sem precisar de recorte próprio. Mesma conta da carta: com
+   a imagem a 300% do botão, o miolo cruza enquanto a posição vai de 75%
+   a 25%. */
+.double-cta--accepted > .btn:disabled::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    104deg,
+    rgba(255, 215, 106, 0) 40%,
+    rgba(255, 215, 106, 0.32) 47%,
+    rgba(255, 248, 220, 0.6) 50%,
+    rgba(255, 215, 106, 0.3) 53%,
+    rgba(255, 215, 106, 0) 60%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 115% 0;
+  animation: double-sheen 0.8s cubic-bezier(0.32, 0, 0.2, 1) 0.12s forwards;
+  pointer-events: none;
+}
+
+@keyframes double-sheen {
+  to {
+    background-position: -15% 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .double-bubble[data-status='pending'] .double-answer {
     animation: none;
     opacity: 0.85;
+  }
+
+  .double-cta--accepted > .btn {
+    animation: none;
   }
 }
 
@@ -4966,40 +5136,11 @@ h2 {
   pointer-events: none;
 }
 
-/* ---------- O pote que dobrou ----------
-
-   A dobra aceita estoura AQUI também, e não só no botão do seu rodapé.
-   O botão é seu: ele não existe na tela do rival. O pote é da MESA —
-   está no meio do feltro, à vista dos dois lados, e é literalmente o
-   valor que dobrou. É o que faz a dobra ser um fato da mesa em vez de
-   um aviso privado.
-
-   O rastro que fica é uma poça de brasa parada sob as fichas, sem
-   contorno: as fichas são discos soltos e não preenchem retângulo
-   nenhum — um aro nítido apareceria como uma pílula pálida atravessando
-   o monte. */
-.felt-pot.is-ablaze {
-  --blaze-sky-x: 0.42;
-  --blaze-sky-top: 1.45;
-  --blaze-sky-bottom: 0.85;
-}
-
-.felt-pot.is-ablaze::before {
-  content: '';
-  position: absolute;
-  inset: -22% -14%;
-  z-index: -1;
-  border-radius: 999px;
-  background: radial-gradient(
-    72% 82% at 50% 56%,
-    rgba(255, 184, 0, 0.4) 0%,
-    rgba(255, 138, 0, 0.24) 46%,
-    rgba(232, 74, 0, 0.08) 74%,
-    rgba(140, 33, 0, 0) 100%
-  );
-  pointer-events: none;
-}
-
+/* O POTE NÃO PEGA FOGO — decisão de direção. A dobra aceita é
+   comunicada exclusivamente pelo botão APOSTA DOBRADA; a poça de brasa
+   que já morou aqui virava um bloco amarelo sobre as fichas e brigava
+   com a mão de blackjack pela atenção. Nada de canvas, classe ou
+   pseudo-elemento de fogo neste componente. */
 
 /* O poço da pilha: as fichas são absolutas na base e sobem degrau a
    degrau (7px por ficha, via transform no framer). A altura reserva o

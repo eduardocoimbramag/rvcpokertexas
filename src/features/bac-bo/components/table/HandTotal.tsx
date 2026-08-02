@@ -23,6 +23,13 @@ export interface HandTotalProps {
   side?: Duelist;
   /** Assento de rival: o total encolhe e abre mão da leitura soft. */
   compact?: boolean;
+  /**
+   * A mão desta placa é um blackjack. A placa entra no clímax junto com
+   * a combustão — um pulo curto, um reflexo e um aro champagne — e
+   * depois guarda só o aro. Sem isto o "21" ficava alheio ao fogo que
+   * queima logo abaixo dele.
+   */
+  ablaze?: boolean;
   testid?: string;
 }
 
@@ -58,6 +65,7 @@ export function HandTotal({
   variant = 'duel',
   side,
   compact = false,
+  ablaze = false,
   testid,
 }: HandTotalProps) {
   const value = handValue(cards);
@@ -70,7 +78,9 @@ export function HandTotal({
 
   return (
     <span
-      className={`${block} ${modifier} ${value.total > 21 ? 'is-bust' : ''}`}
+      className={`${block} ${modifier} ${value.total > 21 ? 'is-bust' : ''} ${
+        ablaze ? `${block}--ablaze` : ''
+      }`}
       data-testid={testid ?? (variant === 'duel' ? `${side}-total` : undefined)}
       data-partial={partial}
     >
