@@ -255,11 +255,29 @@ type TestStore = ReturnType<typeof createTestStore>;
 /** Showdown completo: as ocultas viram, o quadro respira, veredito. */
 const SHOWDOWN_MS = TIMINGS.revealMs + TIMINGS.settleMs;
 
-/** Da Home até a mesa de negociação (busca + splash + confirmação dupla). */
-async function reachNegotiation(store: TestStore) {
+/**
+ * Do fim do acordo até o countdown: acordo selado → apresentação do
+ * rival → HORA DO DUELO. Três beats encadeados, uma constante só —
+ * assim nenhum teste precisa saber a coreografia de cor.
+ */
+const SEAL_TO_COUNTDOWN_MS =
+  TIMINGS.negotiationSealMs + TIMINGS.foundSplashMs + TIMINGS.duelAnnounceMs;
+
+/**
+ * Da Home até a mesa de negociação (busca + confirmação dupla). A busca
+ * entrega DIRETO na confirmação: a apresentação do rival acontece lá na
+ * frente, depois do acordo. O `advanceTimersByTimeAsync(0)` só drena o
+ * microtask do findMatch — avançar tempo aqui deixaria o oponente
+ * confirmar sozinho antes de o teste olhar.
+ */
+async function reachConfirmPhase(store: TestStore) {
   void store.getState().startSearch();
-  await vi.advanceTimersByTimeAsync(TIMINGS.foundSplashMs);
+  await vi.advanceTimersByTimeAsync(0);
   expect(store.getState().phase).toBe('confirm');
+}
+
+async function reachNegotiation(store: TestStore) {
+  await reachConfirmPhase(store);
 
   store.getState().confirmMatch();
   await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
@@ -281,11 +299,11 @@ async function agreeAndStart(store: TestStore, stake: number) {
   expect(store.getState().negotiation?.tableStake).toBe(stake);
 
   // O beat do balão aceito → a mesa fecha (setStake num microtask) →
-  // o beat do título → countdown.
+  // acordo selado → apresentação → HORA DO DUELO → countdown.
   await vi.advanceTimersByTimeAsync(TIMINGS.negoAnswerHoldMs);
   expect(store.getState().negotiation?.agreedStake).toBe(stake);
   await vi.advanceTimersByTimeAsync(0);
-  await vi.advanceTimersByTimeAsync(TIMINGS.negotiationStartMs);
+  await vi.advanceTimersByTimeAsync(SEAL_TO_COUNTDOWN_MS);
   expect(store.getState().phase).toBe('countdown');
 }
 
@@ -363,12 +381,18 @@ describe('máquina de estados', () => {
   it('só permite transições declaradas', () => {
     expect(canTransition('idle', 'search')).toBe(true);
     expect(canTransition('idle', 'dealing')).toBe(false);
-    expect(canTransition('search', 'found')).toBe(true);
-    expect(canTransition('found', 'confirm')).toBe(true);
+    // A ordem das cenas de abertura: busca → confirmação → negociação →
+    // APRESENTAÇÃO → countdown. O splash do rival desceu para depois do
+    // acordo (é lá que ele deixa de ser anônimo), e a busca passou a
+    // entregar direto na confirmação.
+    expect(canTransition('search', 'confirm')).toBe(true);
+    expect(canTransition('search', 'found')).toBe(false);
     expect(canTransition('confirm', 'negotiate')).toBe(true);
-    // A mesa de negociação desemboca direto no countdown: não há mais
-    // cara-ou-coroa nem escolha de cor entre o acordo e as cartas.
-    expect(canTransition('negotiate', 'countdown')).toBe(true);
+    expect(canTransition('negotiate', 'found')).toBe(true);
+    expect(canTransition('found', 'countdown')).toBe(true);
+    // Nem pular a apresentação, nem voltar a ela pela porta antiga.
+    expect(canTransition('negotiate', 'countdown')).toBe(false);
+    expect(canTransition('found', 'confirm')).toBe(false);
     expect(canTransition('negotiate', 'idle')).toBe(true);
     expect(canTransition('confirm', 'countdown')).toBe(false);
     expect(canTransition('countdown', 'dealing')).toBe(true);
@@ -515,7 +539,7 @@ describe('fluxo completo do duelo', () => {
     await vi.advanceTimersByTimeAsync(TIMINGS.negoAnswerHoldMs);
     expect(store.getState().balance).toBe(500);
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(TIMINGS.negotiationStartMs);
+    await vi.advanceTimersByTimeAsync(SEAL_TO_COUNTDOWN_MS);
     expect(store.getState().phase).toBe('countdown');
     expect(store.getState().balance).toBe(420);
   });
@@ -696,9 +720,7 @@ describe('cancelamento e recusa', () => {
 
   it('recusar a partida volta ao menu sem debitar', async () => {
     const store = createTestStore('win');
-    void store.getState().startSearch();
-    await vi.advanceTimersByTimeAsync(TIMINGS.foundSplashMs);
-    expect(store.getState().phase).toBe('confirm');
+    await reachConfirmPhase(store);
 
     store.getState().declineMatch();
     expect(store.getState().phase).toBe('idle');
@@ -708,11 +730,9 @@ describe('cancelamento e recusa', () => {
 });
 
 describe('confirmação dupla', () => {
-  /** Leva o store até a fase confirm. */
+  /** Leva o store até a fase confirm, com os dois assentos ainda vazios. */
   async function reachConfirm(store: TestStore) {
-    void store.getState().startSearch();
-    await vi.advanceTimersByTimeAsync(TIMINGS.foundSplashMs);
-    expect(store.getState().phase).toBe('confirm');
+    await reachConfirmPhase(store);
     expect(store.getState().confirmations).toEqual({ player: false, opponent: false });
   }
 
@@ -943,7 +963,7 @@ describe('mesa de negociação', () => {
     expect(negotiation?.agreedStake).toBe(100);
 
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(TIMINGS.negotiationStartMs);
+    await vi.advanceTimersByTimeAsync(SEAL_TO_COUNTDOWN_MS);
     expect(store.getState().phase).toBe('countdown');
     expect(store.getState().balance).toBe(400);
     expect(store.getState().match?.stake).toBe(100);
@@ -1124,7 +1144,7 @@ describe('mesa de negociação', () => {
     expect(store.getState().phase).toBe('negotiate');
 
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(TIMINGS.negotiationStartMs);
+    await vi.advanceTimersByTimeAsync(SEAL_TO_COUNTDOWN_MS);
     expect(store.getState().phase).toBe('countdown');
     expect(store.getState().balance).toBe(420);
   });

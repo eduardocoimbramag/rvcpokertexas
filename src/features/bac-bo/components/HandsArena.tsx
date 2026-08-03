@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
@@ -16,11 +17,13 @@ import type {
 } from '../engine/types';
 import type { DoubleBetState, GamePhase, TurnClock, TurnReveal } from '../store/gameStore';
 import { TURN_SECONDS, useGameStore } from '../store/gameStore';
+import { Monogram } from './AvatarBadge';
+import { OpponentProfileSheet } from './OpponentProfileSheet';
 import { BlazeBurst } from './table/BlazeBurst';
 import { ChipStack } from './table/ChipStack';
 import { HandRow } from './table/HandRow';
 import { HandTotal } from './table/HandTotal';
-import { povHand } from './table/pov';
+import { blindHand, povHand } from './table/pov';
 
 export interface HandsArenaProps {
   phase: GamePhase;
@@ -54,14 +57,17 @@ export interface HandsArenaProps {
  *
  * A MESA É ESPELHADA em torno do brasão: as duas mãos ficam à mesma
  * distância das bordas do feltro, as cartas deitam uma ao lado da outra
- * (nada de leque: a mesa mostra tudo o que está aberto) e cada total
- * fica do lado de DENTRO da sua mão, apontado para o centro — o do
- * rival embaixo das cartas dele, o seu em cima das suas.
+ * (nada de leque) e cada total fica do lado de DENTRO da sua mão,
+ * apontado para o centro — o do rival embaixo das cartas dele, o seu em
+ * cima das suas.
  *
- * A REGRA DE POV manda na cena: cada duelista vê a mão do outro menos a
- * ÚLTIMA carta dela. Então o rival sempre tem uma carta virada para
- * baixo, e cada carta nova que ele pede empurra a anterior para cima —
- * a informação chega em conta-gotas, e a última só abre no showdown.
+ * A MESA É CEGA, e é ela que manda na cena: nenhuma carta atravessa a
+ * mesa em nenhuma das direções. A mão do rival fica INTEIRA de bruços e
+ * o total dele é um "?"; cada carta que ele pede acrescenta só mais um
+ * verso à fileira. O que se sabe dele é o gesto — pediu carta ou parou —
+ * e nada mais, até o showdown virar tudo de uma vez. Do outro lado o
+ * contrato é idêntico: ele decide sem ver uma carta sua (a engine nem
+ * as manda, ver blackjackRoundStateSchema e `blindBotAction`).
  *
  * A VEZ é SIMULTÂNEA: os dois escolhem ao mesmo tempo, com 20 s no
  * relógio, cada um sem saber o que o outro vai fazer. A placa de nome
@@ -74,9 +80,9 @@ export interface HandsArenaProps {
  *   assentamento de cada uma — o Card3D cuida do próprio beat).
  * - `turn`: o relógio corre e a barra PEDIR/PARAR abre; o total da sua
  *   mão acompanha ao vivo (soft mostra as duas leituras, "7/17") e o do
- *   rival mostra só o que está aberto — quem lembra que falta carta é a
- *   carta virada na mesa dele, não um sinal colado no número.
- * - `settle`: showdown — as ocultas viram e os totais finais aparecem.
+ *   rival é um "?" — não há uma carta dele na mesa para somar.
+ * - `settle`: showdown — a mão do rival vira inteira e os totais finais
+ *   aparecem nos dois lados.
  * - `completed` (câmera frontal): o placar migra para as placas que
  *   flanqueiam a crupiê; com cenário desligado ele fica na faixa.
  */
@@ -126,6 +132,70 @@ function ScorePlate({ side, name, total, winner, instant }: ScorePlateProps) {
         {total}
       </span>
     </motion.div>
+  );
+}
+
+interface SeatMedallionProps {
+  side: 'player' | 'opponent';
+  name: string;
+  instant: boolean;
+  /** Se definido, o medalhão vira botão e abre o perfil (rival). */
+  onOpenProfile?: () => void;
+}
+
+/**
+ * Medalhão de duelista ladeando a crupiê no desfecho — o retrato de
+ * cada lado da mesa, à altura dos ombros dela: o seu à esquerda, com o
+ * aro azul da casa; o do rival à direita, com o aro vermelho. A mesma
+ * semântica de cor das placas de placar logo abaixo.
+ *
+ * SEM NOME embaixo, de propósito: quem diz quem é quem é a placa, e
+ * repetir o nome a meia tela de distância só ocuparia o feltro.
+ *
+ * O do rival é um BOTÃO, e é o único lugar do duelo 1v1 em que o perfil
+ * dele abre: aqui o duelo já foi jogado e o valor há muito está travado
+ * — não há mais nada a combinar (ver opponentIdentity.ts).
+ */
+function SeatMedallion({ side, name, instant, onOpenProfile }: SeatMedallionProps) {
+  const player = side === 'player';
+  /* Entra junto com a placa do seu lado, um beat antes dela: o
+     medalhão desliza da borda e a placa assenta em seguida. */
+  const enter = {
+    initial: instant ? false : { opacity: 0, x: player ? -20 : 20, scale: 0.85 },
+    animate: { opacity: 1, x: 0, scale: 1 },
+    transition: instant
+      ? { duration: 0 }
+      : { type: 'spring' as const, stiffness: 300, damping: 22, delay: 0.22 },
+  };
+  const face = <Monogram name={name} you={player} />;
+  const className = `seat-medallion seat-medallion--${side}`;
+
+  if (!onOpenProfile) {
+    return (
+      <motion.span
+        className={className}
+        data-testid={`seat-medallion-${side}`}
+        aria-hidden="true"
+        {...enter}
+      >
+        {face}
+      </motion.span>
+    );
+  }
+
+  return (
+    <motion.button
+      type="button"
+      className={`${className} seat-medallion--link`}
+      data-testid={`seat-medallion-${side}`}
+      aria-label={`Ver perfil de ${name}`}
+      title={`Ver perfil de ${name}`}
+      onClick={onOpenProfile}
+      whileTap={instant ? undefined : { scale: 0.9 }}
+      {...enter}
+    >
+      {face}
+    </motion.button>
   );
 }
 
@@ -396,6 +466,10 @@ export function HandsArena({
 }: HandsArenaProps) {
   const reducedMotion = useReducedMotion() ?? false;
   const scenery = useGameStore((state) => state.settings.scenery);
+  // Perfil do rival: estado LOCAL de UI, aberto pelo medalhão do
+  // desfecho. Não toca no store nem na máquina de estados — a mesa
+  // segue montada atrás, e fechar devolve o foco a ela.
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const dealing = phase === 'dealing';
   const choosing = phase === 'turn';
@@ -419,17 +493,18 @@ export function HandsArena({
   const playerCards: readonly Card[] = round?.playerHand ?? result?.playerHand ?? [];
   const opponentFull: readonly Card[] = result?.opponentHand ?? [];
 
-  /* A mão do rival na mesa, antes do showdown: tudo o que ele tem MENOS
-     a última carta, que fica virada — a regra de POV, sem exceção. Quem
-     aplica o corte é `povHand`, o mesmo dos assentos da mesa única (ver
-     ./table/pov): a regra é uma, então a implementação é uma.
+  /* A mão do rival na mesa, antes do showdown: NENHUMA carta à mostra —
+     só o monte de bruços. A engine nem manda as cartas (`opponentVisible`
+     vem vazio, ver blackjackRoundStateSchema), então o que existe para
+     desenhar é a contagem, e é só isso que a `blindHand` recebe.
      O corte vale inclusive para o estado `settled` (que já traz a mão
      inteira aberta): quem revela é a fase `settle`, não a chegada do
-     resultado. Cada carta nova que ele pede empurra a anterior para o
-     campo aberto — a informação chega em conta-gotas. */
-  const opponentPov = revealed
-    ? povHand(opponentFull, true)
-    : povHand(round?.opponentVisible ?? opponentFull, false, (round?.opponentHidden ?? 0) > 0);
+     resultado. Cada carta que ele pede acrescenta mais um verso à
+     fileira — a única coisa que a mesa conta dele durante a mão. */
+  const opponentCount = round
+    ? round.opponentVisible.length + round.opponentHidden
+    : opponentFull.length;
+  const opponentPov = revealed ? povHand(opponentFull, true) : blindHand(opponentCount);
   const opponentCards = opponentPov.shown;
 
   if (playerCards.length === 0 || opponentCards.length === 0) return null;
@@ -440,10 +515,10 @@ export function HandsArena({
 
      - a sua, na hora: as suas duas cartas estão abertas na sua frente e
        você já sabe o que tirou;
-     - a do rival, no SHOWDOWN. Nem um beat antes. A mão dele tem uma
-       carta virada (a regra de POV, ver ./table/pov), e uma labareda
-       acesa ali diria "ele tem 21" com a oculta ainda de bruços — o
-       duelo acabaria naquele instante, com você sabendo que basta não
+     - a do rival, no SHOWDOWN. Nem um beat antes. A mão dele está
+       inteira de bruços (a mesa cega, ver ./table/pov), e uma labareda
+       acesa ali diria "ele tem 21" sem virar uma carta — o duelo
+       acabaria naquele instante, com você sabendo que basta não
        estourar. O corte é o mesmo que já esconde o total dele e o
        estouro dele: a mesa nunca conta pelas beiradas o que só as
        cartas podem contar.
@@ -473,11 +548,20 @@ export function HandsArena({
 
   /* Fase completed: a câmera volta ao frontal e a crupiê entra no
      quadro — o placar migra para as placas que a flanqueiam (padrão da
-     casa). Sem cenário não há crupiê: os totais ficam na faixa. */
+     casa), e os dois medalhões sobem para a altura dos ombros dela.
+     Sem cenário não há crupiê: os totais ficam na faixa. */
   if (phase === 'completed' && result) {
     if (scenery !== 'off') {
       return (
         <>
+          <SeatMedallion side="player" name="Você" instant={reducedMotion} />
+          <SeatMedallion
+            side="opponent"
+            name={match.opponent.name}
+            instant={reducedMotion}
+            onOpenProfile={() => setProfileOpen(true)}
+          />
+
           <ScorePlate
             side="player"
             name="Você"
@@ -491,6 +575,13 @@ export function HandsArena({
             total={result.opponentTotal}
             winner={result.outcome === 'lose'}
             instant={reducedMotion}
+          />
+
+          {/* Perfil do rival por cima da mesa do desfecho. */}
+          <OpponentProfileSheet
+            open={profileOpen}
+            opponent={match.opponent}
+            onClose={() => setProfileOpen(false)}
           />
         </>
       );
@@ -558,16 +649,17 @@ export function HandsArena({
           cards={opponentCards}
           testid="hand-opponent-cards"
           labelPrefix={`Carta de ${match.opponent.name}`}
-          faceDownAt={(index) => !revealed && index === opponentCards.length - 1}
+          faceDownAt={() => !revealed}
           delayFor={opponentDelay}
           ablaze={opponentAblaze}
         />
-        {/* O total do rival é o das cartas ABERTAS enquanto houver
-            oculta: um número limpo do que já está na mesa. */}
+        {/* Enquanto a mão dele está de bruços não há um único ponto a
+            somar: a placa mostra "?" e vira número no showdown. */}
         <HandTotal
           side="opponent"
           cards={opponentPov.counted}
           partial={!revealed}
+          blind={!revealed}
           ablaze={opponentAblaze}
         />
       </section>
@@ -613,17 +705,16 @@ export function HandsArena({
         data-testid="hand-player"
       >
         <HandTotal side="player" cards={playerCards} partial={false} ablaze={playerAblaze} />
-        {/* O espelho da regra de POV, do SEU lado: a última carta da sua
-            mão está aberta aqui e virada na tela dele. Nada nela denuncia
-            isso — então o selo do olho cortado o faz (ver CardVeil). No
-            showdown ele sai de cena junto com o segredo. */}
+        {/* Sem selo de carta velada aqui: a mesa é cega dos DOIS lados, e
+            marcar uma carta como "esta ele não vê" perdeu o sentido
+            quando ele deixou de ver todas. A mesa única, que mantém a
+            regra de POV, continua com o selo (ver CardVeil). */}
         <HandRow
           cards={playerCards}
           testid="hand-player-cards"
           labelPrefix="Sua carta"
           delayFor={playerDelay}
           ablaze={playerAblaze}
-          veiledAt={(index) => !revealed && index === playerCards.length - 1}
         />
         {/* A SUA placa não anuncia a sua vez: você sabe se já escolheu —
             quem precisa de aviso é o outro lado da mesa. O que entra aqui

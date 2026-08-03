@@ -14,18 +14,16 @@ import type {
 import { GameEngineError } from './GameEngine';
 import {
   DECK_RESHUFFLE_THRESHOLD,
-  botAction,
+  blindBotAction,
   buildDeck,
   dealInitialHands,
   drawCard,
   forcedDealFor,
   handValue,
-  isBust,
   netChangeFor,
   payoutFor,
   resolveOutcome,
   standingOf,
-  visibleCards,
 } from './rules';
 import type {
   BlackjackRoundState,
@@ -231,23 +229,16 @@ export class LocalBlackjackGameEngine implements GameEngine {
 
     await delay(this.dealDelayMs);
 
-    /* O que o rival enxerga da sua mão: tudo menos a última carta —
-       SALVO quando você estoura. Estouro é público em qualquer mesa (a
-       mão vira na hora), e esconder isso abriria uma brecha real: ele
-       seguiria pedindo contra um adversário que já perdeu, estouraria
-       junto de vez em quando, e o empate devolveria a aposta de quem
-       estourou primeiro.
+    /* O rival não enxerga NADA da sua mão — a mesa do duelo é cega dos
+       dois lados. Ele joga a própria mão e mais nada (`blindBotAction`),
+       com exatamente a informação que você tem dele: nenhuma.
 
        Ele decide AGORA, com a mesa como estava no início da vez: a sua
        carta desta vez ainda não saiu, e é isso que faz a escolha ser
        simultânea de verdade — nenhum dos dois vê o lance do outro. */
-    const playerBusted = isBust(round.playerHand);
-    const playerVisibleTotal = playerBusted
-      ? handValue(round.playerHand).total
-      : handValue(visibleCards(round.playerHand)).total;
     const opponentAction = round.opponentClosed
       ? undefined
-      : botAction(round.opponentHand, playerVisibleTotal);
+      : blindBotAction(round.opponentHand);
 
     // Sem escolha travada, a mesa PARA a mão pelo dono dela: é o
     // desfecho seguro de um relógio que zerou — parar nunca estoura.
@@ -304,17 +295,19 @@ export class LocalBlackjackGameEngine implements GameEngine {
     return this.turnState(match.id, round);
   }
 
-  /** Estado da vez corrente, já filtrado pelo POV do jogador. */
+  /** Estado da vez corrente, já cego para o lado do rival. */
   private turnState(matchId: string, round: ActiveRound): BlackjackRoundState {
     const canChoose = !round.playerClosed && round.playerChoice === undefined;
     return blackjackRoundStateSchema.parse({
       matchId,
       phase: 'choosing',
       playerHand: round.playerHand,
-      // A última carta do rival não sai daqui: o jogador decide com a
-      // mesma informação parcial que o rival tem sobre ele.
-      opponentVisible: visibleCards(round.opponentHand),
-      opponentHidden: 1,
+      // NENHUMA carta do rival sai daqui — nem para a UI, nem para o
+      // DevTools. O que atravessa a fronteira é só QUANTAS ele tem na
+      // mesa; o que elas são, só o showdown conta. Do outro lado o
+      // contrato é idêntico: ele também joga sem ver nada seu.
+      opponentVisible: [],
+      opponentHidden: round.opponentHand.length,
       legalActions: canChoose ? ['hit', 'stand'] : [],
       playerChoice: round.playerChoice,
       lastTurn: round.lastTurn,

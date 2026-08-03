@@ -7,18 +7,14 @@ import { formatCredits } from '@/shared/lib/format';
 
 import { NEGOTIATION_SECONDS } from '../animations/timings';
 import { MIN_STAKE } from '../engine/credits';
-import type { Match } from '../engine/types';
 import type { NegotiationProposal } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
 import { AmountStepper } from './AmountStepper';
 import { AvatarBadge } from './AvatarBadge';
 import { GoldAnnounce } from './GoldAnnounce';
 import { HudPill } from './HudPill';
+import { OPPONENT_ALIAS } from './opponentIdentity';
 import { ChipStack } from './table/ChipStack';
-
-export interface NegotiationPanelProps {
-  match: Match;
-}
 
 /**
  * Situação do rival na mesa, na ordem de precedência em que ela é lida
@@ -33,14 +29,18 @@ const HUD_LABELS = {
 
 /**
  * A pílula do rival no ALTO da tela, ao lado do saldo — acima da
- * dealer, que fica livre em cena. Uma linha só: medalhão e nome à
+ * dealer, que fica livre em cena. Uma linha só: medalhão e rótulo à
  * esquerda, situação e ponto de presença à direita.
  *
+ * O rótulo é "Oponente", nunca o nome: a negociação é justamente a fase
+ * em que saber com quem se está negociando permitiria combinar o valor
+ * de antemão e transferir créditos (ver opponentIdentity.ts).
+ *
  * Ela vive no HUD (o GameScreen a monta no cabeçalho) e não no feltro:
- * a mesa é do letreiro, das fichas e dos balões. O nome trunca; a
+ * a mesa é do letreiro, das fichas e dos balões. O rótulo trunca; a
  * situação nunca quebra linha.
  */
-export function NegotiationHud({ match }: NegotiationPanelProps) {
+export function NegotiationHud() {
   const negotiation = useGameStore((state) => state.negotiation);
   if (!negotiation) return null;
 
@@ -59,8 +59,8 @@ export function NegotiationHud({ match }: NegotiationPanelProps) {
       variant="rival"
       state={state}
       data-testid="nego-hud"
-      aria-label={`${match.opponent.name}: ${HUD_LABELS[state]}`}
-      leading={<AvatarBadge name={match.opponent.name} />}
+      aria-label={`${OPPONENT_ALIAS}: ${HUD_LABELS[state]}`}
+      leading={<AvatarBadge name={OPPONENT_ALIAS} />}
       trailing={
         <>
           <span className="hud-pill__state">{HUD_LABELS[state]}</span>
@@ -68,14 +68,13 @@ export function NegotiationHud({ match }: NegotiationPanelProps) {
         </>
       }
     >
-      {match.opponent.name}
+      {OPPONENT_ALIAS}
     </HudPill>
   );
 }
 
 interface ProposalBubbleProps {
   proposal: NegotiationProposal;
-  opponentName: string;
   instant: boolean;
   onAccept: () => void;
   onDecline: () => void;
@@ -89,13 +88,7 @@ interface ProposalBubbleProps {
  * escolhida acende, a outra apaga e o balão sai um beat depois (quem
  * segura e solta é o store).
  */
-function ProposalBubble({
-  proposal,
-  opponentName,
-  instant,
-  onAccept,
-  onDecline,
-}: ProposalBubbleProps) {
+function ProposalBubble({ proposal, instant, onAccept, onDecline }: ProposalBubbleProps) {
   const bubbleRef = useRef<HTMLDivElement>(null);
   const own = proposal.from === 'player';
   const accepted = proposal.status === 'accepted';
@@ -115,7 +108,7 @@ function ProposalBubble({
       ? 'PROPOSTA RECUSADA'
       : own
         ? 'SUA PROPOSTA'
-        : `PROPOSTA DE ${opponentName}`;
+        : `PROPOSTA DO ${OPPONENT_ALIAS.toLocaleUpperCase('pt-BR')}`;
 
   const pickClass = (yes: boolean) =>
     answered ? (yes === accepted ? 'is-picked' : 'is-muted') : '';
@@ -178,8 +171,8 @@ function ProposalBubble({
       <p className="prop-bubble__hint">
         {own
           ? answered
-            ? opponentName
-            : `${opponentName} está decidindo…`
+            ? OPPONENT_ALIAS
+            : `${OPPONENT_ALIAS} está decidindo…`
           : answered
             ? 'Você decidiu'
             : 'Cobrir ou recusar?'}
@@ -223,10 +216,16 @@ function NegoClock({ seconds, paused }: { seconds: number; paused: boolean }) {
  * relógio de 20 s corre. Cada lado pode empurrar um lance novo: o
  * composer (valor + atalhos +10/+100 + ENVIAR PROPOSTA) fica na base, e
  * cada proposta vira um balão com ✓/✗ — os do rival decidem o seu
- * lance; os seus decidem o dele. Fechado (por aceite ou pelo relógio),
- * "HORA DO DUELO" entra e a partida começa na estrutura de sempre.
+ * lance; os seus decidem o dele. Fechado (por aceite ou pelo relógio), o
+ * composer recolhe, o pote fica um beat sozinho no feltro e a cena corta
+ * para a apresentação do rival (fase `found`, ver PHASE_TRANSITIONS).
+ *
+ * Do outro lado da mesa há um "Oponente", e só: nenhuma peça desta fase
+ * recebe (ou mostra) o nome do rival — é o que impede que dois
+ * combinados se reconheçam e usem a negociação para passar créditos de
+ * uma conta para a outra (ver opponentIdentity.ts).
  */
-export function NegotiationPanel({ match }: NegotiationPanelProps) {
+export function NegotiationPanel() {
   const negotiation = useGameStore((state) => state.negotiation);
   const balance = useGameStore((state) => state.balance);
   const sendProposal = useGameStore((state) => state.sendProposal);
@@ -281,23 +280,22 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
         <span className="nego-felt__bias" aria-hidden="true" />
 
         <AnimatePresence mode="wait">
-          {starting ? (
-            <GoldAnnounce key="duel" text="Hora do duelo" data-testid="nego-duel-announce" />
-          ) : announcing ? (
+          {announcing && (
             <GoldAnnounce key="open" text="Rodada de negociação" data-testid="nego-open-announce" />
-          ) : null}
+          )}
         </AnimatePresence>
 
-        {/* key={tableStake}: cada valor novo re-monta a pilha — as
-            fichas do acordo deslizam ao centro de novo.
-            Nos dois ANÚNCIOS o feltro fica só com o letreiro: as fichas e
-            a placa saem de cena para o título não dividir o palco com
-            nada (nem com uma versão apagada delas). */}
+        {/* No ANÚNCIO de abertura o feltro fica só com o letreiro: as
+            fichas e a placa saem de cena para o título não dividir o
+            palco com nada (nem com uma versão apagada delas).
+            Selado o acordo (`starting`) é o contrário — o composer sai e
+            o pote FICA, sozinho no feltro, mostrando o valor fechado até
+            a cena cortar para a apresentação do rival. */}
         {/* `key={tableStake}`: a cada valor novo o pote inteiro volta a
             entrar — é o gesto de "fichas sendo postas na mesa" que a fase
             pede. No duelo é o contrário (ver HandsArena): lá as fichas
             que já estão na mesa ficam paradas e só as novas chegam. */}
-        {!announcing && !starting && (
+        {!announcing && (
           <ChipStack
             key={tableStake}
             stake={tableStake}
@@ -310,11 +308,11 @@ export function NegotiationPanel({ match }: NegotiationPanelProps) {
         )}
 
         <AnimatePresence>
+          {/* Selada a mesa, o balão sai: o que fica em cena é o pote. */}
           {proposal?.open && !starting && (
             <ProposalBubble
               key={proposal.id}
               proposal={proposal}
-              opponentName={match.opponent.name}
               instant={instant}
               onAccept={acceptProposal}
               onDecline={declineProposal}

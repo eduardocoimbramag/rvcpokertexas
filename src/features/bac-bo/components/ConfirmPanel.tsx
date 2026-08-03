@@ -1,18 +1,12 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useState } from 'react';
 
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 
-import type { Match } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
-import { Monogram } from './AvatarBadge';
-import { OpponentProfileSheet } from './OpponentProfileSheet';
+import { DuelistSeat } from './DuelistSeat';
+import { OPPONENT_ALIAS } from './opponentIdentity';
 import { PhaseTitle } from './PhaseTitle';
-
-export interface ConfirmPanelProps {
-  match: Match;
-}
 
 const STAMP_SPRING = { type: 'spring', stiffness: 520, damping: 16 } as const;
 
@@ -21,29 +15,23 @@ interface ReadySeatProps {
   accent: 'player' | 'opponent';
   confirmed: boolean;
   instant: boolean;
-  /** Se definido, o avatar vira um botão que abre o perfil (oponente). */
-  onOpenProfile?: () => void;
 }
 
 /**
- * Assento do duelo com estado de prontidão: enquanto espera, um aro
- * tracejado gira devagar em volta do avatar; ao confirmar, um anel
- * esmeralda se desenha, o selo de visto carimba no canto e um flash
- * expande. A identidade é o monograma do jogador (AvatarBadge).
+ * O assento do duelista (DuelistSeat, o mesmo da apresentação) com o
+ * ESTADO DE PRONTIDÃO por cima: enquanto espera, um aro tracejado gira
+ * devagar em volta do medalhão; ao confirmar, um anel esmeralda se
+ * desenha, o selo de visto carimba no canto e um flash expande.
+ *
+ * Os DOIS assentos são a mesma peça, com a mesma pilha de elementos. É o
+ * que os mantém à mesma altura — nenhum lado ganha um apêndice (rótulo
+ * extra, atalho de perfil) que empurre o avatar do outro para baixo. Ver
+ * o `items-start` da fileira.
  */
-function ReadySeat({ name, accent, confirmed, instant, onOpenProfile }: ReadySeatProps) {
-  const border = accent === 'player' ? 'border-player' : 'border-opponent';
-  const ink = accent === 'player' ? 'text-[#1e3a8a]' : 'text-[#7f1d1d]';
-
-  // O avatar do oponente é clicável (abre o perfil); o do jogador é
-  // estático. Mesmo visual nos dois — só o oponente ganha o affordance
-  // de toque (cursor, tap-scale e rótulo acessível).
-  const avatarClass = `grid h-20 w-20 place-items-center rounded-full border-2 ${border} bg-arena-800 text-4xl`;
-  const face = <Monogram name={name} you={accent === 'player'} />;
-
+function ReadySeat({ name, accent, confirmed, instant }: ReadySeatProps) {
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="relative">
+    <DuelistSeat name={name} accent={accent}>
+      <>
         {confirmed ? (
           <svg className="confirm-ring" viewBox="0 0 100 100" aria-hidden="true">
             <motion.circle
@@ -81,21 +69,6 @@ function ReadySeat({ name, accent, confirmed, instant, onOpenProfile }: ReadySea
           </motion.svg>
         )}
 
-        {onOpenProfile ? (
-          <motion.button
-            type="button"
-            onClick={onOpenProfile}
-            whileTap={instant ? undefined : { scale: 0.92 }}
-            aria-label={`Ver perfil de ${name}`}
-            data-testid="opponent-avatar-button"
-            className={`${avatarClass} cursor-pointer transition-shadow hover:shadow-[0_0_0_3px_rgba(245,183,111,0.55)] focus-visible:shadow-[0_0_0_3px_rgba(245,183,111,0.7)] focus-visible:outline-none`}
-          >
-            {face}
-          </motion.button>
-        ) : (
-          <span className={avatarClass}>{face}</span>
-        )}
-
         <AnimatePresence>
           {confirmed && (
             <motion.span
@@ -119,20 +92,8 @@ function ReadySeat({ name, accent, confirmed, instant, onOpenProfile }: ReadySea
             transition={{ duration: 0.7, ease: 'easeOut' }}
           />
         )}
-      </div>
-
-      <span className={`text-engraved font-black ${ink}`}>{name}</span>
-      {onOpenProfile && (
-        <button
-          type="button"
-          onClick={onOpenProfile}
-          className="focus-ring rounded-sm text-[10px] font-bold uppercase tracking-wider text-[#7f1d1d]/70 underline decoration-dotted underline-offset-2 active:brightness-125"
-          data-testid="opponent-profile-hint"
-        >
-          ver perfil
-        </button>
-      )}
-    </div>
+      </>
+    </DuelistSeat>
   );
 }
 
@@ -142,16 +103,17 @@ function ReadySeat({ name, accent, confirmed, instant, onOpenProfile }: ReadySea
  * depois (ou antes!). Cada confirmação carimba o assento correspondente;
  * com ambos prontos, o VS flareja e a faixa "duelo confirmado" fecha o
  * pacto antes da mesa de negociação.
+ *
+ * O rival é ANÔNIMO aqui — "Oponente", sem nome e sem perfil a abrir
+ * (ver opponentIdentity.ts): você aceita o duelo, não a pessoa. O nome
+ * entra em cena depois do acordo, junto com as cartas. Por isso a tela
+ * não recebe o `match`: não há nada nele que ela possa mostrar.
  */
-export function ConfirmPanel({ match }: ConfirmPanelProps) {
+export function ConfirmPanel() {
   const confirmMatch = useGameStore((state) => state.confirmMatch);
   const declineMatch = useGameStore((state) => state.declineMatch);
   const confirmations = useGameStore((state) => state.confirmations);
   const instant = useReducedMotion() ?? false;
-  // Perfil do oponente: estado LOCAL de UI. Abre por cima da tela de
-  // confirmação (que segue montada e ativa atrás). Não toca no store
-  // nem na máquina de estados — fechar o perfil devolve o foco à mesa.
-  const [profileOpen, setProfileOpen] = useState(false);
 
   const bothReady = confirmations.player && confirmations.opponent;
 
@@ -173,7 +135,15 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
         {/* Espaçador do título até os assentos. */}
         <div aria-hidden className="w-full grow" />
 
-        <div className="flex w-full items-center justify-around">
+        {/* `items-start` e não `items-center`: os dois assentos nascem na
+            MESMA linha de topo, então os avatares ficam à mesma altura
+            aconteça o que acontecer com o que vem abaixo deles (um nome
+            que quebre em duas linhas, por exemplo). Centrado, o assento
+            mais alto puxava o avatar do outro para baixo — era o que
+            deixava "Você" mais fundo que o rival. O VS ganha a altura do
+            avatar (h-20) para se centrar contra ele, não contra a
+            coluna inteira. */}
+        <div className="flex w-full items-start justify-around">
           <ReadySeat
             name="Você"
             accent="player"
@@ -183,7 +153,7 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
 
           {/* VS central: flareja quando o pacto fecha — devagar, para o
               momento ser saboreado dentro do beat de lock-in. */}
-          <div className="relative grid place-items-center">
+          <div className="relative grid h-20 place-items-center">
             {bothReady && !instant && (
               <motion.span
                 className="absolute h-16 w-16 rounded-full border-2 border-gold"
@@ -204,11 +174,10 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
           </div>
 
           <ReadySeat
-            name={match.opponent.name}
+            name={OPPONENT_ALIAS}
             accent="opponent"
             confirmed={confirmations.opponent}
             instant={instant}
-            onOpenProfile={() => setProfileOpen(true)}
           />
         </div>
 
@@ -256,7 +225,7 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25 }}
             >
-              <span>Aguardando {match.opponent.name}</span>
+              <span>Aguardando {OPPONENT_ALIAS.toLocaleLowerCase('pt-BR')}</span>
               <span className="waiting-dots" aria-hidden="true">
                 <span className="waiting-dot">.</span>
                 <span className="waiting-dot">.</span>
@@ -289,13 +258,6 @@ export function ConfirmPanel({ match }: ConfirmPanelProps) {
           )}
         </AnimatePresence>
       </div>
-
-      {/* Perfil do oponente por cima da mesa de confirmação. */}
-      <OpponentProfileSheet
-        open={profileOpen}
-        opponent={match.opponent}
-        onClose={() => setProfileOpen(false)}
-      />
     </div>
   );
 }

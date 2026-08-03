@@ -12,10 +12,18 @@ import { cardRankSchema, cardSuitSchema } from './types';
  *
  * Regra da mesa: NÃO há casa para bater. É você contra o adversário, um
  * baralho único, e vence quem chegar mais perto de 21 sem estourar.
- * Cada duelista joga sabendo tudo da mão do outro MENOS a última carta
- * dela — o segredo que fica em cima da mesa até o showdown. Estourou,
- * perdeu; os dois estourados empatam; blackjack natural (21 em duas
- * cartas) ganha de um 21 montado em três ou mais.
+ * Estourou, perdeu; os dois estourados empatam; blackjack natural (21 em
+ * duas cartas) ganha de um 21 montado em três ou mais.
+ *
+ * O QUE CADA UM VÊ do outro depende do modo, e são dois:
+ *
+ * - duelo 1v1 — mesa CEGA: nenhuma carta atravessa a mesa em nenhuma das
+ *   direções. O que se vê do rival é o gesto (pediu carta ou parou) e
+ *   nada mais; as cartas todas só viram no showdown. É a regra que o
+ *   `blindBotAction` cumpre do lado da máquina.
+ * - mesa única do torneio — regra de POV: cada mão fica aberta MENOS a
+ *   última carta, o segredo que dorme na mesa até o showdown. É o
+ *   `visibleCards` + `botAction`.
  *
  * EXCEÇÃO DE ESTILO: as funções de baralho (`drawCard`, `playBotHand`)
  * consomem o array recebido — o baralho pertence à engine e é passado
@@ -153,19 +161,22 @@ export function dealInitialHands(deck: Card[]): InitialDeal {
 }
 
 /**
- * O que um duelista enxerga da mão do outro: tudo menos a última carta.
- * É a regra de POV da mesa, e vale para os DOIS lados — o bot decide
- * sem saber a carta oculta do jogador, exatamente como o jogador decide
- * sem saber a dele.
+ * O que um jogador da MESA ÚNICA enxerga da mão do outro: tudo menos a
+ * última carta. É a regra de POV daquela mesa, e vale para os dois
+ * lados — o bot decide sem saber a carta oculta do jogador, exatamente
+ * como o jogador decide sem saber a dele.
+ *
+ * O duelo 1v1 não passa por aqui: lá a mesa é cega dos dois lados (ver
+ * `blindBotAction`).
  */
 export function visibleCards(hand: readonly Card[]): Card[] {
   return hand.slice(0, -1);
 }
 
 /**
- * Estratégia do bot no duelo. Ele conhece a própria mão inteira e só as
- * cartas ABERTAS do jogador, então estima a oculta pelo valor médio do
- * baralho e joga contra esse alvo:
+ * Estratégia do bot na mesa única. Ele conhece a própria mão inteira e
+ * só as cartas ABERTAS do rival, então estima a oculta pelo valor médio
+ * do baralho e joga contra esse alvo:
  *
  * - jogador visivelmente estourado → para na hora (já ganhou; pedir só
  *   arriscaria jogar a vitória fora);
@@ -188,22 +199,43 @@ export function botAction(hand: readonly Card[], rivalVisibleTotal: number): Pla
 }
 
 /**
- * Chance de o rival topar dobrar a aposta no meio da mão.
+ * Estratégia do bot no DUELO ÀS CEGAS (1v1): ali nenhuma carta atravessa
+ * a mesa — nem as dele para você, nem as suas para ele (ver
+ * `blackjackRoundStateSchema`). Sem uma única carta do outro lado à
+ * vista não há alvo a perseguir, então ele joga a própria mão pelo
+ * melhor que ela pode ser, e nada mais:
  *
- * Ele decide com a MESMA informação parcial que tem de você — as suas
- * cartas ABERTAS, porque a última continua sendo segredo seu (regra de
- * POV da mesa). Quanto mais fraca a sua mesa parece, mais ele sobe o
- * valor; contra uma mesa aberta forte ele quase sempre recusa. Nunca é
- * 0 nem 1: o blefe faz parte do duelo, e uma resposta previsível daria
- * ao jogador uma leitura da mão do rival que ele não deveria ter.
+ * - mão soft até 17 → pede (um Ás alto não estoura: é de graça);
+ * - abaixo de 17 → pede, como em qualquer mesa;
+ * - 17 ou mais → para.
+ *
+ * Ele decide com EXATAMENTE a informação que você tem dele: nenhuma. É
+ * isso que faz da mesa cega uma regra em vez de um handicap — enquanto
+ * ele lesse as suas cartas abertas e você não visse nenhuma das dele, a
+ * mesa penderia para a máquina, e em silêncio.
+ *
+ * A mesa única do torneio continua no `botAction` acima: lá cada mão
+ * guarda só a última carta, e o alvo do rival existe.
  */
-export function doubleAcceptChance(playerVisibleTotal: number): number {
-  if (playerVisibleTotal > 21) return 0.95; // você estourou à vista: ele sobe
-  if (playerVisibleTotal >= 19) return 0.15;
-  if (playerVisibleTotal >= 16) return 0.35;
-  if (playerVisibleTotal >= 12) return 0.6;
-  return 0.8;
+export function blindBotAction(hand: readonly Card[]): PlayerAction {
+  const { total, soft } = handValue(hand);
+  if (total >= 21) return 'stand';
+  if (soft && total <= 17) return 'hit';
+  return total < 17 ? 'hit' : 'stand';
 }
+
+/**
+ * Chance de o rival topar dobrar a aposta no meio da mão do duelo cego.
+ *
+ * É um número FIXO, e é assim de propósito. Ele saía das suas cartas
+ * abertas — que na mesa cega não existem mais. Restaria tirá-lo da mão
+ * DELE, e aí o aceite viraria um leitor de força: bastaria cruzar
+ * "topou dobrar" com o showdown meia dúzia de vezes para ler a mão do
+ * rival de graça, que é exatamente o que a mesa cega existe para
+ * impedir. Constante, o aceite não conta nada de ninguém — e continua
+ * sendo risco de verdade, porque não é 0 nem 1.
+ */
+export const DOUBLE_ACCEPT_CHANCE = 0.5;
 
 /** Situação final de um duelista, pronta para comparação. */
 export interface DuelistStanding {

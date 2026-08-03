@@ -6,7 +6,7 @@ export interface PhaseTitleProps {
 
 /**
  * Título das fases sobre a mesa ("Escolha sua aposta", "Confirmação de
- * duelo", "Que vença o melhor!"): a mesma placa do "Duelo encontrado"
+ * duelo", "Que vença o melhor!"): a mesma placa do "Partida confirmada"
  * do FoundSplash — pastilha de vinho, letra dourada em caixa alta —
  * promovida a título, com degradê de ouro e lustro a cada 5s.
  *

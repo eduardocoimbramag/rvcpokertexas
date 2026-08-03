@@ -1,6 +1,9 @@
 import { motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 
+import type { ResultEffectOutcome } from './ResultOutcomeEffect';
+import { ResultOutcomeEffect } from './ResultOutcomeEffect';
+
 /**
  * Onde o palco assenta:
  *
@@ -20,6 +23,13 @@ export interface ResultStageProps {
   /** O veredito, em caixa alta: VITÓRIA!, DERROTA, EMPATE. */
   title: string;
   titleTestId?: string;
+  /**
+   * Veste o veredito com o efeito do desfecho (ouro que sobe, rubi que
+   * cai — ver ResultOutcomeEffect). Ausente, o título fica na tinta
+   * gravada de sempre: é o caso do empate, que não é notícia, e de quem
+   * ainda não optou pelo tratamento.
+   */
+  effect?: ResultEffectOutcome;
   /** A consequência, logo abaixo do veredito ("Você avança de fase"). */
   subtitle?: ReactNode;
   subtitleTestId?: string;
@@ -71,6 +81,7 @@ export function ResultStage({
   tone,
   title,
   titleTestId,
+  effect,
   subtitle,
   subtitleTestId,
   note,
@@ -87,6 +98,21 @@ export function ResultStage({
   const ghost = (className: string, content: ReactNode) => (
     <p aria-hidden className={`invisible ${className}`}>
       {content}
+    </p>
+  );
+
+  /* O veredito é UM nó de texto, com ou sem efeito — o `data-word`
+     alimenta as pseudocamadas de brilho (glow e varredura metálica) sem
+     duplicar a palavra no DOM, que confundiria leitor de tela. */
+  const heading = (
+    <p
+      className={`result-stage__title result-stage__title--${tone}${
+        effect ? ' result-blaze__word' : ''
+      }`}
+      data-word={effect ? title : undefined}
+      data-testid={titleTestId}
+    >
+      {title}
     </p>
   );
 
@@ -112,9 +138,17 @@ export function ResultStage({
         {note != null && ghost('result-stage__note', note)}
         {subtitle != null && ghost('result-stage__subtitle', subtitle)}
 
-        <p className={`result-stage__title result-stage__title--${tone}`} data-testid={titleTestId}>
-          {title}
-        </p>
+        {/* O efeito envolve a palavra em vez de flutuar solto no palco:
+            é o que ancora halo, feixe e partículas no centro EXATO do
+            veredito sem medir nada em JavaScript. A caixa é `fit-content`
+            como o <p> era, então nada se desloca. */}
+        {effect ? (
+          <ResultOutcomeEffect outcome={effect} instant={instant}>
+            {heading}
+          </ResultOutcomeEffect>
+        ) : (
+          heading
+        )}
 
         {subtitle != null && (
           <p className="result-stage__subtitle" data-testid={subtitleTestId}>

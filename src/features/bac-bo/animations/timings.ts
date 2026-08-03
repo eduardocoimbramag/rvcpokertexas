@@ -14,9 +14,9 @@ const OPENING_CARDS = 4;
 
 export const TIMINGS = {
   /**
-   * Apresentação de duelo (jogador → VS → oponente) antes da
-   * confirmação, em ritmo de matchup de jogo de luta — cada beat
-   * respira. Orçamento: última placa assenta em ~2.5s + respiro.
+   * Apresentação de duelo (jogador → VS → oponente) DEPOIS do acordo,
+   * em ritmo de matchup de jogo de luta — cada beat respira. Orçamento:
+   * última placa assenta em ~2.5s + respiro.
    */
   foundSplashMs: 3400,
   /** Janela em que o oponente simulado confirma o duelo (aleatório). */
@@ -35,10 +35,17 @@ export const TIMINGS = {
    */
   negoAnnounceMs: 2600,
   /**
-   * Beat entre o fim da negociação e o countdown: é o tempo do título
-   * "HORA DO DUELO" entrar, assentar e respirar antes do corte de cena.
+   * Beat do ACORDO SELADO: o composer recolhe e o feltro fica só com as
+   * fichas do valor fechado, antes de a cena cortar para a apresentação
+   * do rival. Curto de propósito — a conversa acabou, e o que interessa
+   * agora está na próxima cena.
    */
-  negotiationStartMs: 2400,
+  negotiationSealMs: 1200,
+  /**
+   * Beat entre a apresentação e o countdown: é o tempo do título "HORA
+   * DO DUELO" entrar, assentar e respirar antes do corte de cena.
+   */
+  duelAnnounceMs: 2400,
   /**
    * Quanto o balão de proposta respondido (o ✓ ou o ✗ aceso) fica em
    * cena antes de a mesa seguir — no aceite, é também o beat em que as

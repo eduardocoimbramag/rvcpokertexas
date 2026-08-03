@@ -142,10 +142,16 @@ export type TableTurn = z.infer<typeof tableTurnSchema>;
 /**
  * Estado de uma rodada interativa, do PONTO DE VISTA DO JOGADOR.
  *
- * A regra da mesa: cada duelista vê a mão do adversário MENOS a última
- * carta dela. Por isso `opponentVisible` traz só as cartas abertas do
- * rival e a oculta nem sai da engine — não há como a UI (nem o DevTools)
- * espiar o que ainda não foi virado. No `settled` o `result` abre tudo.
+ * A regra da mesa do duelo é a MESA CEGA: nenhuma carta atravessa a
+ * mesa, em nenhuma das duas direções. Por isso `opponentVisible` sai
+ * daqui VAZIO e nem uma carta do rival chega à UI (nem ao DevTools) —
+ * o que atravessa é só quantas ele tem na mesa, em `opponentHidden`. O
+ * que se sabe dele é o gesto (pediu carta ou parou), e mais nada; no
+ * `settled` o `result` abre tudo de uma vez.
+ *
+ * O contrato é simétrico: o bot decide sem ver uma carta sua (ver
+ * `blindBotAction`). A mesa única do torneio é outra regra — lá cada
+ * mão fica aberta menos a última carta (ver `visibleCards`).
  *
  * A vez é SIMULTÂNEA: os dois escolhem ao mesmo tempo e os dois lances
  * saem juntos. A escolha do rival NUNCA atravessa esta fronteira antes
@@ -156,9 +162,9 @@ export const blackjackRoundStateSchema = z
   .object({
     matchId: z.string().min(1),
     phase: roundPhaseSchema,
-    /** Sua mão, sempre inteira: o segredo é da última carta ALHEIA. */
+    /** Sua mão, sempre inteira: o segredo é da mão ALHEIA. */
     playerHand: handSchema,
-    /** Cartas abertas do rival (a última fica de fora até o showdown). */
+    /** Cartas abertas do rival: VAZIO no duelo cego, a mão toda no showdown. */
     opponentVisible: z.array(cardSchema),
     /** Quantas cartas do rival seguem viradas para baixo (0 no showdown). */
     opponentHidden: z.number().int().min(0),

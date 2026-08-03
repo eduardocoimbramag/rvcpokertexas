@@ -12,6 +12,7 @@ import { BalancePill } from './BalancePill';
 import { ConfirmPanel } from './ConfirmPanel';
 import { CountdownOverlay } from './CountdownOverlay';
 import { FoundSplash } from './FoundSplash';
+import { GoldAnnounce } from './GoldAnnounce';
 import { HandsArena } from './HandsArena';
 import { MatchmakingOverlay } from './MatchmakingOverlay';
 import { NegotiationHud, NegotiationPanel } from './NegotiationPanel';
@@ -39,6 +40,7 @@ export function GameScreen() {
   const reveal = useGameStore((state) => state.reveal);
   const turn = useGameStore((state) => state.turn);
   const countdown = useGameStore((state) => state.countdown);
+  const duelAnnounce = useGameStore((state) => state.duelAnnounce);
   const error = useGameStore((state) => state.error);
   const dismissError = useGameStore((state) => state.dismissError);
   const dealerReaction = useDealerReaction();
@@ -68,7 +70,7 @@ export function GameScreen() {
           da dealer — nada da negociação cobre a cena. */}
       <header className="relative z-20 mb-4 flex items-center justify-between gap-3">
         {phase === 'negotiate' && match ? (
-          <NegotiationHud match={match} />
+          <NegotiationHud />
         ) : (
           <span className="h-11 w-11" aria-hidden="true" />
         )}
@@ -88,9 +90,21 @@ export function GameScreen() {
             transition={{ duration: 0.2 }}
           >
             {phase === 'search' && <MatchmakingOverlay />}
-            {phase === 'found' && match && <FoundSplash match={match} />}
-            {phase === 'confirm' && match && <ConfirmPanel match={match} />}
-            {phase === 'negotiate' && match && <NegotiationPanel match={match} />}
+            {phase === 'confirm' && match && <ConfirmPanel />}
+            {phase === 'negotiate' && match && <NegotiationPanel />}
+            {/* A fase da APRESENTAÇÃO tem duas cenas, e o store diz qual
+                está no ar: a placa do rival — que aqui, com a aposta já
+                fechada, enfim traz o nome dele (ver opponentIdentity.ts)
+                — e, na sequência, o carimbo que abre o duelo. */}
+            {phase === 'found' && match && (
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                {duelAnnounce ? (
+                  <GoldAnnounce text="Hora do duelo" data-testid="duel-announce" />
+                ) : (
+                  <FoundSplash match={match} />
+                )}
+              </div>
+            )}
             {phase === 'countdown' && <CountdownOverlay value={countdown} />}
             {ARENA_PHASES.includes(phase) && match && (
               // relative: o banner de resultado se sobrepõe à mesa em vez

@@ -13,8 +13,20 @@
  * renderiza identidade usa estes componentes, derivando do nome.
  */
 
-/** Primeira letra "visível" do nome (lida por grafema — 'Ísis' → 'Í'). */
+import { OPPONENT_ALIAS } from './opponentIdentity';
+
+/**
+ * Primeira letra "visível" do nome (lida por grafema — 'Ísis' → 'Í').
+ *
+ * O rival ANÔNIMO é a exceção, e ela mora aqui de propósito: enquanto o
+ * pareamento não revela quem é (ver opponentIdentity.ts), o medalhão
+ * traz uma INTERROGAÇÃO. Um "O" de "Oponente" seria a inicial de um nome
+ * que não existe — o medalhão diria "conheça esta pessoa" quando o que
+ * a mesa quer dizer é "não se sabe quem é". Como a regra vive na função
+ * que todo medalhão do jogo usa, nenhuma tela nova esquece dela.
+ */
 function initialOf(name: string): string {
+  if (name === OPPONENT_ALIAS) return '?';
   const first = [...name.trim()][0];
   return (first ?? '?').toLocaleUpperCase('pt-BR');
 }

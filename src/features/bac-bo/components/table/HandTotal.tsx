@@ -15,6 +15,13 @@ export interface HandTotalProps {
    */
   partial: boolean;
   /**
+   * A mão está INTEIRA de bruços — a do rival no duelo cego. Não há um
+   * único ponto a somar, então a placa escreve "?" no lugar do número:
+   * um "0" ali seria uma informação falsa, e uma placa vazia deixaria o
+   * lado do rival sem o par da sua.
+   */
+  blind?: boolean;
+  /**
    * Onde este total mora. `duel` é a borda interna de uma das duas mãos
    * do 1v1; `seat` é o total miúdo de um assento da mesa única.
    */
@@ -49,19 +56,24 @@ export interface HandTotalProps {
  * dois dígitos de largura ela vira mancha, e o que importa ali é o total
  * que está valendo.
  *
- * O que a placa NUNCA escreve é o que falta: a conta do rival é a das
- * cartas ABERTAS dele, e ela se apresenta como um número limpo. O "+?"
- * que ficava colado no total dizia duas coisas ao mesmo tempo e não se
- * lia bem nenhuma delas — quem conta que existe carta virada é a própria
- * carta virada, deitada na mesa ao lado das outras.
+ * O que a placa NUNCA escreve é o que falta: a conta é a das cartas que
+ * ela pode somar, e se apresenta como um número limpo. O "+?" que ficava
+ * colado no total dizia duas coisas ao mesmo tempo e não se lia bem
+ * nenhuma delas — quem conta que existe carta virada é a própria carta
+ * virada, deitada na mesa ao lado das outras.
+ *
+ * No duelo cego não sobra carta nenhuma para somar do lado do rival, e
+ * aí a placa inteira vira o "?" (`blind`): a incógnita é o total, não um
+ * apêndice dele.
  *
  * A CONTA é a mesma nos dois modos, e é por isso que ela mora num lugar
- * só: o corte da oculta é a face visível da regra de POV, e duas
- * implementações dela é uma a mais.
+ * só: o que a placa pode somar é a face visível do segredo da mesa, e
+ * duas implementações dele é uma a mais.
  */
 export function HandTotal({
   cards,
   partial,
+  blind = false,
   variant = 'duel',
   side,
   compact = false,
@@ -69,7 +81,7 @@ export function HandTotal({
   testid,
 }: HandTotalProps) {
   const value = handValue(cards);
-  const soft = value.soft && value.total !== 21;
+  const soft = !blind && value.soft && value.total !== 21;
   // As duas famílias de classe são legítimas: o total do duelo e o do
   // assento têm tamanhos e posições próprios. O que não pode divergir é a
   // LÓGICA — e ela é esta função.
@@ -78,11 +90,12 @@ export function HandTotal({
 
   return (
     <span
-      className={`${block} ${modifier} ${value.total > 21 ? 'is-bust' : ''} ${
+      className={`${block} ${modifier} ${!blind && value.total > 21 ? 'is-bust' : ''} ${
         ablaze ? `${block}--ablaze` : ''
       }`}
       data-testid={testid ?? (variant === 'duel' ? `${side}-total` : undefined)}
       data-partial={partial}
+      data-blind={blind || undefined}
     >
       {soft && !compact && (
         <>
@@ -90,7 +103,7 @@ export function HandTotal({
           <span className={`${block}__slash`}>/</span>
         </>
       )}
-      {value.total}
+      {blind ? '?' : value.total}
     </span>
   );
 }

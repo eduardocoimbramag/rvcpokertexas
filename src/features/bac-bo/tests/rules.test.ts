@@ -6,10 +6,11 @@ import {
   AVERAGE_HIDDEN_VALUE,
   DECK_COUNT,
   DECK_RESHUFFLE_THRESHOLD,
+  DOUBLE_ACCEPT_CHANCE,
+  blindBotAction,
   botAction,
   buildDeck,
   dealInitialHands,
-  doubleAcceptChance,
   drawCard,
   forcedDealFor,
   handValue,
@@ -165,7 +166,36 @@ describe('visibleCards (regra de POV)', () => {
   });
 });
 
-describe('botAction (estratégia do duelo)', () => {
+describe('blindBotAction (estratégia do duelo cego)', () => {
+  it('joga a PRÓPRIA mão e nada mais — não há rival a espiar na assinatura', () => {
+    // O contrato é a prova da simetria: a função não tem por onde
+    // receber uma carta sua. Enquanto o bot lia as suas abertas e você
+    // não via nenhuma das dele, a mesa pendia para a máquina em
+    // silêncio — sem erro, sem teste vermelho, sem sintoma na tela.
+    expect(blindBotAction).toHaveLength(1);
+  });
+
+  it('para com 21 ou mais', () => {
+    expect(blindBotAction([card('A'), card('K')])).toBe('stand');
+    expect(blindBotAction([card('K'), card('Q'), card('5')])).toBe('stand');
+  });
+
+  it('mão soft pede até 17 (o Ás alto não estoura)', () => {
+    expect(blindBotAction([card('A'), card('5')])).toBe('hit'); // soft 16
+    expect(blindBotAction([card('A'), card('6')])).toBe('hit'); // soft 17
+    expect(blindBotAction([card('A'), card('7')])).toBe('stand'); // soft 18
+  });
+
+  it('pede abaixo de 17 e para de 17 em diante', () => {
+    expect(blindBotAction([card('10'), card('6')])).toBe('hit');
+    expect(blindBotAction([card('5'), card('4')])).toBe('hit');
+    expect(blindBotAction([card('10'), card('7')])).toBe('stand');
+    expect(blindBotAction([card('10'), card('8')])).toBe('stand');
+    expect(blindBotAction([card('10'), card('9')])).toBe('stand');
+  });
+});
+
+describe('botAction (estratégia da mesa única)', () => {
   it('para com 21 ou mais na própria mão, não importa o rival', () => {
     expect(botAction([card('A'), card('K')], 5)).toBe('stand');
     expect(botAction([card('K'), card('Q'), card('5')], 5)).toBe('stand');
@@ -293,24 +323,10 @@ describe('payout e variação líquida', () => {
   });
 });
 
-describe('doubleAcceptChance — o rival diante do pedido de dobra', () => {
-  it('quanto mais forte a sua mesa aberta, menos ele topa subir o valor', () => {
-    const totals = [8, 13, 17, 20];
-    const chances = totals.map(doubleAcceptChance);
-    for (let i = 1; i < chances.length; i += 1) {
-      expect(chances[i]).toBeLessThan(chances[i - 1] as number);
-    }
-  });
-
-  it('contra uma mesa estourada à vista ele sobe quase sempre', () => {
-    expect(doubleAcceptChance(24)).toBeGreaterThan(doubleAcceptChance(8));
-  });
-
+describe('DOUBLE_ACCEPT_CHANCE — o rival diante do pedido de dobra', () => {
   it('nunca é certeza: o blefe continua de pé nos dois sentidos', () => {
-    for (const total of [4, 10, 15, 18, 21, 26]) {
-      expect(doubleAcceptChance(total)).toBeGreaterThan(0);
-      expect(doubleAcceptChance(total)).toBeLessThan(1);
-    }
+    expect(DOUBLE_ACCEPT_CHANCE).toBeGreaterThan(0);
+    expect(DOUBLE_ACCEPT_CHANCE).toBeLessThan(1);
   });
 });
 
@@ -350,11 +366,10 @@ describe('forcedDealFor', () => {
     deck.push(...[...forcedDealFor(outcome)].reverse());
 
     const { playerHand, opponentHand } = dealInitialHands(deck);
-    // O rival joga lance a lance, como na mesa — e só enxerga as cartas
-    // ABERTAS do jogador.
-    const playerVisibleTotal = handValue(visibleCards(playerHand)).total;
+    // O rival joga lance a lance, como na mesa cega — sem ver uma única
+    // carta do jogador.
     const played: Card[] = [...opponentHand];
-    while (!isBust(played) && botAction(played, playerVisibleTotal) === 'hit') {
+    while (!isBust(played) && blindBotAction(played) === 'hit') {
       played.push(drawCard(deck));
     }
 

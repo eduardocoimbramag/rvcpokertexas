@@ -167,13 +167,14 @@ describe('LocalBlackjackGameEngine.beginRound', () => {
     });
   });
 
-  it('dá duas cartas ao jogador e abre só UMA carta do rival', async () => {
+  it('dá duas cartas ao jogador e NENHUMA do rival: a mesa é cega', async () => {
     const { state, matchId } = await findDeal(isPlayerTurn);
 
     expect(state.matchId).toBe(matchId);
     expect(state.playerHand).toHaveLength(2);
-    expect(state.opponentVisible).toHaveLength(1);
-    expect(state.opponentHidden).toBe(1);
+    // O que atravessa a fronteira é a CONTAGEM, não as cartas.
+    expect(state.opponentVisible).toEqual([]);
+    expect(state.opponentHidden).toBe(2);
     expect(state.legalActions).toEqual(['hit', 'stand']);
     expect(state.result).toBeUndefined();
   });
@@ -282,8 +283,10 @@ describe('LocalBlackjackGameEngine — a vez simultânea', () => {
     });
     // A vez do rival saiu JUNTO, na mesma revelação.
     expect(after.lastTurn?.opponent?.by).toBe('opponent');
-    // A última carta dele continua virada, tenha ele pedido ou não.
-    expect(after.opponentHidden).toBe(1);
+    // A mão dele continua inteira virada, tenha ele pedido ou não —
+    // pedir só acrescenta mais um verso à fileira.
+    expect(after.opponentVisible).toEqual([]);
+    expect(after.opponentHidden).toBeGreaterThanOrEqual(2);
   });
 
   it('sem escolha travada, a mesa PARA a mão de quem deixou o tempo passar', async () => {
@@ -350,20 +353,20 @@ describe('LocalBlackjackGameEngine — a vez simultânea', () => {
   });
 });
 
-describe('estouro é público', () => {
+describe('estouro NÃO é público', () => {
   /**
-   * O sigilo da última carta vale para decidir a mão, NÃO para esconder
-   * uma derrota já consumada: quem estoura vira as cartas na hora, em
-   * qualquer mesa. Sem isso o rival seguiria pedindo contra alguém que
-   * já perdeu — e estouraria junto de vez em quando, transformando uma
-   * derrota consumada em empate com a aposta de volta.
+   * Na mesa cega nem o estouro atravessa: o rival não vê as suas cartas,
+   * então não tem como saber que você já perdeu — ele segue jogando a
+   * própria mão até ela fechar sozinha.
    *
-   * O que a alternância de vezes NÃO garante (nem deve) é que ninguém
-   * mais estoure junto: o rival pode ter estourado ANTES de você, no
-   * lance dele, sem ter como saber o que você faria depois. Aí os dois
-   * estouros empatam, como manda a regra da mesa.
+   * A consequência é assumida: às vezes ele estoura junto, e dois
+   * estouros empatam (a aposta volta para os dois). Não é brecha — a
+   * mesma cegueira que dá esse alívio a quem estoura é a que impede o
+   * rival de jogar contra a sua mão, e ela vale para os dois lados.
+   * Estourar continua sendo o pior desfecho possível da sua mão: nunca
+   * ganha, no melhor caso empata.
    */
-  it('depois de você estourar, o rival nunca pede outra carta', async () => {
+  it('estourado, você nunca LEVA a rodada — no máximo empata', async () => {
     let busts = 0;
     // 25 seeds bastam: pedir carta até a mão fechar estoura na maioria
     // das vezes, e cada seed custa uma partida inteira de engine.
@@ -371,25 +374,16 @@ describe('estouro é público', () => {
       const engine = createTestEngine(seed);
       const match = await engine.findMatch({ stake: 50 });
       let state = await engine.beginRound({ matchId: match.id });
-      let busted = false;
       for (let guard = 0; state.phase !== 'settled' && guard < 40; guard += 1) {
         // Pede até a mão fechar sozinha — o caminho mais curto para
         // produzir estouros de verdade.
         if (state.legalActions.length > 0) {
           await engine.commit({ matchId: match.id, action: 'hit' });
         }
-        const bustedBefore = busted;
         state = await engine.resolveTurn({ matchId: match.id });
-        busted = handValue(state.playerHand).total > 21;
-        // Ele decide com a mesa como estava no INÍCIO da vez: só a
-        // partir da vez SEGUINTE o estouro é informação dele.
-        if (bustedBefore && state.lastTurn?.opponent) {
-          expect(state.lastTurn.opponent.action).toBe('stand');
-        }
       }
       if (!state.result?.playerBust) continue;
       busts += 1;
-      // Estourado, você nunca LEVA a rodada.
       expect(state.result.outcome).not.toBe('win');
     }
     // O laço só prova alguma coisa se realmente houve estouros.
@@ -397,12 +391,12 @@ describe('estouro é público', () => {
   });
 });
 
-describe('sigilo da última carta do rival', () => {
-  it('durante a vez do jogador só a primeira carta do rival está na mesa', async () => {
+describe('sigilo da mão do rival — a mesa cega', () => {
+  it('nenhuma carta do rival atravessa a engine até o showdown', async () => {
     const { engine, matchId, state } = await findDeal(isPlayerTurn);
 
-    expect(state.opponentVisible).toHaveLength(1);
-    expect(state.opponentHidden).toBe(1);
+    expect(state.opponentVisible).toEqual([]);
+    expect(state.opponentHidden).toBe(2);
 
     await engine.commit({ matchId, action: 'stand' });
     let settled = await engine.resolveTurn({ matchId });
@@ -412,33 +406,28 @@ describe('sigilo da última carta do rival', () => {
     const result = settled.result;
     if (!result) throw new Error('rodada resolvida sem resultado — contrato violado');
 
-    // No showdown tudo vira: a mão do rival começa pelas cartas que já
-    // estavam abertas e traz pelo menos mais uma, a que ficou escondida.
+    // No showdown tudo vira de uma vez — e só então.
     expect(settled.opponentHidden).toBe(0);
+    expect(settled.opponentVisible).toEqual(result.opponentHand);
     expect(result.opponentHand.length).toBeGreaterThanOrEqual(2);
-    expect(result.opponentHand.slice(0, 1)).toEqual(state.opponentVisible);
-    expect(result.opponentHand.length).toBeGreaterThan(state.opponentVisible.length);
-    // A carta escondida (a segunda do rival) nunca esteve à vista — o
-    // baralho é único, então basta comparar por valor.
-    expect(state.opponentVisible).not.toContainEqual(result.opponentHand[1]);
   });
 
-  it('cada vez abre no máximo uma carta a mais da mão do rival', async () => {
+  it('pedir carta só engorda a CONTAGEM: a mão do rival segue de bruços', async () => {
     const { engine, matchId, state } = await findDeal(
       (s) => isPlayerTurn(s) && handValue(s.playerHand).total <= 9,
     );
 
-    let openBefore = state.opponentVisible.length;
+    let hiddenBefore = state.opponentHidden;
     let current = state;
     while (current.phase !== 'settled') {
       if (current.legalActions.length > 0) await engine.commit({ matchId, action: 'hit' });
       current = await engine.resolveTurn({ matchId });
       if (current.phase === 'settled') break;
-      // A carta que estava escondida passa a ser a nova: no máximo uma
-      // a mais fica aberta por vez.
-      expect(current.opponentVisible.length).toBeLessThanOrEqual(openBefore + 1);
-      expect(current.opponentHidden).toBe(1);
-      openBefore = current.opponentVisible.length;
+      // Uma carta pedida = mais um verso na fileira, nunca uma face.
+      expect(current.opponentVisible).toEqual([]);
+      expect(current.opponentHidden).toBeGreaterThanOrEqual(hiddenBefore);
+      expect(current.opponentHidden).toBeLessThanOrEqual(hiddenBefore + 1);
+      hiddenBefore = current.opponentHidden;
     }
   });
 });

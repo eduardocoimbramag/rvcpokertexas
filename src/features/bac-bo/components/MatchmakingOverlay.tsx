@@ -99,7 +99,7 @@ function SonarLens() {
  * propósito: é o mesmo momento do jogo visto um instante antes. O anel
  * de impacto que lá carimba o pacto uma única vez, aqui pulsa sem parar
  * — e a chamada abre no mesmo selo dourado com que a tela seguinte
- * anuncia "Duelo encontrado", fechando a frase.
+ * anuncia "Partida confirmada", fechando a frase.
  *
  * Cancelar a busca devolve o jogador ao menu.
  */
@@ -173,7 +173,7 @@ export function MatchmakingOverlay() {
       </div>
 
       <div className="flex flex-col items-center gap-2 text-center" role="status">
-        {/* Mesmo selo dourado do "Duelo encontrado" da tela seguinte: as
+        {/* Mesmo selo dourado do "Partida confirmada" da apresentação: as
             duas telas são uma frase só, e o jogador reconhece a segunda
             porque já viu a primeira. */}
         <motion.p

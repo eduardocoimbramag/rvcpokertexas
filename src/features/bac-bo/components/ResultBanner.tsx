@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from 'framer-motion';
+import { useReducedMotion } from 'framer-motion';
 
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
@@ -7,6 +7,7 @@ import { isBroke } from '../engine/credits';
 import type { RoundOutcome, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
 import { Confetti } from './Confetti';
+import type { ResultEffectOutcome } from './ResultOutcomeEffect';
 import { ResultStage } from './ResultStage';
 
 export interface ResultBannerProps {
@@ -17,6 +18,17 @@ const OUTCOME_TITLE: Record<RoundOutcome, string> = {
   win: 'VITÓRIA!',
   lose: 'DERROTA',
   tie: 'EMPATE',
+};
+
+/**
+ * Que tratamento cada desfecho ganha (ver ResultOutcomeEffect). O EMPATE
+ * fica de fora de propósito: ele não é notícia, e vesti-lo de ouro ou de
+ * rubi diria o que não aconteceu. A aposta voltou — a tinta gravada de
+ * sempre é exatamente o tom disso.
+ */
+const OUTCOME_EFFECT: Partial<Record<RoundOutcome, ResultEffectOutcome>> = {
+  win: 'victory',
+  lose: 'defeat',
 };
 
 /** Fase Completed: veredito da rodada, variação de saldo e próximas ações. */
@@ -40,6 +52,7 @@ export function ResultBanner({ result }: ResultBannerProps) {
       tone={result.outcome}
       title={OUTCOME_TITLE[result.outcome]}
       titleTestId="result-title"
+      effect={OUTCOME_EFFECT[result.outcome]}
       /* Vitória/derrota: a variação de saldo é mostrada subindo para
          dentro da pílula de saldo (BalancePill) — nada aqui embaixo.
          Empate não altera o saldo, então mantém o aviso textual. */
@@ -47,14 +60,10 @@ export function ResultBanner({ result }: ResultBannerProps) {
       subtitleTestId="result-delta"
       tightActions
       instant={reducedMotion ?? false}
-      decoration={
-        result.outcome === 'win' && !reducedMotion ? (
-          <>
-            <Confetti />
-            <WinParticles />
-          </>
-        ) : undefined
-      }
+      /* A chuva de confetes por cima de TUDO, na vitória: o efeito de
+         ouro é o acabamento da palavra, e o confete é a festa da sala.
+         Um não substitui o outro — a mesa comemora nas duas escalas. */
+      decoration={result.outcome === 'win' && !reducedMotion ? <Confetti /> : undefined}
     >
       {broke ? (
         <Button onClick={refillCredits} size="md" fullWidth data-testid="refill-button">
@@ -69,30 +78,5 @@ export function ResultBanner({ result }: ResultBannerProps) {
         INÍCIO
       </Button>
     </ResultStage>
-  );
-}
-
-/** Partículas douradas discretas para a vitória. */
-function WinParticles() {
-  return (
-    <div className="pointer-events-none absolute -top-8 left-1/2" aria-hidden="true">
-      {Array.from({ length: 10 }, (_, index) => {
-        const angle = (index / 10) * Math.PI * 2;
-        return (
-          <motion.span
-            key={index}
-            className="absolute h-2 w-2 rounded-full bg-gold"
-            initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
-            animate={{
-              x: Math.cos(angle) * 90,
-              y: Math.sin(angle) * 60 - 30,
-              opacity: 0,
-              scale: 0.4,
-            }}
-            transition={{ duration: 1.1, ease: 'easeOut', delay: index * 0.02 }}
-          />
-        );
-      })}
-    </div>
   );
 }

@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 
 import type { Match } from '../engine/types';
-import { AvatarBadge } from './AvatarBadge';
+import { DuelistSeat } from './DuelistSeat';
 
 export interface FoundSplashProps {
   match: Match;
@@ -9,11 +9,24 @@ export interface FoundSplashProps {
 
 /**
  * Fase Found: apresentação de duelo em três tempos, como tela de
- * matchup de jogo de luta — a placa do jogador entra pela esquerda,
- * o "VS" carimba no centro com um anel de impacto e a placa do
+ * matchup de jogo de luta — o assento do jogador entra pela esquerda,
+ * o "VS" carimba no centro com um anel de impacto e o assento do
  * oponente responde pela direita, fechando a sequência.
  * O orçamento total é TIMINGS.foundSplashMs (a store troca de fase
  * sozinha ao fim). Com reduced motion tudo aparece de uma vez.
+ *
+ * Os duelistas são os MESMOS assentos da confirmação (DuelistSeat):
+ * medalhão redondo com o aro do lado e o nome gravado embaixo. As duas
+ * telas correm em sequência com poucos segundos entre elas, então
+ * qualquer diferença de acabamento entre uma e outra salta aos olhos —
+ * antes a apresentação era um cartão de vinho lapidado e a confirmação,
+ * um disco no feltro.
+ *
+ * É AQUI que o rival do 1v1 ganha nome: a cena entra depois do acordo
+ * fechado, quando o sigilo do pareamento já cumpriu o papel dele (ver
+ * opponentIdentity.ts) — e é essa revelação que dá o clima de matchup à
+ * cena. No torneio o nome nunca foi segredo: o chaveamento já o tinha
+ * dito.
  */
 
 /**
@@ -25,7 +38,7 @@ const BEATS = { kicker: 0, player: 0.35, vs: 1.15, opponent: 1.9 } as const;
 
 const SPRING = { type: 'spring', stiffness: 220, damping: 22 } as const;
 
-interface PlateProps {
+interface EntranceProps {
   name: string;
   accent: 'player' | 'opponent';
   fromX: number;
@@ -33,25 +46,19 @@ interface PlateProps {
   instant: boolean;
 }
 
-/** Placa de apresentação: vinho lapidado com aro na cor do lado e o
-    medalhão de monograma do jogador no lugar do antigo emoji. */
-function DuelPlate({ name, accent, fromX, delay, instant }: PlateProps) {
-  const border = accent === 'player' ? 'border-player' : 'border-opponent';
+/**
+ * A ENTRADA de um assento: ele voa da borda para o centro, levemente
+ * torto, e assenta em mola. O assento em si é o da casa (DuelistSeat) —
+ * aqui mora só o gesto.
+ */
+function SeatEntrance({ name, accent, fromX, delay, instant }: EntranceProps) {
   return (
     <motion.div
-      className={`flex w-[clamp(5.5rem,26vw,8rem)] flex-col items-center gap-2 rounded-2xl border-2 ${border} bg-gradient-to-b from-[#5f1420] to-[#2a0810] px-3 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.1)]`}
       initial={instant ? false : { x: fromX, opacity: 0, rotate: fromX < 0 ? -5 : 5 }}
       animate={{ x: 0, opacity: 1, rotate: 0 }}
       transition={instant ? { duration: 0 } : { ...SPRING, delay }}
     >
-      <AvatarBadge
-        name={name}
-        you={accent === 'player'}
-        className="text-[clamp(1.5rem,6vw,2rem)]"
-      />
-      <span className="max-w-full truncate text-sm font-black uppercase tracking-widest text-ivory">
-        {name}
-      </span>
+      <DuelistSeat name={name} accent={accent} />
     </motion.div>
   );
 }
@@ -67,14 +74,23 @@ export function FoundSplash({ match }: FoundSplashProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={instant ? { duration: 0 } : { delay: BEATS.kicker, duration: 0.45 }}
       >
-        Duelo encontrado
+        Partida confirmada
       </motion.p>
 
-      <div className="flex w-full items-center justify-center gap-3">
-        <DuelPlate name="Você" accent="player" fromX={-90} delay={BEATS.player} instant={instant} />
+      {/* `items-start` + a altura do medalhão no VS: os dois retratos
+          ficam na MESMA linha e o "VS" se centra contra eles, não contra
+          a coluna inteira — o mesmo alinhamento da confirmação. */}
+      <div className="flex w-full items-start justify-center gap-3">
+        <SeatEntrance
+          name="Você"
+          accent="player"
+          fromX={-90}
+          delay={BEATS.player}
+          instant={instant}
+        />
 
         {/* Carimbo VS com anel de impacto */}
-        <div className="relative grid place-items-center">
+        <div className="relative grid h-20 place-items-center">
           <motion.span
             className="absolute h-20 w-20 rounded-full border-2 border-gold"
             initial={instant ? false : { scale: 0.3, opacity: 0 }}
@@ -96,7 +112,7 @@ export function FoundSplash({ match }: FoundSplashProps) {
           </motion.span>
         </div>
 
-        <DuelPlate
+        <SeatEntrance
           name={match.opponent.name}
           accent="opponent"
           fromX={90}

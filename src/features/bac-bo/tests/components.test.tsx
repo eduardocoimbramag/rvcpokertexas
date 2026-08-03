@@ -13,6 +13,7 @@ import { NegotiationHud, NegotiationPanel } from '../components/NegotiationPanel
 import { ResultBanner } from '../components/ResultBanner';
 import { ResultStage } from '../components/ResultStage';
 import { RoundEndBanner } from '../components/RoundEndBanner';
+import { CardVeil, VEIL_TEXT } from '../components/table/CardVeil';
 import type {
   BlackjackRoundState,
   Card,
@@ -53,15 +54,15 @@ const sampleResult: RoundResult = {
 
 /**
  * A mesma mesa ANTES do showdown, do PONTO DE VISTA do jogador: a sua mão
- * inteira, e do rival só a carta aberta — a última dele fica virada para
- * baixo (a regra de POV da mesa) e nem sai da engine.
+ * inteira e, do rival, NADA — a mesa do duelo é cega, e nem uma carta
+ * dele sai da engine (só quantas ele tem, em `opponentHidden`).
  */
 const sampleRound: BlackjackRoundState = {
   matchId: 'm1',
   phase: 'choosing',
   playerHand: [card('10', 'spades'), card('9', 'hearts')],
-  opponentVisible: [card('10', 'clubs')],
-  opponentHidden: 1,
+  opponentVisible: [],
+  opponentHidden: 2,
   legalActions: ['hit', 'stand'],
   playerClosed: false,
   opponentClosed: false,
@@ -112,7 +113,7 @@ describe('NegotiationPanel — mesa de negociação', () => {
 
   it('o título de abertura segura o feltro; as fichas entram quando ele sai', () => {
     openNegotiation({ announcing: true });
-    const view = render(<NegotiationPanel match={match} />);
+    const view = render(<NegotiationPanel />);
 
     // Enquanto o letreiro carimba o centro, a mesa não mostra fichas.
     expect(screen.getByTestId('nego-open-announce')).toHaveTextContent(/rodada de negociação/i);
@@ -124,21 +125,21 @@ describe('NegotiationPanel — mesa de negociação', () => {
     useGameStore.setState({
       negotiation: { ...baseNegotiation, announcing: false },
     });
-    view.rerender(<NegotiationPanel match={match} />);
+    view.rerender(<NegotiationPanel />);
     expect(screen.getByTestId('nego-table-stake')).toHaveTextContent('100');
     expect(screen.getByTestId('nego-clock')).toHaveTextContent('20s');
     expect(screen.getByTestId('nego-send')).toBeDisabled();
   });
 
-  it('a pílula do rival resume a mesa numa linha: nome + situação', () => {
+  it('a pílula do rival resume a mesa numa linha: rótulo + situação', () => {
     openNegotiation();
-    const view = render(<NegotiationHud match={match} />);
-    expect(screen.getByTestId('nego-hud')).toHaveTextContent(/Luna\s*Esperando/i);
+    const view = render(<NegotiationHud />);
+    expect(screen.getByTestId('nego-hud')).toHaveTextContent(/Oponente\s*Esperando/i);
 
     // A pílula é um dado COMPOSTO, e o papel `img` faz o leitor de tela
     // anunciá-la de uma vez: sem ele o rótulo seria descartado e sobraria
-    // o conteúdo cru ("L Luna ESPERANDO").
-    expect(screen.getByRole('img', { name: /Luna: esperando/i })).toBeInTheDocument();
+    // o conteúdo cru ("O Oponente ESPERANDO").
+    expect(screen.getByRole('img', { name: /Oponente: esperando/i })).toBeInTheDocument();
 
     // O lance do rival chama a sua resposta na própria pílula.
     useGameStore.setState({
@@ -147,7 +148,7 @@ describe('NegotiationPanel — mesa de negociação', () => {
         proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
       },
     });
-    view.rerender(<NegotiationHud match={match} />);
+    view.rerender(<NegotiationHud />);
     expect(screen.getByTestId('nego-hud')).toHaveTextContent(/Proposta/i);
     expect(screen.getByTestId('nego-hud')).toHaveAttribute('data-state', 'offer');
   });
@@ -155,7 +156,7 @@ describe('NegotiationPanel — mesa de negociação', () => {
   it('composer: +10/+100 somam ao lance e o enviar exige valor válido', async () => {
     const user = userEvent.setup();
     openNegotiation();
-    render(<NegotiationPanel match={match} />);
+    render(<NegotiationPanel />);
 
     // Sem valor digitado, "Enviar proposta" fica bloqueado.
     expect(screen.getByTestId('nego-send')).toBeDisabled();
@@ -169,7 +170,7 @@ describe('NegotiationPanel — mesa de negociação', () => {
   it('acima do saldo o envio bloqueia e a dica avisa', async () => {
     const user = userEvent.setup();
     openNegotiation();
-    render(<NegotiationPanel match={match} />);
+    render(<NegotiationPanel />);
 
     // Em repouso a dica fica calada: nada de lembrete fixo de limites.
     expect(screen.queryByTestId('nego-hint')).not.toBeInTheDocument();
@@ -182,7 +183,7 @@ describe('NegotiationPanel — mesa de negociação', () => {
   it('abaixo do mínimo o envio bloqueia e a dica nomeia o piso', async () => {
     const user = userEvent.setup();
     openNegotiation();
-    render(<NegotiationPanel match={match} />);
+    render(<NegotiationPanel />);
 
     await user.type(screen.getByTestId('nego-input'), '5');
     expect(screen.getByTestId('nego-send')).toBeDisabled();
@@ -193,7 +194,7 @@ describe('NegotiationPanel — mesa de negociação', () => {
     openNegotiation({
       proposal: { id: 'p1', from: 'player', amount: 80, status: 'pending', open: true },
     });
-    render(<NegotiationPanel match={match} />);
+    render(<NegotiationPanel />);
 
     // O balão do SEU lance mostra o retrato da decisão dele (sem botões).
     const bubble = screen.getByTestId('nego-proposal');
@@ -205,12 +206,33 @@ describe('NegotiationPanel — mesa de negociação', () => {
     expect(screen.getByTestId('nego-send')).toHaveTextContent(/aguardando resposta/i);
   });
 
+  it('a mesa não diz com QUEM se negocia — nem no HUD, nem nos balões', () => {
+    // O sigilo da fase é a trava antifraude: sabendo o nome, dois
+    // combinados se reconheceriam e usariam a negociação para passar
+    // créditos de uma conta para a outra (ver opponentIdentity.ts).
+    openNegotiation({
+      proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
+    });
+    const { container } = render(
+      <>
+        <NegotiationHud />
+        <NegotiationPanel />
+      </>,
+    );
+
+    expect(screen.getByTestId('nego-proposal')).toHaveTextContent(/proposta do oponente/i);
+    expect(container.textContent).not.toContain('Luna');
+    // O medalhão traz uma INTERROGAÇÃO: nem a inicial do rival vaza, e
+    // um "O" de "Oponente" seria a inicial de um nome que não existe.
+    expect(container.querySelector('.avatar-badge')).toHaveTextContent('?');
+  });
+
   it('o lance do rival põe o ✓ e o ✗ na sua mão — cobrir fecha a mesa nele', async () => {
     const user = userEvent.setup();
     openNegotiation({
       proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
     });
-    render(<NegotiationPanel match={match} />);
+    render(<NegotiationPanel />);
 
     await user.click(screen.getByTestId('nego-accept'));
     expect(useGameStore.getState().negotiation?.proposal?.status).toBe('accepted');
@@ -222,7 +244,7 @@ describe('NegotiationPanel — mesa de negociação', () => {
     openNegotiation({
       proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
     });
-    render(<NegotiationPanel match={match} />);
+    render(<NegotiationPanel />);
 
     await user.click(screen.getByTestId('nego-decline'));
     expect(useGameStore.getState().negotiation?.proposal?.status).toBe('declined');
@@ -233,7 +255,7 @@ describe('NegotiationPanel — mesa de negociação', () => {
     openNegotiation({
       proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'accepted', open: true },
     });
-    render(<NegotiationPanel match={match} />);
+    render(<NegotiationPanel />);
 
     // O aperto de mãos vale desde o ✓ — nada de repropor nem desistir.
     expect(screen.getByTestId('nego-send')).toBeDisabled();
@@ -241,19 +263,24 @@ describe('NegotiationPanel — mesa de negociação', () => {
     expect(screen.getByTestId('nego-quit')).toBeDisabled();
   });
 
-  it('na HORA DO DUELO o composer sai e o título entra', () => {
+  it('selado o acordo, o composer sai e o POTE fica sozinho no feltro', () => {
     openNegotiation({ starting: true, agreedStake: 100 });
-    render(<NegotiationPanel match={match} />);
+    render(<NegotiationPanel />);
 
-    expect(screen.getByTestId('nego-duel-announce')).toHaveTextContent(/hora do duelo/i);
+    // A conversa acabou: nada de compor lance novo nem desistir.
     expect(screen.queryByTestId('nego-send')).not.toBeInTheDocument();
     expect(screen.queryByTestId('nego-quit')).not.toBeInTheDocument();
+    // O que segura a cena até o corte é o valor fechado em fichas — o
+    // letreiro HORA DO DUELO mudou de fase (entra depois da
+    // apresentação do rival, ver GameScreen).
+    expect(screen.getByTestId('nego-table-stake')).toHaveTextContent('100');
+    expect(screen.queryByTestId('nego-duel-announce')).not.toBeInTheDocument();
   });
 
   it('desistir abandona a mesa e volta ao menu', async () => {
     const user = userEvent.setup();
     openNegotiation();
-    render(<NegotiationPanel match={match} />);
+    render(<NegotiationPanel />);
 
     await user.click(screen.getByTestId('nego-quit'));
     expect(useGameStore.getState().phase).toBe('idle');
@@ -261,7 +288,7 @@ describe('NegotiationPanel — mesa de negociação', () => {
   });
 });
 
-describe('ConfirmPanel — perfil do oponente', () => {
+describe('ConfirmPanel — pareamento anônimo', () => {
   const match: Match = {
     id: 'm1',
     stake: 25,
@@ -269,52 +296,55 @@ describe('ConfirmPanel — perfil do oponente', () => {
     createdAt: 1700000000000,
   };
 
-  const openConfirm = () => {
-    useGameStore.setState({
-      phase: 'confirm',
-      match,
-      confirmations: { player: false, opponent: false },
-    });
+  const openConfirm = (confirmations = { player: false, opponent: false }) => {
+    useGameStore.setState({ phase: 'confirm', match, confirmations });
   };
 
-  it('o avatar do oponente é clicável e abre o perfil por cima', async () => {
-    const user = userEvent.setup();
+  it('o rival é "Oponente": sem nome, sem inicial e sem perfil a abrir', () => {
     openConfirm();
-    render(<ConfirmPanel match={match} />);
+    const { container } = render(<ConfirmPanel />);
 
-    // Fechado por padrão.
+    // "?" e não "O": o medalhão diz "não se sabe quem é", não a inicial
+    // de um nome que não existe.
+    expect(screen.getByTestId('duelist-seat-opponent')).toHaveTextContent('?');
+    expect(container.textContent).not.toContain('Luna');
+    expect(screen.getByText('Oponente')).toBeInTheDocument();
+
+    // Nada aqui abre o perfil — nem atalho de texto, nem avatar clicável.
+    expect(screen.queryByText(/ver perfil/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId('opponent-profile')).not.toBeInTheDocument();
-
-    await user.click(screen.getByTestId('opponent-avatar-button'));
-
-    // Abriu com nome, nível, ações e exatamente 4 selos estampados.
-    const profile = screen.getByTestId('opponent-profile');
-    expect(profile).toBeInTheDocument();
-    expect(within(profile).getByText('Luna')).toBeInTheDocument();
-    expect(screen.getByTestId('profile-level')).toHaveTextContent(/Nível \d+/);
-    expect(screen.getByTestId('profile-add-friend')).toBeInTheDocument();
-    expect(screen.getByTestId('profile-report')).toBeInTheDocument();
-    expect(profile.querySelectorAll('.profile-badge')).toHaveLength(4);
-
-    // Enxuto: sem "pts de rating" e sem o bloco/rótulo "Conquistas".
-    expect(profile.textContent?.toLowerCase()).not.toContain('rating');
-    expect(profile.textContent?.toLowerCase()).not.toContain('conquistas');
+    expect(container.querySelectorAll('button')).toHaveLength(2); // confirmar + recusar
   });
 
-  it('fecha no X e a tela de confirmação segue montada e utilizável', async () => {
-    const user = userEvent.setup();
+  it('a espera pelo rival também não o nomeia', () => {
+    openConfirm({ player: true, opponent: false });
+    render(<ConfirmPanel />);
+
+    const waiting = screen.getByTestId('confirm-waiting');
+    expect(waiting).toHaveTextContent(/aguardando oponente/i);
+    expect(waiting.textContent).not.toContain('Luna');
+  });
+
+  it('os dois assentos são a MESMA peça — nada desnivela os avatares', () => {
     openConfirm();
-    render(<ConfirmPanel match={match} />);
+    render(<ConfirmPanel />);
 
-    await user.click(screen.getByTestId('opponent-avatar-button'));
-    expect(screen.getByTestId('opponent-profile')).toBeInTheDocument();
+    const you = screen.getByTestId('duelist-seat-player');
+    const rival = screen.getByTestId('duelist-seat-opponent');
 
-    await user.click(screen.getByTestId('profile-close'));
+    // A simetria não se mede em jsdom (não há layout), então o teste
+    // trava o que a PRODUZ: avatares idênticos (só o aro muda de cor),
+    // assentos com a mesma pilha de filhos e a fileira alinhada pelo
+    // TOPO. Era o `items-center` que desnivelava — a coluna do rival
+    // tinha um atalho a mais embaixo ("ver perfil"), e centrar as duas
+    // colunas de alturas diferentes subia o avatar dele.
+    expect(you.className).toBe(rival.className.replace('border-opponent', 'border-player'));
 
-    // O perfil sai; os botões de confirmar/recusar continuam disponíveis.
-    await waitForElementToBeRemoved(() => screen.queryByTestId('opponent-profile'));
-    expect(screen.getByTestId('confirm-match')).toBeInTheDocument();
-    expect(screen.getByTestId('decline-match')).toBeInTheDocument();
+    const seatYou = you.closest('.flex-col');
+    const seatRival = rival.closest('.flex-col');
+    expect(seatYou?.className).toBe(seatRival?.className);
+    expect(seatYou?.children.length).toBe(seatRival?.children.length);
+    expect(seatYou?.parentElement).toHaveClass('items-start');
   });
 });
 
@@ -408,14 +438,26 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     expect(screen.getByTestId('hand-opponent-cards-card-2')).toBeInTheDocument();
   });
 
-  it('regra de POV: a sua mão é aberta e a última do rival fica oculta', () => {
+  it('mesa cega: a sua mão é aberta e a do rival fica INTEIRA de bruços', () => {
     renderArena();
 
     expect(screen.getByRole('img', { name: 'Sua carta 1: 10 de espadas' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Sua carta 2: 9 de copas' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Carta de Luna 1: 10 de paus' })).toBeInTheDocument();
-    // A última do rival só abre no showdown.
+
+    // Nenhuma carta do rival na mesa — só os versos, e um por carta que
+    // ele tem. A engine nem as manda (opponentVisible vem vazio).
+    expect(screen.getByRole('img', { name: 'Carta de Luna 1: carta oculta' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Carta de Luna 2: carta oculta' })).toBeInTheDocument();
+    expect(screen.getByTestId('hand-opponent-cards').children).toHaveLength(2);
+  });
+
+  it('cada carta que o rival pede é mais um VERSO na fileira', () => {
+    renderArena({ round: { ...sampleRound, opponentHidden: 3 } });
+
+    expect(screen.getByTestId('hand-opponent-cards').children).toHaveLength(3);
+    expect(screen.getByRole('img', { name: 'Carta de Luna 3: carta oculta' })).toBeInTheDocument();
+    // O total continua sendo o que sempre foi durante a mão: nada.
+    expect(screen.getByTestId('opponent-total').textContent).toBe('?');
   });
 
   it('PEDIR CARTA e PARAR chamam as ações recebidas por props', async () => {
@@ -445,54 +487,35 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     expect(screen.queryByTestId('action-stand')).not.toBeInTheDocument();
   });
 
-  it('totais ao vivo: o do rival conta só o que está aberto, sem "+?"', () => {
+  it('totais ao vivo: o seu corre na mesa, o do rival é um "?"', () => {
     renderArena();
 
     expect(screen.getByTestId('player-total')).toHaveTextContent('19');
-    // 10♣ aberta + a oculta: nada de somar o que ainda não virou.
+    // Não há uma carta dele para somar: um "0" seria informação falsa.
     const total = screen.getByTestId('opponent-total');
-    expect(total).toHaveTextContent('10');
-    // A placa mostra um NÚMERO LIMPO: quem conta que falta carta é a
-    // carta virada na mesa, não um sinal colado no total.
-    expect(total.textContent).toBe('10');
+    expect(total.textContent).toBe('?');
     expect(total).toHaveAttribute('data-partial', 'true');
+    expect(total).toHaveAttribute('data-blind', 'true');
   });
 
-  it('no showdown as ocultas viram e o total do rival fecha de verdade', () => {
+  it('no showdown a mão do rival vira INTEIRA e o total fecha de verdade', () => {
     renderArena({ phase: 'settle', round: null, result: sampleResult });
 
     const total = screen.getByTestId('opponent-total');
     expect(total).toHaveTextContent('17');
     expect(total).toHaveAttribute('data-partial', 'false');
+    expect(total).not.toHaveAttribute('data-blind');
     expect(screen.getByTestId('player-total')).toHaveTextContent('19');
+    // As duas cartas dele, que ninguém tinha visto, abrem juntas.
+    expect(screen.getByRole('img', { name: 'Carta de Luna 1: 10 de paus' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Carta de Luna 2: 7 de ouros' })).toBeInTheDocument();
   });
 
-  it('a última carta da SUA mão leva o selo de que o rival não a vê', async () => {
-    const user = userEvent.setup();
+  it('a mesa cega não tem selo de carta velada: não há carta sua a velar', () => {
+    // O selo dizia "esta carta o rival não vê". Com a mesa cega ele não
+    // vê NENHUMA, e um selo em todas não informa nada. Ele continua vivo
+    // na mesa única, que mantém a regra de POV (ver CardVeil).
     renderArena();
-
-    // Uma só: a regra de POV vela exatamente a última da mão.
-    expect(screen.getAllByTestId('card-veil')).toHaveLength(1);
-    const veil = screen.getByTestId('card-veil');
-    expect(veil).toHaveAccessibleName(
-      'Essa carta não está sendo visualizada pelo seu oponente',
-    );
-
-    // E ela é a da DIREITA — a carta 2, dentro da casa dela na fileira.
-    expect(screen.getByTestId('hand-player-cards-card-2')).toContainElement(veil);
-
-    // No celular não há hover: o toque abre e fecha a legenda.
-    expect(veil).toHaveAttribute('aria-expanded', 'false');
-    await user.click(veil);
-    expect(veil).toHaveAttribute('aria-expanded', 'true');
-    await user.click(veil);
-    expect(veil).toHaveAttribute('aria-expanded', 'false');
-  });
-
-  it('no showdown o segredo acaba e o selo sai da mesa', () => {
-    renderArena({ phase: 'settle', round: null, result: sampleResult });
-
     expect(screen.queryByTestId('card-veil')).not.toBeInTheDocument();
   });
 
@@ -876,8 +899,80 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
     renderArena({ phase: 'completed', round: null, result: sampleResult });
 
     expect(screen.queryByTestId('score-plate-player')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('seat-medallion-player')).not.toBeInTheDocument();
     expect(screen.getByTestId('player-total')).toHaveTextContent('19');
     expect(screen.getByTestId('opponent-total')).toHaveTextContent('17');
+  });
+
+  it('os medalhões ladeiam a crupiê — aro do lado, e nenhum nome embaixo', () => {
+    renderArena({ phase: 'completed', round: null, result: sampleResult });
+
+    const you = screen.getByTestId('seat-medallion-player');
+    const rival = screen.getByTestId('seat-medallion-opponent');
+
+    expect(you).toHaveClass('seat-medallion--player');
+    expect(rival).toHaveClass('seat-medallion--opponent');
+
+    // Só o retrato: o nome está na placa de placar, não no medalhão.
+    expect(you).toHaveTextContent('V');
+    expect(rival).toHaveTextContent('L');
+    expect(you.textContent).not.toContain('Você');
+    expect(rival.textContent).not.toContain('Luna');
+  });
+
+  it('o medalhão do rival abre o perfil dele — é onde o duelo o revela', async () => {
+    const user = userEvent.setup();
+    renderArena({ phase: 'completed', round: null, result: sampleResult });
+
+    // O SEU medalhão é retrato, não botão: não há perfil seu a abrir.
+    expect(screen.getByTestId('seat-medallion-player').tagName).toBe('SPAN');
+    expect(screen.queryByTestId('opponent-profile')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('seat-medallion-opponent'));
+
+    const profile = screen.getByTestId('opponent-profile');
+    expect(within(profile).getByText('Luna')).toBeInTheDocument();
+    expect(screen.getByTestId('profile-level')).toHaveTextContent(/Nível \d+/);
+    expect(profile.querySelectorAll('.profile-badge')).toHaveLength(4);
+
+    // Fecha no X e o placar continua em cena, intacto.
+    await user.click(screen.getByTestId('profile-close'));
+    await waitForElementToBeRemoved(() => screen.queryByTestId('opponent-profile'));
+    expect(screen.getByTestId('score-plate-player')).toBeInTheDocument();
+    expect(screen.getByTestId('player-total')).toHaveTextContent('19');
+  });
+});
+
+/* O selo do olho cortado saiu do duelo (que virou mesa cega) e vive
+   agora só na mesa única, onde a regra de POV continua de pé: lá a sua
+   última carta segue aberta para você e virada para os rivais. A
+   cobertura o acompanha — testar o componente direto é o que mantém o
+   comportamento vivo sem depender de qual tela o monta. */
+describe('CardVeil — o selo da carta que o rival não vê', () => {
+  it('o toque abre e fecha a legenda (no celular não há hover)', async () => {
+    const user = userEvent.setup();
+    render(<CardVeil />);
+
+    const veil = screen.getByTestId('card-veil');
+    expect(veil).toHaveAccessibleName(VEIL_TEXT);
+    expect(veil).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(veil);
+    expect(veil).toHaveAttribute('aria-expanded', 'true');
+    await user.click(veil);
+    expect(veil).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('aberta por toque, fecha no Esc', async () => {
+    const user = userEvent.setup();
+    render(<CardVeil />);
+
+    const veil = screen.getByTestId('card-veil');
+    await user.click(veil);
+    expect(veil).toHaveAttribute('aria-expanded', 'true');
+
+    await user.keyboard('{Escape}');
+    expect(veil).toHaveAttribute('aria-expanded', 'false');
   });
 });
 
@@ -950,26 +1045,58 @@ describe('Card3D', () => {
 });
 
 describe('ResultBanner', () => {
-  it('mostra o veredito e solta a chuva de confetes na vitória', () => {
+  const loss: RoundResult = {
+    ...sampleResult,
+    outcome: 'lose',
+    playerTotal: 16,
+    payout: 0,
+    netChange: -50,
+  };
+
+  it('a vitória veste o OURO que sobe', () => {
     render(<ResultBanner result={sampleResult} />);
+
     expect(screen.getByTestId('result-title')).toHaveTextContent('VITÓRIA!');
+    expect(screen.getByTestId('result-blaze')).toHaveAttribute('data-outcome', 'victory');
+    // O halo é da vitória; o feixe e a vinheta, da derrota.
+    expect(screen.getByTestId('result-title')).toHaveClass('result-blaze__word');
+    expect(screen.queryByTestId('ember-vignette')).not.toBeInTheDocument();
+    // A rajada e a flutuação convivem: uma entra, a outra fica.
+    expect(screen.getByTestId('blaze-burst').children).toHaveLength(16);
+    expect(screen.getByTestId('blaze-drift').children).toHaveLength(8);
+    // As duas escalas da festa convivem: o ouro é o acabamento da
+    // palavra, o confete é a sala inteira comemorando.
     expect(screen.getByTestId('confetti')).toBeInTheDocument();
   });
 
-  it('não solta confetes na derrota', () => {
-    render(
-      <ResultBanner
-        result={{
-          ...sampleResult,
-          outcome: 'lose',
-          playerTotal: 16,
-          payout: 0,
-          netChange: -50,
-        }}
-      />,
-    );
+  it('a derrota veste o RUBI que cai — outro sistema, não outra cor', () => {
+    render(<ResultBanner result={loss} />);
+
     expect(screen.getByTestId('result-title')).toHaveTextContent('DERROTA');
+    expect(screen.getByTestId('result-blaze')).toHaveAttribute('data-outcome', 'defeat');
+    // A vinheta vinho vai para o <body> (portal): as bordas da área de
+    // jogo não cabem na caixa da palavra.
+    expect(screen.getByTestId('ember-vignette')).toBeInTheDocument();
+    expect(screen.getByTestId('blaze-burst').children).toHaveLength(13);
+    expect(screen.getByTestId('blaze-drift').children).toHaveLength(6);
+    // Confete é da vitória, e só dela.
     expect(screen.queryByTestId('confetti')).not.toBeInTheDocument();
+  });
+
+  it('a vinheta some do <body> junto com a tela — nada fica para trás', () => {
+    const { unmount } = render(<ResultBanner result={loss} />);
+    expect(document.body.querySelector('.ember-vignette')).toBeInTheDocument();
+
+    unmount();
+    expect(document.body.querySelector('.ember-vignette')).not.toBeInTheDocument();
+  });
+
+  it('o EMPATE não ganha efeito: ele não é notícia', () => {
+    render(<ResultBanner result={{ ...sampleResult, outcome: 'tie', payout: 50, netChange: 0 }} />);
+
+    expect(screen.getByTestId('result-title')).toHaveTextContent('EMPATE');
+    expect(screen.queryByTestId('result-blaze')).not.toBeInTheDocument();
+    expect(screen.getByTestId('result-title')).not.toHaveClass('result-blaze__word');
   });
 });
 

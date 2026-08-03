@@ -57,15 +57,15 @@ async function forceNegoAutoAccept(page: Page) {
 
 /**
  * Atravessa a rodada de negociação propondo `stake` (bot em
- * auto-aceite). Não há botão de iniciar: o aceite fecha a mesa sozinho
- * — HORA DO DUELO → countdown — e a partida começa.
+ * auto-aceite). Não há botão de iniciar: o aceite fecha a mesa sozinho e
+ * a cena segue sem intervenção — acordo selado → apresentação do rival
+ * → HORA DO DUELO → countdown (~7 s no total, daí o timeout largo).
  */
 async function negotiateStake(page: Page, stake: number) {
-  // Matchmaking (1,2–2,6 s) → splash → confirmação dupla → negociação.
+  // Matchmaking (1,2–2,6 s) → confirmação dupla → negociação.
   await page.getByTestId('nego-input').fill(String(stake), { timeout: 15_000 });
   await page.getByTestId('nego-send').click();
-  // O aceite fecha a mesa sozinho: HORA DO DUELO → countdown.
-  await expect(page.getByTestId('countdown-value')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('countdown-value')).toBeVisible({ timeout: 25_000 });
 }
 
 /**
@@ -124,9 +124,14 @@ test('primeira jogada: tutorial, negociação e a vitória com blackjack', async
     timeout: 15_000,
   });
 
-  // A mesa passa a valer o acordo e a HORA DO DUELO abre a partida.
-  await expect(page.getByTestId('nego-duel-announce')).toHaveText(/hora do duelo/i, {
-    timeout: 10_000,
+  // Selado o acordo, a cena corta para a APRESENTAÇÃO do rival — e é
+  // aqui, com a aposta fechada, que ele enfim ganha nome: da busca até a
+  // negociação ele foi só "Oponente".
+  await expect(page.getByText('Partida confirmada')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/^Oponente$/i)).toHaveCount(0);
+  // Só depois da apresentação a HORA DO DUELO carimba o feltro.
+  await expect(page.getByTestId('duel-announce')).toHaveText(/hora do duelo/i, {
+    timeout: 15_000,
   });
 
   // O natural não fecha a mão: a vez abre normal, com relógio e botões —
@@ -156,16 +161,16 @@ test('derrota: você para com 20 e o blackjack do rival leva a aposta', async ({
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
   await negotiateStake(page, 25);
 
-  // A vez do jogador abre com a REGRA DE POV em cena, dos DOIS lados: a
-  // última carta do rival está virada para baixo e o total dele é só o
-  // que está aberto (um número limpo, sem "+?"); a última das SUAS leva o
-  // selo do olho cortado, porque ele também não a vê.
+  // A vez do jogador abre com a MESA CEGA em cena: a mão do rival está
+  // inteira de bruços (duas cartas, dois versos), o total dele é um "?"
+  // e as SUAS não levam selo nenhum — ele não vê nenhuma delas.
   await expect(page.getByTestId('action-stand')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('img', { name: /carta oculta/ })).toBeVisible();
+  await expect(page.getByRole('img', { name: /Carta de .*1: carta oculta/ })).toBeVisible();
+  await expect(page.getByRole('img', { name: /Carta de .*2: carta oculta/ })).toBeVisible();
   const opponentTotal = page.getByTestId('opponent-total');
   await expect(opponentTotal).toHaveAttribute('data-partial', 'true');
-  await expect(opponentTotal).not.toContainText('+?');
-  await expect(page.getByTestId('card-veil')).toBeVisible();
+  await expect(opponentTotal).toHaveText('?');
+  await expect(page.getByTestId('card-veil')).toHaveCount(0);
 
   await page.getByTestId('action-stand').click();
 
@@ -240,10 +245,11 @@ test('negociação: a contraproposta do bot pode ser coberta e vira a mesa', asy
   await page.getByTestId('nego-send').click();
   await expect(page.getByTestId('nego-accept')).toBeVisible({ timeout: 15_000 });
 
-  // Cobrir fecha a mesa no valor dele e o duelo abre sozinho.
+  // Cobrir fecha a mesa no valor dele e o duelo abre sozinho:
+  // apresentação do rival → HORA DO DUELO → countdown.
   await page.getByTestId('nego-accept').click();
-  await expect(page.getByTestId('nego-duel-announce')).toHaveText(/hora do duelo/i, {
-    timeout: 10_000,
+  await expect(page.getByTestId('duel-announce')).toHaveText(/hora do duelo/i, {
+    timeout: 20_000,
   });
   await expect(page.getByTestId('countdown-value')).toBeVisible({ timeout: 10_000 });
 });

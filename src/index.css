@@ -478,6 +478,17 @@ h2 {
      número que o veredito desconta para se centrar abaixo delas. */
   --score-plate-h: 4.45rem;
 
+  /* Medalhões dos duelistas, que ladeiam a crupiê no desfecho. Como
+     toda a geometria da cena, derivam de --dealer-h — em aparelho baixo
+     encolhem junto com ela em vez de invadir o trilho da mesa.
+
+     O topo é negativo porque a área de jogo começa DEPOIS do vão da
+     crupiê (--dealer-spacer, 0,95 × --dealer-h): subir 0,73 × --dealer-h
+     põe o medalhão a ~22% da altura dela, na linha dos ombros, com folga
+     para o rebordo de mogno que cruza em 0,6. */
+  --seat-medallion-size: clamp(3.4rem, calc(var(--dealer-h) * 0.36), 4.9rem);
+  --seat-medallion-top: calc(var(--dealer-h) * -0.78);
+
   /* O realce branco de um filete acima da tinta — é o que faz o texto
      escuro parecer GRAVADO no couro claro em vez de impresso nele. */
   --engraved-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
@@ -767,6 +778,68 @@ h2 {
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 
+/* ---------- Medalhões dos duelistas ladeando a crupiê (desfecho) ---------- */
+
+/* Só o retrato, sem nome: quem nomeia é a placa de placar logo abaixo,
+   e repetir o nome a meia tela de distância só ocuparia o feltro.
+
+   Alinham pela borda EXTERNA com as placas (mesmo --score-plate-inset) e,
+   por tabela, com os botões do desfecho — a mesma faixa de segurança que
+   governa o resto da tela. O aro segue a semântica da casa: azul do seu
+   lado, vermelho do lado do rival, como nas placas. */
+.seat-medallion {
+  position: absolute;
+  top: var(--seat-medallion-top);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: var(--seat-medallion-size);
+  height: var(--seat-medallion-size);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background: linear-gradient(180deg, rgba(76, 10, 21, 0.96) 0%, rgba(30, 6, 12, 0.96) 100%);
+  /* O monograma escala com o medalhão (que escala com a cena). */
+  font-size: calc(var(--seat-medallion-size) * 0.52);
+  line-height: 1;
+}
+
+.seat-medallion--player {
+  left: var(--score-plate-inset);
+  border-color: var(--color-player);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 12px rgba(59, 130, 246, 0.4),
+    0 8px 18px rgba(0, 0, 0, 0.45);
+}
+
+.seat-medallion--opponent {
+  right: var(--score-plate-inset);
+  border-color: var(--color-opponent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 12px rgba(239, 68, 68, 0.4),
+    0 8px 18px rgba(0, 0, 0, 0.45);
+}
+
+/* O medalhão do rival é o botão que abre o perfil dele. O convite é o
+   halo âmbar da casa — o mesmo idioma de toque do resto do jogo. */
+.seat-medallion--link {
+  cursor: pointer;
+  transition:
+    box-shadow 0.18s ease,
+    filter 0.18s ease;
+}
+
+@media (hover: hover) {
+  .seat-medallion--link:hover {
+    filter: brightness(1.1);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 0 0 3px rgba(245, 183, 111, 0.55),
+      0 8px 18px rgba(0, 0, 0, 0.45);
+  }
+}
+
 /* ---------- Palco do desfecho (ResultStage) ---------- */
 
 /* O MESMO palco nos três modos: duelo, partida do torneio e mesa única.
@@ -918,6 +991,558 @@ h2 {
   top: -15px;
   font-size: 17px;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+}
+
+/* ---------- O desfecho em cena (ResultOutcomeEffect) ----------
+
+   Dois efeitos irmãos vestindo a mesma palavra: OURO POLIDO que sobe na
+   vitória, RUBI QUEBRADO que cai na derrota. A mecânica está toda
+   documentada em components/ResultOutcomeEffect.tsx; aqui mora a roupa.
+
+   Tudo anima só `transform` e `opacity` — as duas propriedades que o
+   compositor resolve sem repintar. É o que segura 24 partículas fluidas
+   num celular intermediário.
+
+   ATENÇÃO ao escrever keyframes daqui: a centragem entra na PRÓPRIA
+   lista de `transform`, nunca na propriedade `translate` ao lado. O
+   minificador do build funde as duas e descarta o `translate` — em
+   produção a peça sai do lugar (no dev, não). É a mesma armadilha
+   documentada no brasão da mesa. */
+
+.result-blaze {
+  position: relative;
+  /* Caixa do tamanho da palavra, como o <p> sozinho era: as camadas se
+     ancoram nela e NADA se desloca ao entrar em cena. */
+  display: block;
+}
+
+/* O GLOW QUE RESPIRA — uma poça de luz macia atrás da palavra.
+
+   Ela mora no ENVOLTÓRIO, e não na palavra, por um motivo que só
+   aparece na tela: a palavra tem `transform` (a animação de entrada), e
+   um transform faz dela um contexto de empilhamento — dali em diante
+   NENHUM pseudo-elemento dela consegue ficar atrás do seu próprio
+   fundo, que é justamente o metal. Um brilho ali viraria uma chapa por
+   CIMA do ouro. Aqui fora, o `z-index: -1` cai antes do fundo da
+   palavra e o brilho fica onde tem de ficar.
+
+   Pulsa em `opacity`, que é de compositor — nada de animar sombra. */
+.result-blaze::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 50%;
+  border-radius: 9999px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.result-blaze--victory::before {
+  width: 132%;
+  height: 200%;
+  background: radial-gradient(
+    closest-side,
+    rgba(245, 183, 111, 0.5) 0%,
+    rgba(245, 183, 111, 0.17) 52%,
+    rgba(245, 183, 111, 0) 80%
+  );
+  animation: blaze-glow 2.4s 0.55s ease-in-out infinite;
+}
+
+/* O rubi respira mais fechado que o ouro: menos alcance, menos força —
+   é a diferença entre recompensa e energia se apagando. */
+.result-blaze--defeat::before {
+  width: 116%;
+  height: 168%;
+  background: radial-gradient(
+    closest-side,
+    rgba(229, 46, 69, 0.34) 0%,
+    rgba(169, 18, 43, 0.12) 54%,
+    rgba(95, 20, 32, 0) 80%
+  );
+  animation: ember-glow 2.8s 0.5s ease-in-out infinite;
+}
+
+/* A palavra: metal lapidado no lugar da tinta gravada. O gradiente é
+   recortado pelas LETRAS, e é ele — e só ele — que preenche a palavra.
+
+   NADA de `text-shadow` aqui, por mais tentador que seja: numa caixa com
+   `background-clip: text` o fundo é pintado ANTES da sombra do texto, e
+   uma sombra de 2 px de deslocamento cobre quase toda a glifa — o metal
+   fica embaixo, invisível, e a palavra inteira vira a cor da sombra.
+   O relevo sai de `drop-shadow`, que age sobre o que já foi RENDERIZADO
+   (o gradiente recortado) e cai sempre atrás dele. É a mesma sombra, no
+   lado certo do vidro. */
+.result-blaze .result-blaze__word {
+  position: relative;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+}
+
+.result-blaze--victory .result-blaze__word {
+  background-image: linear-gradient(
+    180deg,
+    #fff4e8 0%,
+    #fcd9a0 34%,
+    #f5b76f 63%,
+    #cb7349 100%
+  );
+  filter: drop-shadow(0 2px 0 rgba(42, 18, 6, 0.6)) drop-shadow(0 5px 10px rgba(20, 4, 4, 0.55))
+    drop-shadow(0 0 12px rgba(245, 183, 111, 0.5));
+}
+
+.result-blaze--defeat .result-blaze__word {
+  background-image: linear-gradient(
+    180deg,
+    #ff5968 0%,
+    #e52e45 38%,
+    #a9122b 72%,
+    #5f1420 100%
+  );
+  filter: drop-shadow(0 2px 0 rgba(20, 4, 4, 0.7)) drop-shadow(0 5px 12px rgba(20, 4, 4, 0.62))
+    drop-shadow(0 0 10px rgba(229, 46, 69, 0.42));
+}
+
+/* O REFLEXO METÁLICO que varre as letras da esquerda para a direita.
+   É uma cópia GRÁFICA da palavra (o texto vem do `data-word`, então o
+   DOM segue com um nó só e o leitor de tela lê o veredito uma vez),
+   recortada pelas mesmas glifas e pintada por cima do metal. */
+.result-blaze__word::after {
+  content: attr(data-word);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.result-blaze__word::after {
+  background-clip: text;
+  -webkit-background-clip: text;
+  background-repeat: no-repeat;
+  background-size: 260% 100%;
+  background-position: 210% 0;
+}
+
+.result-blaze--victory .result-blaze__word::after {
+  background-image: linear-gradient(
+    100deg,
+    transparent 42%,
+    rgba(255, 252, 244, 0.92) 50%,
+    transparent 58%
+  );
+}
+
+.result-blaze--defeat .result-blaze__word::after {
+  background-image: linear-gradient(
+    100deg,
+    transparent 44%,
+    rgba(255, 89, 104, 0.7) 50%,
+    transparent 56%
+  );
+}
+
+/* ---- Entrada ----
+   Vitória: sobe e expande (0,75 → 1,08 → 1), com o assentamento elástico
+   contido — a curva passa de 1 e volta, sem o repique de app infantil. */
+.result-blaze--victory .result-blaze__word {
+  animation: blaze-word-in 0.82s cubic-bezier(0.22, 0.9, 0.28, 1.06) both;
+}
+
+@keyframes blaze-word-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+  45% {
+    opacity: 1;
+  }
+  62% {
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Derrota: CARIMBO. Entra grande, bate na mesa e treme 3 px por ~230 ms
+   — o tremor é da palavra, nunca da tela. */
+.result-blaze--defeat .result-blaze__word {
+  animation: ember-word-in 0.7s cubic-bezier(0.3, 1.1, 0.4, 1) both;
+}
+
+@keyframes ember-word-in {
+  0% {
+    opacity: 0;
+    transform: scale(1.12) translateY(-7px);
+  }
+  34% {
+    opacity: 1;
+    transform: scale(1) translateY(3px);
+  }
+  50% {
+    transform: scale(1) translateY(-2.5px);
+  }
+  66% {
+    transform: scale(1) translateY(2px);
+  }
+  82% {
+    transform: scale(1) translateY(-1px);
+  }
+  100% {
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ---- Estado persistente ----
+   O glow pulsa devagar (2,4 s na vitória, 2,8 s e mais discreto na
+   derrota — a respiração mora no `::before` do envoltório, lá em cima) e
+   o reflexo passa DE VEZ EM QUANDO: a varredura ocupa ~13% de um ciclo
+   de 6,8 s, então há quase 6 s de descanso entre uma e outra. Contínua,
+   ela viraria ruído. */
+.result-blaze--victory .result-blaze__word::after {
+  animation: blaze-sweep 6.8s 0.34s ease-out infinite;
+}
+
+.result-blaze--defeat .result-blaze__word::after {
+  animation: blaze-sweep 8.5s 0.2s ease-out infinite;
+}
+
+/* A poça de luz nunca some por completo: o que pulsa é a intensidade. */
+@keyframes blaze-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes ember-glow {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.92;
+  }
+}
+
+@keyframes blaze-sweep {
+  0% {
+    background-position: 210% 0;
+  }
+  13% {
+    background-position: -70% 0;
+  }
+  100% {
+    background-position: -70% 0;
+  }
+}
+
+/* ---- Halo da vitória: abre atrás da palavra e se dissolve ---- */
+.result-blaze__halo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(150%, 22rem);
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgba(252, 217, 160, 0.5) 0%,
+    rgba(245, 183, 111, 0.22) 42%,
+    rgba(245, 183, 111, 0) 70%
+  );
+  animation: blaze-halo 0.95s cubic-bezier(0.16, 0.8, 0.3, 1) both;
+}
+
+@keyframes blaze-halo {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.34);
+  }
+  28% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.95);
+  }
+}
+
+/* ---- Feixe da derrota: atravessa em diagonal, uma vez ---- */
+.result-blaze__beam {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 190%;
+  height: 46%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgba(95, 20, 32, 0) 12%,
+    rgba(229, 46, 69, 0.42) 42%,
+    rgba(255, 89, 104, 0.6) 50%,
+    rgba(169, 18, 43, 0.3) 60%,
+    rgba(95, 20, 32, 0) 88%
+  );
+  filter: blur(3px);
+  animation: ember-beam 0.6s 0.05s ease-out both;
+}
+
+@keyframes ember-beam {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-15deg) translateX(-62%);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-15deg) translateX(62%);
+  }
+}
+
+/* ---- Vinheta vinho da derrota (portal no <body>) ---- */
+.ember-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 74% 62% at 50% 50%,
+    rgba(95, 20, 32, 0) 42%,
+    rgba(95, 20, 32, 0.3) 82%,
+    rgba(42, 8, 16, 0.46) 100%
+  );
+  animation: ember-vignette 0.9s ease-out both;
+}
+
+@keyframes ember-vignette {
+  0% {
+    opacity: 0;
+  }
+  22% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---- Partículas ---- */
+
+.blaze-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.blaze-particle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* Os quatro feitios do vocabulário da casa: ponto luminoso, losango Art
+   Déco, faísca curta e lasca. O tamanho é miúdo de propósito — a cena é
+   um reflexo da palavra, não uma chuva sobre ela. */
+.blaze-particle--dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+}
+
+.blaze-particle--diamond {
+  width: 7px;
+  height: 7px;
+  rotate: 45deg;
+}
+
+.blaze-particle--spark {
+  width: 2px;
+  height: 11px;
+  border-radius: 9999px;
+}
+
+.blaze-particle--shard {
+  width: 8px;
+  height: 8px;
+  clip-path: polygon(50% 0%, 100% 78%, 6% 100%);
+}
+
+.blaze-particle--victory.blaze-particle--dot {
+  background: radial-gradient(circle, #fff4e8 0%, #f5b76f 62%, rgba(245, 183, 111, 0) 100%);
+}
+
+.blaze-particle--victory.blaze-particle--diamond,
+.blaze-particle--victory.blaze-particle--shard {
+  background: linear-gradient(160deg, #fff4e8 0%, #fcd9a0 45%, #cb7349 100%);
+}
+
+.blaze-particle--victory.blaze-particle--spark {
+  background: linear-gradient(180deg, rgba(255, 244, 232, 0) 0%, #fcd9a0 45%, rgba(245, 183, 111, 0) 100%);
+}
+
+.blaze-particle--defeat.blaze-particle--dot {
+  background: radial-gradient(circle, #ff5968 0%, #a9122b 60%, rgba(95, 20, 32, 0) 100%);
+}
+
+.blaze-particle--defeat.blaze-particle--diamond,
+.blaze-particle--defeat.blaze-particle--shard {
+  background: linear-gradient(160deg, #ff5968 0%, #a9122b 52%, #2a0810 100%);
+}
+
+.blaze-particle--defeat.blaze-particle--spark {
+  background: linear-gradient(180deg, rgba(255, 89, 104, 0) 0%, #e52e45 45%, rgba(42, 8, 16, 0) 100%);
+}
+
+/* Vitória: leque para cima, uma vez na entrada e depois em flutuação.
+   A flutuação apaga em 72% e passa o resto do ciclo invisível — é esse
+   descanso que mantém poucas partículas no ar ao mesmo tempo. */
+.blaze-particle--victory.blaze-particle--burst {
+  animation: blaze-rise var(--dur) var(--delay) cubic-bezier(0.2, 0.7, 0.35, 1) both;
+}
+
+.blaze-particle--victory.blaze-particle--drift {
+  animation: blaze-float var(--dur) var(--delay) ease-out infinite;
+}
+
+@keyframes blaze-rise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(var(--ox), 0) scale(0.2) rotate(0deg);
+  }
+  14% {
+    opacity: var(--op);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(calc(var(--ox) + var(--tx)), var(--ty))
+      scale(var(--sc)) rotate(var(--rot));
+  }
+}
+
+@keyframes blaze-float {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(var(--ox), 6px) scale(0.25) rotate(0deg);
+  }
+  18% {
+    opacity: var(--op);
+  }
+  52% {
+    opacity: var(--op);
+  }
+  72%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(calc(var(--ox) + var(--tx)), var(--ty))
+      scale(var(--sc)) rotate(var(--rot));
+  }
+}
+
+/* Derrota: o fragmento salta para FORA e depois cede para baixo — a
+   quebra em duas etapas é o que faz o rubi se desprender da letra em vez
+   de simplesmente voar. A cinza só desce, devagar e apagada. */
+.blaze-particle--defeat.blaze-particle--burst {
+  animation: ember-shatter var(--dur) var(--delay) cubic-bezier(0.15, 0.7, 0.4, 1) both;
+}
+
+.blaze-particle--defeat.blaze-particle--drift {
+  animation: ember-fall var(--dur) var(--delay) linear infinite;
+}
+
+@keyframes ember-shatter {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(var(--ox), 0) scale(0.28) rotate(0deg);
+  }
+  12% {
+    opacity: var(--op);
+  }
+  46% {
+    transform: translate(-50%, -50%) translate(calc(var(--ox) + var(--tx)), var(--ty1))
+      scale(var(--sc)) rotate(calc(var(--rot) * 0.45));
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(calc(var(--ox) + var(--tx) * 1.14), var(--ty2))
+      scale(calc(var(--sc) * 0.82)) rotate(var(--rot));
+  }
+}
+
+@keyframes ember-fall {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(var(--ox), 0) scale(var(--sc)) rotate(0deg);
+  }
+  22% {
+    opacity: var(--op);
+  }
+  55% {
+    opacity: calc(var(--op) * 0.6);
+    transform: translate(-50%, -50%) translate(calc(var(--ox) + var(--tx) * 0.5), var(--ty1))
+      scale(var(--sc)) rotate(calc(var(--rot) * 0.5));
+  }
+  78%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(calc(var(--ox) + var(--tx)), var(--ty2))
+      scale(calc(var(--sc) * 0.7)) rotate(var(--rot));
+  }
+}
+
+/* Movimento reduzido: o metal e o glow ficam, o movimento sai. O
+   componente já nem monta as camadas animadas neste caso — isto aqui é
+   a rede de segurança para quem liga a preferência com a tela aberta. */
+@media (prefers-reduced-motion: reduce) {
+  .result-blaze__halo,
+  .result-blaze__beam,
+  .blaze-particle,
+  .ember-vignette {
+    display: none;
+  }
+
+  .result-blaze::before,
+  .result-blaze .result-blaze__word,
+  .result-blaze__word::after {
+    animation: none;
+  }
+
+  .result-blaze::before {
+    opacity: 0.85;
+  }
+
+  .result-blaze__word::after {
+    opacity: 0;
+  }
+}
+
+/* Idem para a versão estática montada pelo componente (`instant`). */
+.result-blaze--still::before,
+.result-blaze--still .result-blaze__word,
+.result-blaze--still .result-blaze__word::after {
+  animation: none;
+}
+
+.result-blaze--still::before {
+  opacity: 0.85;
+}
+
+.result-blaze--still .result-blaze__word::after {
+  opacity: 0;
 }
 
 /* ---------- Carta 3D (CSS puro + Framer Motion no giro) ----------
@@ -1575,7 +2200,7 @@ h2 {
 }
 
 /* Título nobre das fases ("Escolha sua aposta", "Confirmação de duelo",
-   "Que vença o melhor!"): a MESMA placa do "Duelo encontrado" do
+   "Que vença o melhor!"): a MESMA placa do "Partida confirmada" da
    FoundSplash — pastilha de vinho, letra dourada em caixa alta com
    entreletra larga —, aqui promovida a título com degradê e lustro.
 
@@ -2651,6 +3276,7 @@ h2 {
 .profile-close:focus-visible,
 .profile-action:focus-visible,
 .prop-bubble__choice:focus-visible,
+.seat-medallion--link:focus-visible,
 .amount-stepper__bump:focus-visible {
   outline: 2px solid var(--color-gold);
   outline-offset: 2px;
@@ -2971,7 +3597,7 @@ h2 {
     drop-shadow(0 0 8px rgba(245, 183, 111, 0.3));
 }
 
-/* A chamada da busca, no MESMO selo do "Duelo encontrado" da tela
+/* A chamada da busca, no MESMO selo do "Partida confirmada" da tela
    seguinte. O espaçamento é menor que o de lá (0,3em) porque a frase é
    quase o dobro do comprimento e precisa caber num aparelho de 320px. */
 .sonar__kicker {

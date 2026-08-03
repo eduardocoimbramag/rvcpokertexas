@@ -20,7 +20,7 @@ import {
   isBroke,
   validateStake,
 } from '../engine/credits';
-import { doubleAcceptChance, handValue, visibleCards } from '../engine/rules';
+import { DOUBLE_ACCEPT_CHANCE } from '../engine/rules';
 import type {
   BlackjackRoundState,
   HistoryEntry,
@@ -62,9 +62,10 @@ import { BOT_BEATS, createBotNegotiator } from './negotiation';
 export type GamePhase =
   | 'idle'
   | 'search'
-  | 'found'
   | 'confirm'
   | 'negotiate'
+  /** Apresentação de duelo — depois do acordo, com o rival revelado. */
+  | 'found'
   | 'countdown'
   | 'dealing'
   | 'turn'
@@ -72,12 +73,27 @@ export type GamePhase =
   | 'completed'
   | 'error';
 
+/**
+ * A ORDEM DAS CENAS de abertura, e por que ela é esta:
+ *
+ *   busca → confirmação → negociação → APRESENTAÇÃO → countdown
+ *
+ * A apresentação (`found`, o "VOCÊ vs FULANO" de tela de matchup) já
+ * morou logo depois da busca, antes da confirmação. Ela desceu para
+ * DEPOIS do acordo por causa do sigilo do adversário (ver
+ * opponentIdentity.ts): enquanto o valor se negocia, o rival não tem
+ * nome nem cara, e uma apresentação anônima não apresenta ninguém.
+ * Fechada a aposta, não há mais o que combinar — e aí a placa dele
+ * entra por extenso, que é o único lugar do fluxo onde a revelação vale
+ * como momento. É também o beat que separa a mesa de dinheiro da mesa
+ * de cartas: fecha-se o valor, conhece-se o rival, começa o duelo.
+ */
 export const PHASE_TRANSITIONS: Record<GamePhase, readonly GamePhase[]> = {
   idle: ['search'],
-  search: ['found', 'idle', 'error'],
-  found: ['confirm'],
+  search: ['confirm', 'idle', 'error'],
   confirm: ['negotiate', 'idle'],
-  negotiate: ['countdown', 'idle', 'error'],
+  negotiate: ['found', 'idle', 'error'],
+  found: ['countdown', 'error'],
   countdown: ['dealing', 'error'],
   // Com os dois naturais na distribuição não há vez nenhuma a abrir: a
   // mesa vai direto ao showdown.
@@ -223,6 +239,12 @@ export interface GameStoreState {
   /** Os dois lances que a mesa está revelando; `null` entre as vezes. */
   reveal: TurnReveal | null;
   history: HistoryEntry[];
+  /**
+   * Segundo beat da fase `found`: a apresentação já passou e o letreiro
+   * HORA DO DUELO está no feltro. É o que separa as duas cenas de uma
+   * fase só — a placa do rival e o carimbo que abre o duelo.
+   */
+  duelAnnounce: boolean;
   /** Valor corrente do countdown (COUNTDOWN_START → 1). */
   countdown: number;
   /** Mensagem de erro amigável quando phase === 'error'. */
@@ -423,10 +445,21 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     /**
-     * Fecha a mesa: sela o valor vivo, anuncia a HORA DO DUELO e conduz
-     * ao countdown. O valor acordado vira a verdade da engine ANTES do
-     * débito (payout e histórico derivam do stake gravado na partida), e
-     * o débito só acontece na virada de fase — como sempre foi.
+     * O ÚLTIMO ATO ANTES DAS CARTAS, em três beats encadeados:
+     *
+     * 1. o acordo SELA a mesa — o composer sai e o pote fica só com as
+     *    fichas do valor fechado (`negotiationSealMs`);
+     * 2. a APRESENTAÇÃO entra: "VOCÊ vs FULANO", agora com o nome e o
+     *    medalhão do rival por extenso — é aqui que ele deixa de ser
+     *    "Oponente" (`foundSplashMs`);
+     * 3. a HORA DO DUELO carimba o feltro e o countdown assume
+     *    (`duelAnnounceMs`).
+     *
+     * O valor acordado vira a verdade da engine ANTES do débito (payout e
+     * histórico derivam do stake gravado na partida), e o débito só
+     * acontece na virada para o countdown — como sempre foi. Cada beat
+     * revalida a fase: uma partida abandonada no meio não arrasta timer
+     * nenhum para a próxima.
      */
     const finishNegotiation = (matchId: string): void => {
       if (!negotiationAlive(matchId)) return;
@@ -438,26 +471,42 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       audioManager.playSfx('locked');
       vibrate([30, 40, 60]);
 
+      /** Beat 3: o letreiro sai, a aposta é debitada e o duelo começa. */
+      const startDuel = (): void => {
+        const { phase, balance: currentBalance } = get();
+        if (phase !== 'found') return;
+        let nextBalance: number;
+        try {
+          nextBalance = debitStake(currentBalance, stake);
+        } catch {
+          failWith('Saldo insuficiente para esta aposta.');
+          return;
+        }
+        if (!transitionTo('countdown')) return;
+        set({ balance: nextBalance, duelAnnounce: false });
+        persist();
+        runCountdown(COUNTDOWN_START);
+      };
+
+      /** Beat 2: a apresentação do rival, já com o nome dele em cena. */
+      const presentDuel = (): void => {
+        if (get().phase !== 'negotiate') return;
+        if (!transitionTo('found')) return;
+        audioManager.playSfx('found');
+        vibrate(60);
+        schedule(() => {
+          if (get().phase !== 'found') return;
+          set({ duelAnnounce: true });
+          schedule(startDuel, TIMINGS.duelAnnounceMs);
+        }, TIMINGS.foundSplashMs);
+      };
+
       void (async () => {
         try {
           const updated = await engine.setStake({ matchId: match.id, stake });
           if (get().phase !== 'negotiate' || get().match?.id !== match.id) return;
           set({ match: updated });
-          schedule(() => {
-            const { phase: current, balance: currentBalance } = get();
-            if (current !== 'negotiate') return;
-            let nextBalance: number;
-            try {
-              nextBalance = debitStake(currentBalance, stake);
-            } catch {
-              failWith('Saldo insuficiente para esta aposta.');
-              return;
-            }
-            if (!transitionTo('countdown')) return;
-            set({ balance: nextBalance });
-            persist();
-            runCountdown(COUNTDOWN_START);
-          }, TIMINGS.negotiationStartMs);
+          schedule(presentDuel, TIMINGS.negotiationSealMs);
         } catch {
           failWith('Não foi possível iniciar a partida. Tente novamente.');
         }
@@ -675,6 +724,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         doubleBet: NO_DOUBLE_BET,
         turn: NO_TURN_CLOCK,
         reveal: null,
+        duelAnnounce: false,
       });
       audioManager.playSfx('tap');
       audioManager.startMusic();
@@ -682,13 +732,13 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       try {
         const match = await engine.findMatch({ signal: searchAbort.signal });
         if (get().phase !== 'search') return;
-        set({ match, confirmations: NO_CONFIRMATIONS });
-        if (transitionTo('found')) {
+        set({ match, confirmations: NO_CONFIRMATIONS, duelAnnounce: false });
+        // A busca entrega direto na confirmação: a apresentação do rival
+        // acontece lá na frente, depois do acordo (ver PHASE_TRANSITIONS).
+        if (transitionTo('confirm')) {
           audioManager.playSfx('found');
           vibrate(60);
-          schedule(() => {
-            if (transitionTo('confirm')) scheduleOpponentConfirm(match.id);
-          }, TIMINGS.foundSplashMs);
+          scheduleOpponentConfirm(match.id);
         }
       } catch (error) {
         if (error instanceof GameEngineError && error.code === 'aborted') return;
@@ -718,6 +768,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         doubleBet: NO_DOUBLE_BET,
         turn: NO_TURN_CLOCK,
         reveal: null,
+        duelAnnounce: false,
       });
     };
 
@@ -983,9 +1034,10 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     /**
-     * Resposta do rival ao pedido de dobra. Ele decide com a MESMA
-     * informação parcial que tem de você — as suas cartas abertas, nunca
-     * a última.
+     * Resposta do rival ao pedido de dobra. A mesa é CEGA: ele não vê
+     * carta nenhuma sua, e a resposta também não pode sair da mão dele
+     * — senão o aceite viraria um leitor de força. Por isso é uma chance
+     * fixa (ver DOUBLE_ACCEPT_CHANCE).
      */
     const answerDouble = (matchId: string): void => {
       const { phase, match, round, doubleBet } = get();
@@ -998,8 +1050,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         return;
       }
 
-      const visibleTotal = handValue(visibleCards(round.playerHand)).total;
-      if (rng() < doubleAcceptChance(visibleTotal)) {
+      if (rng() < DOUBLE_ACCEPT_CHANCE) {
         void acceptDouble(matchId);
         return;
       }
@@ -1054,6 +1105,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       turn: NO_TURN_CLOCK,
       reveal: null,
       history: persisted?.history ?? [],
+      duelAnnounce: false,
       countdown: COUNTDOWN_START,
       error: null,
       settings: persisted?.settings ?? DEFAULT_SETTINGS,
@@ -1208,6 +1260,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           doubleBet: NO_DOUBLE_BET,
           turn: NO_TURN_CLOCK,
           reveal: null,
+          duelAnnounce: false,
         });
         // Sem saldo mínimo a nova busca seria inútil: volta ao menu,
         // onde a recarga de créditos mora.
@@ -1287,6 +1340,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           doubleBet: NO_DOUBLE_BET,
           turn: NO_TURN_CLOCK,
           reveal: null,
+          duelAnnounce: false,
           history: [],
           countdown: COUNTDOWN_START,
           error: null,
