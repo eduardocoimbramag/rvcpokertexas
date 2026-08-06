@@ -3066,7 +3066,30 @@ h2 {
   color: #fff4e8;
 }
 
+/* A LINHA DA MÃO em três colunas: vão · cartas · vão.
+
+   Os dois vãos são `1fr`, e é isso que centra o disco do dealer e o
+   montante de fichas EXATAMENTE no espaço que sobra de cada lado — sem
+   número mágico nenhum e sem medir nada em JavaScript. As duas peças
+   pendiam da borda das cartas e ficavam coladas nelas, com todo o vão
+   sobrando do lado de fora; agora cada uma ocupa o meio do seu vão, e o
+   arranjo se reequilibra sozinho em qualquer largura de tela. */
+.poker-seat__line {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+.poker-seat__gutter {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+}
+
 .poker-seat__cards {
+  position: relative;
   display: flex;
   align-items: center;
   gap: calc(var(--card-w) * 0.08);
