@@ -42,7 +42,10 @@ export interface AvatarBadgeProps {
 /** Disco completo: fundo, aro e monograma. Escala com o font-size. */
 export function AvatarBadge({ name, you = false, className = '' }: AvatarBadgeProps) {
   return (
-    <span className={`avatar-badge ${you ? 'avatar-badge--you' : ''} ${className}`} aria-hidden="true">
+    <span
+      className={`avatar-badge ${you ? 'avatar-badge--you' : ''} ${className}`}
+      aria-hidden="true"
+    >
       {initialOf(name)}
     </span>
   );
@@ -60,7 +63,10 @@ export interface MonogramProps {
  */
 export function Monogram({ name, you = false, className = '' }: MonogramProps) {
   return (
-    <span className={`avatar-monogram ${you ? 'avatar-monogram--you' : ''} ${className}`} aria-hidden="true">
+    <span
+      className={`avatar-monogram ${you ? 'avatar-monogram--you' : ''} ${className}`}
+      aria-hidden="true"
+    >
       {initialOf(name)}
     </span>
   );

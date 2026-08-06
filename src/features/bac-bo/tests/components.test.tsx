@@ -9,21 +9,19 @@ import { ConfirmPanel } from '../components/ConfirmPanel';
 import type { HandsArenaProps } from '../components/HandsArena';
 import { HandsArena } from '../components/HandsArena';
 import { HistorySheet } from '../components/HistorySheet';
-import { NegotiationHud, NegotiationPanel } from '../components/NegotiationPanel';
-import { ResultBanner } from '../components/ResultBanner';
+import { SessionBanner } from '../components/SessionBanner';
 import { ResultStage } from '../components/ResultStage';
 import { RoundEndBanner } from '../components/RoundEndBanner';
 import { CardVeil, VEIL_TEXT } from '../components/table/CardVeil';
+import type { PokerHistoryEntry, PokerResult, PokerSession } from '../engine/poker/types';
 import type {
   BlackjackRoundState,
   Card,
   CardRank,
   CardSuit,
-  HistoryEntry,
   Match,
   RoundResult,
 } from '../engine/types';
-import type { NegotiationState } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
 
 const card = (rank: CardRank, suit: CardSuit): Card => ({ rank, suit });
@@ -68,224 +66,71 @@ const sampleRound: BlackjackRoundState = {
   opponentClosed: false,
 };
 
-const sampleEntry: HistoryEntry = { ...sampleResult, opponentName: 'Luna' };
+/**
+ * Uma mão de Hold'em resolvida no showdown: par de Ases contra par de
+ * Reis, num board seco. Stack de 100, os dois com 50 no pote → vitória
+ * paga 50 de volta + 45 (90% do que o rival pôs).
+ */
+const samplePokerResult: PokerResult = {
+  id: 'p1',
+  matchId: 'm1',
+  playerHole: [card('A', 'spades'), card('A', 'hearts')],
+  opponentHole: [card('K', 'clubs'), card('K', 'diamonds')],
+  board: [
+    card('2', 'clubs'),
+    card('7', 'diamonds'),
+    card('9', 'hearts'),
+    card('J', 'spades'),
+    card('4', 'hearts'),
+  ],
+  playerRank: {
+    category: 'pair',
+    label: 'Par de Ases',
+    detail: 'de Ases',
+    cards: [
+      card('A', 'spades'),
+      card('A', 'hearts'),
+      card('J', 'spades'),
+      card('9', 'hearts'),
+      card('7', 'diamonds'),
+    ],
+  },
+  opponentRank: {
+    category: 'pair',
+    label: 'Par de Reis',
+    detail: 'de Reis',
+    cards: [
+      card('K', 'clubs'),
+      card('K', 'diamonds'),
+      card('J', 'spades'),
+      card('9', 'hearts'),
+      card('7', 'diamonds'),
+    ],
+  },
+  showdown: true,
+  outcome: 'win',
+  stake: 100,
+  committed: { player: 50, opponent: 50 },
+  contested: 50,
+  pot: 100,
+  payout: 145,
+  netChange: 45,
+  session: {
+    matchId: 'm1',
+    buyIn: 100,
+    stacks: { player: 145, opponent: 55 },
+    handsPlayed: 1,
+    button: 'opponent' as const,
+    over: false,
+  },
+  completedAt: 1700000000000,
+};
+
+const sampleEntry: PokerHistoryEntry = { ...samplePokerResult, opponentName: 'Luna' };
 
 afterEach(() => {
   // Restaura o store singleton entre os testes.
   useGameStore.setState(useGameStore.getInitialState(), true);
-});
-
-describe('NegotiationPanel — mesa de negociação', () => {
-  /* Cada teste abre a mesa com um match de id ÚNICO: os timers REAIS
-     que as ações do store agendam (finishNegotiation, o beat do balão)
-     carregam o matchId, e um id novo por teste faz qualquer timer
-     vazado de um teste anterior morrer nos guards do store em vez de
-     corromper o teste corrente. */
-  let matchSeq = 0;
-  let match: Match;
-
-  const baseNegotiation: NegotiationState = {
-    tableStake: 100,
-    // O caso comum é a mesa JÁ aberta: o letreiro de abertura é um beat
-    // do store, testado à parte.
-    announcing: false,
-    secondsLeft: 20,
-    proposal: null,
-    agreedStake: null,
-    starting: false,
-  };
-
-  const openNegotiation = (patch: Partial<NegotiationState> = {}) => {
-    matchSeq += 1;
-    match = {
-      id: `m-nego-${matchSeq}`,
-      stake: 10,
-      opponent: { id: 'o1', name: 'Luna', avatar: 'L', rating: 1420 },
-      createdAt: 1700000000000,
-    };
-    useGameStore.setState({
-      phase: 'negotiate',
-      match,
-      balance: 500,
-      negotiation: { ...baseNegotiation, ...patch },
-    });
-  };
-
-  it('o título de abertura segura o feltro; as fichas entram quando ele sai', () => {
-    openNegotiation({ announcing: true });
-    const view = render(<NegotiationPanel />);
-
-    // Enquanto o letreiro carimba o centro, a mesa não mostra fichas.
-    expect(screen.getByTestId('nego-open-announce')).toHaveTextContent(/rodada de negociação/i);
-    expect(screen.queryByTestId('nego-table')).not.toBeInTheDocument();
-
-    // Vencido o beat (quem o solta é o store), as fichas assumem o
-    // centro. O letreiro ainda pode estar em cena por um quadro: quem o
-    // desmonta é a animação de saída, não este render.
-    useGameStore.setState({
-      negotiation: { ...baseNegotiation, announcing: false },
-    });
-    view.rerender(<NegotiationPanel />);
-    expect(screen.getByTestId('nego-table-stake')).toHaveTextContent('100');
-    expect(screen.getByTestId('nego-clock')).toHaveTextContent('20s');
-    expect(screen.getByTestId('nego-send')).toBeDisabled();
-  });
-
-  it('a pílula do rival resume a mesa numa linha: rótulo + situação', () => {
-    openNegotiation();
-    const view = render(<NegotiationHud />);
-    expect(screen.getByTestId('nego-hud')).toHaveTextContent(/Oponente\s*Esperando/i);
-
-    // A pílula é um dado COMPOSTO, e o papel `img` faz o leitor de tela
-    // anunciá-la de uma vez: sem ele o rótulo seria descartado e sobraria
-    // o conteúdo cru ("O Oponente ESPERANDO").
-    expect(screen.getByRole('img', { name: /Oponente: esperando/i })).toBeInTheDocument();
-
-    // O lance do rival chama a sua resposta na própria pílula.
-    useGameStore.setState({
-      negotiation: {
-        ...baseNegotiation,
-        proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
-      },
-    });
-    view.rerender(<NegotiationHud />);
-    expect(screen.getByTestId('nego-hud')).toHaveTextContent(/Proposta/i);
-    expect(screen.getByTestId('nego-hud')).toHaveAttribute('data-state', 'offer');
-  });
-
-  it('composer: +10/+100 somam ao lance e o enviar exige valor válido', async () => {
-    const user = userEvent.setup();
-    openNegotiation();
-    render(<NegotiationPanel />);
-
-    // Sem valor digitado, "Enviar proposta" fica bloqueado.
-    expect(screen.getByTestId('nego-send')).toBeDisabled();
-
-    await user.click(screen.getByTestId('nego-plus-10'));
-    await user.click(screen.getByTestId('nego-plus-100'));
-    expect(screen.getByTestId('nego-input')).toHaveValue('110');
-    expect(screen.getByTestId('nego-send')).toBeEnabled();
-  });
-
-  it('acima do saldo o envio bloqueia e a dica avisa', async () => {
-    const user = userEvent.setup();
-    openNegotiation();
-    render(<NegotiationPanel />);
-
-    // Em repouso a dica fica calada: nada de lembrete fixo de limites.
-    expect(screen.queryByTestId('nego-hint')).not.toBeInTheDocument();
-
-    await user.type(screen.getByTestId('nego-input'), '900');
-    expect(screen.getByTestId('nego-send')).toBeDisabled();
-    expect(screen.getByTestId('nego-hint')).toHaveTextContent(/saldo insuficiente/i);
-  });
-
-  it('abaixo do mínimo o envio bloqueia e a dica nomeia o piso', async () => {
-    const user = userEvent.setup();
-    openNegotiation();
-    render(<NegotiationPanel />);
-
-    await user.type(screen.getByTestId('nego-input'), '5');
-    expect(screen.getByTestId('nego-send')).toBeDisabled();
-    expect(screen.getByTestId('nego-hint')).toHaveTextContent(/lance mínimo é 10/i);
-  });
-
-  it('um lance seu no ar pausa o composer até a resposta do rival', () => {
-    openNegotiation({
-      proposal: { id: 'p1', from: 'player', amount: 80, status: 'pending', open: true },
-    });
-    render(<NegotiationPanel />);
-
-    // O balão do SEU lance mostra o retrato da decisão dele (sem botões).
-    const bubble = screen.getByTestId('nego-proposal');
-    expect(bubble).toHaveAttribute('data-from', 'player');
-    expect(screen.queryByTestId('nego-accept')).not.toBeInTheDocument();
-
-    // E o enviar espera: o martelo está do outro lado da mesa.
-    expect(screen.getByTestId('nego-send')).toBeDisabled();
-    expect(screen.getByTestId('nego-send')).toHaveTextContent(/aguardando resposta/i);
-  });
-
-  it('a mesa não diz com QUEM se negocia — nem no HUD, nem nos balões', () => {
-    // O sigilo da fase é a trava antifraude: sabendo o nome, dois
-    // combinados se reconheceriam e usariam a negociação para passar
-    // créditos de uma conta para a outra (ver opponentIdentity.ts).
-    openNegotiation({
-      proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
-    });
-    const { container } = render(
-      <>
-        <NegotiationHud />
-        <NegotiationPanel />
-      </>,
-    );
-
-    expect(screen.getByTestId('nego-proposal')).toHaveTextContent(/proposta do oponente/i);
-    expect(container.textContent).not.toContain('Luna');
-    // O medalhão traz uma INTERROGAÇÃO: nem a inicial do rival vaza, e
-    // um "O" de "Oponente" seria a inicial de um nome que não existe.
-    expect(container.querySelector('.avatar-badge')).toHaveTextContent('?');
-  });
-
-  it('o lance do rival põe o ✓ e o ✗ na sua mão — cobrir fecha a mesa nele', async () => {
-    const user = userEvent.setup();
-    openNegotiation({
-      proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
-    });
-    render(<NegotiationPanel />);
-
-    await user.click(screen.getByTestId('nego-accept'));
-    expect(useGameStore.getState().negotiation?.proposal?.status).toBe('accepted');
-    expect(useGameStore.getState().negotiation?.tableStake).toBe(60);
-  });
-
-  it('recusar o lance do rival mantém a mesa valendo o mesmo', async () => {
-    const user = userEvent.setup();
-    openNegotiation({
-      proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'pending', open: true },
-    });
-    render(<NegotiationPanel />);
-
-    await user.click(screen.getByTestId('nego-decline'));
-    expect(useGameStore.getState().negotiation?.proposal?.status).toBe('declined');
-    expect(useGameStore.getState().negotiation?.tableStake).toBe(100);
-  });
-
-  it('lance coberto SELA a mesa: composer e saída travam durante o beat do ✓', () => {
-    openNegotiation({
-      proposal: { id: 'p1', from: 'opponent', amount: 60, status: 'accepted', open: true },
-    });
-    render(<NegotiationPanel />);
-
-    // O aperto de mãos vale desde o ✓ — nada de repropor nem desistir.
-    expect(screen.getByTestId('nego-send')).toBeDisabled();
-    expect(screen.getByTestId('nego-send')).toHaveTextContent(/acordo fechado/i);
-    expect(screen.getByTestId('nego-quit')).toBeDisabled();
-  });
-
-  it('selado o acordo, o composer sai e o POTE fica sozinho no feltro', () => {
-    openNegotiation({ starting: true, agreedStake: 100 });
-    render(<NegotiationPanel />);
-
-    // A conversa acabou: nada de compor lance novo nem desistir.
-    expect(screen.queryByTestId('nego-send')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('nego-quit')).not.toBeInTheDocument();
-    // O que segura a cena até o corte é o valor fechado em fichas — o
-    // letreiro HORA DO DUELO mudou de fase (entra depois da
-    // apresentação do rival, ver GameScreen).
-    expect(screen.getByTestId('nego-table-stake')).toHaveTextContent('100');
-    expect(screen.queryByTestId('nego-duel-announce')).not.toBeInTheDocument();
-  });
-
-  it('desistir abandona a mesa e volta ao menu', async () => {
-    const user = userEvent.setup();
-    openNegotiation();
-    render(<NegotiationPanel />);
-
-    await user.click(screen.getByTestId('nego-quit'));
-    expect(useGameStore.getState().phase).toBe('idle');
-    expect(useGameStore.getState().negotiation).toBeNull();
-  });
 });
 
 describe('ConfirmPanel — pareamento anônimo', () => {
@@ -390,7 +235,7 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
 
   /** Fichas desenhadas no pote do feltro. */
   const fichasNoPote = (container: HTMLElement) =>
-    container.querySelectorAll('[data-testid="felt-pot"] .chip').length;
+    container.querySelectorAll('[data-testid="felt-pot"] .rvc-chip').length;
 
   it('o pote fica na mesa durante o duelo, com as fichas da aposta', () => {
     // As fichas que a negociação pôs na mesa continuam lá enquanto as
@@ -773,7 +618,7 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
       expect(pot.classList.contains('is-ablaze')).toBe(false);
       expect(pot.classList.contains('blaze-stage')).toBe(false);
       // As fichas continuam lá, intactas.
-      expect(pot.querySelectorAll('.chip').length).toBeGreaterThan(0);
+      expect(pot.querySelectorAll('.rvc-chip').length).toBeGreaterThan(0);
       view.unmount();
     }
   });
@@ -842,10 +687,11 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
       expect(pot.classList.contains('is-ablaze')).toBe(false);
       expect(pot.classList.contains('blaze-stage')).toBe(false);
       // As fichas continuam lá, intactas.
-      expect(pot.querySelectorAll('.chip').length).toBeGreaterThan(0);
+      expect(pot.querySelectorAll('.rvc-chip').length).toBeGreaterThan(0);
       view.unmount();
     }
-  });  it('com a dobra no ar a mesa inteira espera a resposta do rival', () => {
+  });
+  it('com a dobra no ar a mesa inteira espera a resposta do rival', () => {
     renderArena({
       onRequestDouble: () => undefined,
       canRequestDouble: false,
@@ -1044,59 +890,88 @@ describe('Card3D', () => {
   });
 });
 
-describe('ResultBanner', () => {
-  const loss: RoundResult = {
-    ...sampleResult,
-    outcome: 'lose',
-    playerTotal: 16,
-    payout: 0,
-    netChange: -50,
+describe('SessionBanner — o caixa da sessão', () => {
+  /* O ResultStage centra o veredito espelhando o que vem ABAIXO dele em
+     cópias invisíveis (ver ResultStage) — então o extrato existe duas
+     vezes no DOM. Só a de fora do fantasma é a que se lê. */
+  const visible = (testId: string) => {
+    const found = screen.getAllByTestId(testId).find((el) => !el.closest('.invisible'));
+    if (!found) throw new Error(`sem elemento visível para ${testId}`);
+    return found;
   };
 
-  it('a vitória veste o OURO que sobe', () => {
-    render(<ResultBanner result={sampleResult} />);
+  const session = (patch: Partial<PokerSession> = {}): PokerSession => ({
+    matchId: 'm1',
+    buyIn: 1000,
+    stacks: { player: 1500, opponent: 500 },
+    handsPlayed: 7,
+    button: 'player',
+    over: true,
+    ...patch,
+  });
 
-    expect(screen.getByTestId('result-title')).toHaveTextContent('VITÓRIA!');
+  it('quem sai no LUCRO leva a festa inteira da casa', () => {
+    render(<SessionBanner session={session()} opponentName="Luna" />);
+
+    expect(screen.getByTestId('result-title')).toHaveTextContent('VOCÊ LUCROU!');
     expect(screen.getByTestId('result-blaze')).toHaveAttribute('data-outcome', 'victory');
-    // O halo é da vitória; o feixe e a vinheta, da derrota.
-    expect(screen.getByTestId('result-title')).toHaveClass('result-blaze__word');
-    expect(screen.queryByTestId('ember-vignette')).not.toBeInTheDocument();
-    // A rajada e a flutuação convivem: uma entra, a outra fica.
-    expect(screen.getByTestId('blaze-burst').children).toHaveLength(16);
-    expect(screen.getByTestId('blaze-drift').children).toHaveLength(8);
     // As duas escalas da festa convivem: o ouro é o acabamento da
     // palavra, o confete é a sala inteira comemorando.
     expect(screen.getByTestId('confetti')).toBeInTheDocument();
   });
 
-  it('a derrota veste o RUBI que cai — outro sistema, não outra cor', () => {
-    render(<ResultBanner result={loss} />);
+  it('quem sai no PREJUÍZO recebe um agradecimento, e nada mais', () => {
+    /* Perder fichas já é a notícia ruim: carimbá-la com "DERROTA" em
+       caixa alta e rubi quebrado cobraria duas vezes pela mesma coisa. */
+    render(
+      <SessionBanner
+        session={session({ stacks: { player: 300, opponent: 1700 } })}
+        opponentName="Luna"
+      />,
+    );
 
-    expect(screen.getByTestId('result-title')).toHaveTextContent('DERROTA');
-    expect(screen.getByTestId('result-blaze')).toHaveAttribute('data-outcome', 'defeat');
-    // A vinheta vinho vai para o <body> (portal): as bordas da área de
-    // jogo não cabem na caixa da palavra.
-    expect(screen.getByTestId('ember-vignette')).toBeInTheDocument();
-    expect(screen.getByTestId('blaze-burst').children).toHaveLength(13);
-    expect(screen.getByTestId('blaze-drift').children).toHaveLength(6);
-    // Confete é da vitória, e só dela.
+    expect(screen.getByTestId('result-title')).toHaveTextContent('OBRIGADO POR JOGAR');
+    expect(screen.queryByTestId('result-blaze')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ember-vignette')).not.toBeInTheDocument();
     expect(screen.queryByTestId('confetti')).not.toBeInTheDocument();
   });
 
-  it('a vinheta some do <body> junto com a tela — nada fica para trás', () => {
-    const { unmount } = render(<ResultBanner result={loss} />);
-    expect(document.body.querySelector('.ember-vignette')).toBeInTheDocument();
+  it('o extrato mostra com quanto sentou, com quanto levantou e a diferença', () => {
+    render(<SessionBanner session={session()} opponentName="Luna" />);
 
-    unmount();
-    expect(document.body.querySelector('.ember-vignette')).not.toBeInTheDocument();
+    expect(visible('ledger-buyin')).toHaveTextContent('1.000');
+    expect(visible('ledger-final')).toHaveTextContent('1.500');
+    expect(visible('ledger-profit')).toHaveTextContent('+500');
+    // A comissão da casa incide UMA vez, no caixa, e só sobre o lucro.
+    expect(visible('ledger-commission')).toHaveTextContent('50');
+    expect(visible('ledger-cashed')).toHaveTextContent('1.450');
   });
 
-  it('o EMPATE não ganha efeito: ele não é notícia', () => {
-    render(<ResultBanner result={{ ...sampleResult, outcome: 'tie', payout: 50, netChange: 0 }} />);
+  it('no prejuízo não há comissão: a casa não cobra de quem já pagou', () => {
+    render(
+      <SessionBanner
+        session={session({ stacks: { player: 300, opponent: 1700 } })}
+        opponentName="Luna"
+      />,
+    );
 
-    expect(screen.getByTestId('result-title')).toHaveTextContent('EMPATE');
-    expect(screen.queryByTestId('result-blaze')).not.toBeInTheDocument();
-    expect(screen.getByTestId('result-title')).not.toHaveClass('result-blaze__word');
+    expect(screen.queryByTestId('ledger-commission')).not.toBeInTheDocument();
+    expect(visible('ledger-profit')).toHaveTextContent('-700');
+    expect(visible('ledger-cashed')).toHaveTextContent('300');
+  });
+
+  it('diz POR QUE a mesa fechou — a frase muda o sentido do resto', () => {
+    const { rerender } = render(
+      <SessionBanner session={session({ leftBy: 'player' })} opponentName="Luna" />,
+    );
+    expect(visible('session-reason')).toHaveTextContent('Você levantou da mesa');
+    expect(visible('session-reason')).toHaveTextContent('7 mãos jogadas');
+
+    rerender(<SessionBanner session={session({ bustedBy: 'opponent' })} opponentName="Luna" />);
+    expect(visible('session-reason')).toHaveTextContent('Luna ficou sem fichas');
+
+    rerender(<SessionBanner session={session({ bustedBy: 'player' })} opponentName="Luna" />);
+    expect(visible('session-reason')).toHaveTextContent('Suas fichas acabaram');
   });
 });
 
@@ -1109,8 +984,9 @@ describe('ResultStage', () => {
    * veredito só passa a cair um pouco alto demais, que é exatamente o
    * tipo de regressão que ninguém percebe até estar publicada.
    */
-  const lines = (container: HTMLElement, selector: string) =>
-    [...container.querySelectorAll(selector)];
+  const lines = (container: HTMLElement, selector: string) => [
+    ...container.querySelectorAll(selector),
+  ];
 
   it('espelha subtítulo, débito e contagem acima do título para centrar o veredito', () => {
     const { container } = render(
@@ -1231,7 +1107,6 @@ describe('acessibilidade: nenhum rótulo mudo', () => {
     const cheia = render(<HistorySheet open onClose={() => undefined} />);
     expect(rotulosMudos(cheia.container)).toEqual([]);
   });
-
 });
 
 describe('HistorySheet', () => {
@@ -1263,42 +1138,56 @@ describe('HistorySheet', () => {
 });
 
 describe('App (fluxo Home → Tutorial → Busca)', () => {
-  it('primeira jogada abre o tutorial e termina na busca por oponente', async () => {
+  it('JOGAR vai direto para a mesa — o tutorial não intercepta ninguém', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    // O logotipo é desenhado letra a letra em três andares (BLACK /
-    // JACK / ARENA), então quem responde pela marca é o NOME ACESSÍVEL
-    // do título, não um nó de texto.
-    expect(screen.getByRole('heading', { name: 'Blackjack Arena' })).toBeInTheDocument();
+    // O logotipo é desenhado letra a letra em dois andares (POKER /
+    // ARENA), então quem responde pela marca é o NOME ACESSÍVEL do
+    // título, não um nó de texto.
+    expect(screen.getByRole('heading', { name: 'Poker Arena' })).toBeInTheDocument();
+
+    /* Mesmo com o tutorial nunca visto, o botão de jogar JOGA. Ele já
+       desviava para o tutorial na primeira partida — interceptando um
+       toque que dizia "quero jogar" e entregando outra coisa. */
+    expect(useGameStore.getState().settings.tutorialSeen).toBe(false);
     await user.click(screen.getByTestId('play-button'));
 
-    // Tutorial de 4 passos: oponente → negociação → a mão de 21 → torneio.
-    expect(screen.getByRole('dialog', { name: 'Como jogar' })).toBeInTheDocument();
-    // A negociação é a mesa de FICHAS: o tutorial não pode voltar a
-    // prometer o chat que a fase teve um dia.
-    await user.click(screen.getByTestId('tutorial-next'));
-    expect(screen.getByText(/proposta/i)).toBeInTheDocument();
-    expect(screen.queryByText(/chat/i)).not.toBeInTheDocument();
-    await user.click(screen.getByTestId('tutorial-next'));
-    await user.click(screen.getByTestId('tutorial-next'));
-    await user.click(screen.getByTestId('tutorial-next'));
-
-    // Sem tela de aposta: o 1v1 cai direto na busca (o valor é
-    // negociado com o oponente depois da confirmação).
+    expect(screen.queryByRole('dialog', { name: 'Como jogar' })).not.toBeInTheDocument();
     expect(useGameStore.getState().phase).toBe('search');
     expect(await screen.findByText('Procurando oponente…')).toBeInTheDocument();
-    expect(useGameStore.getState().settings.tutorialSeen).toBe(true);
   });
 
-  it('com tutorial já visto, JOGAR vai direto para a busca', async () => {
+  it('o COMO JOGAR abre a folha, e ela ensina Texas Hold’em', async () => {
     const user = userEvent.setup();
-    useGameStore.setState({
-      settings: { ...useGameStore.getState().settings, tutorialSeen: true },
-    });
     render(<App />);
 
-    await user.click(screen.getByTestId('play-button'));
-    expect(useGameStore.getState().phase).toBe('search');
+    await user.click(screen.getByRole('button', { name: /como jogar/i }));
+    expect(screen.getByRole('dialog', { name: 'Como jogar' })).toBeInTheDocument();
+
+    // Os passos falam do jogo que se joga: entrada fixa, as duas
+    // fechadas, as ruas de aposta e o showdown.
+    expect(screen.getByText(/Texas Hold/i)).toBeInTheDocument();
+    await user.click(screen.getByTestId('tutorial-next'));
+    expect(screen.getByText(/comunitárias/i)).toBeInTheDocument();
+    await user.click(screen.getByTestId('tutorial-next'));
+    expect(screen.getByText(/AUMENTAR/)).toBeInTheDocument();
+    await user.click(screen.getByTestId('tutorial-next'));
+    expect(screen.getByText(/showdown/i)).toBeInTheDocument();
+
+    // Nada de 21 sobrou no texto: o jogo mudou, a folha mudou com ele.
+    expect(screen.queryByText(/blackjack/i)).not.toBeInTheDocument();
+
+    /* Fechar devolve o jogador para onde ele estava — a folha é consulta,
+       não caminho. Avança até o fim sem contar passos: o número de telas
+       muda com o jogo, e um teste que o fixasse quebraria a cada regra
+       nova sem ter nada a dizer sobre ela. */
+    for (let passo = 0; passo < 10; passo += 1) {
+      const proximo = screen.queryByTestId('tutorial-next');
+      if (!proximo) break;
+      await user.click(proximo);
+    }
+    expect(useGameStore.getState().phase).toBe('idle');
+    expect(useGameStore.getState().settings.tutorialSeen).toBe(true);
   });
 });

@@ -99,7 +99,12 @@ function buildVictory(phase: 'burst' | 'drift'): Particle[] {
     // Leque para CIMA: centro em -90° e abertura de ~200° na explosão
     // (que espirra para os lados) contra ~120° na flutuação, que é mais
     // vertical — a diferença é o que separa impacto de respiração.
-    const angle = fanAngle(id, total, -Math.PI / 2, phase === 'burst' ? Math.PI * 1.1 : Math.PI * 0.66);
+    const angle = fanAngle(
+      id,
+      total,
+      -Math.PI / 2,
+      phase === 'burst' ? Math.PI * 1.1 : Math.PI * 0.66,
+    );
     const dist = phase === 'burst' ? 66 + Math.random() * 88 : 52 + Math.random() * 54;
     return {
       id,

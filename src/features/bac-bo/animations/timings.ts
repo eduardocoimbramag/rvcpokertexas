@@ -14,9 +14,9 @@ const OPENING_CARDS = 4;
 
 export const TIMINGS = {
   /**
-   * Apresentação de duelo (jogador → VS → oponente) DEPOIS do acordo,
-   * em ritmo de matchup de jogo de luta — cada beat respira. Orçamento:
-   * última placa assenta em ~2.5s + respiro.
+   * Apresentação de duelo (jogador → VS → oponente) depois da
+   * confirmação, em ritmo de matchup de jogo de luta — cada beat
+   * respira. Orçamento: última placa assenta em ~2.5s + respiro.
    */
   foundSplashMs: 3400,
   /** Janela em que o oponente simulado confirma o duelo (aleatório). */
@@ -24,34 +24,14 @@ export const TIMINGS = {
   opponentConfirmMaxMs: 2400,
   /**
    * Beat de "duelo travado" após ambos confirmarem: tempo da faixa
-   * dourada subir e do flare no VS queimar antes da mesa de negociação.
+   * dourada subir e do flare no VS queimar antes da apresentação.
    */
   confirmLockInMs: 1600,
-  /**
-   * Beat do título "RODADA DE NEGOCIAÇÃO" no centro do feltro. É ele que
-   * abre a fase: as fichas assentam e o relógio da rodada SÓ COMEÇA
-   * quando este beat vence — ninguém perde tempo de mesa lendo o
-   * letreiro.
-   */
-  negoAnnounceMs: 2600,
-  /**
-   * Beat do ACORDO SELADO: o composer recolhe e o feltro fica só com as
-   * fichas do valor fechado, antes de a cena cortar para a apresentação
-   * do rival. Curto de propósito — a conversa acabou, e o que interessa
-   * agora está na próxima cena.
-   */
-  negotiationSealMs: 1200,
   /**
    * Beat entre a apresentação e o countdown: é o tempo do título "HORA
    * DO DUELO" entrar, assentar e respirar antes do corte de cena.
    */
   duelAnnounceMs: 2400,
-  /**
-   * Quanto o balão de proposta respondido (o ✓ ou o ✗ aceso) fica em
-   * cena antes de a mesa seguir — no aceite, é também o beat em que as
-   * fichas novas assentam no centro do feltro.
-   */
-  negoAnswerHoldMs: 1400,
   /** Intervalo entre os ticks do countdown (5 → 1). */
   countdownTickMs: 900,
   /** Intervalo entre cada carta da distribuição inicial. */
@@ -94,6 +74,78 @@ export const TIMINGS = {
   doubleAnswerMaxMs: 2600,
   /** Quanto a resposta (o ✓ ou o ✗ aceso) fica em cena antes de sair. */
   doubleAnswerHoldMs: 1500,
+
+  /* ---------- O ritmo da mão de Texas Hold'em ---------- */
+
+  /**
+   * Beat depois do lance do RIVAL. É uma notícia — "AUMENTOU PARA 240" —
+   * e o jogador precisa lê-la antes de a palavra voltar para ele.
+   */
+  pokerMoveMs: 1250,
+  /**
+   * Beat depois do SEU próprio lance. Curto de propósito: você já sabe o
+   * que fez, e esperar aqui só faria a mesa parecer travada.
+   */
+  pokerOwnMoveMs: 450,
+  /** Quanto o anúncio de um lance fica no alto-falante da mesa. */
+  moveHoldMs: 1800,
+  /**
+   * O BEAT ENTRE AS MÃOS: a placa do vencedor em cena, o pote assentando
+   * nos stacks, e a mesa se preparando para distribuir de novo.
+   *
+   * É o respiro que separa uma mão da seguinte numa sessão. Curto demais
+   * e a mesa atropela quem ainda está lendo quem levou o pote; longo
+   * demais e a sessão vira uma sequência de esperas.
+   *
+   * Este beat é o do CAIXA: quando a mesa fecha, é o tempo de a placa da
+   * última mão respirar antes de o extrato entrar. O intervalo entre uma
+   * mão e a seguinte não mora aqui — ele é um relógio de segundos, com a
+   * porta de saída aberta ao lado (ver `HANDOVER_SECONDS`).
+   */
+  handoverCloseMs: 2600,
+  /**
+   * Beat de uma RUA que acabou de abrir: o mais longo da mão, e a soma
+   * de três tempos que acontecem em ordem, nunca juntos:
+   *
+   *   letreiro (`streetAnnounceMs`) → foco voltando (`streetRevealMs`)
+   *   → as cartas caindo e assentando.
+   *
+   * A ordem é a de uma mesa de verdade — o crupiê anuncia, todos olham,
+   * e só então ele vira as cartas. Virá-las por trás do desfoque
+   * escondia justamente o acontecimento que a rua É.
+   */
+  pokerStreetMs: 2700,
+  /**
+   * Quanto o letreiro da rua fica em cena, do início do desfoque ao fim
+   * dele. Menor que o beat de propósito: a mesa volta ao foco ANTES de a
+   * palavra voltar ao jogador, senão estaria borrada justamente na hora
+   * de olhar para ela.
+   *
+   * A conta que sustenta o número: ~0,3 s de desfoque entrando, 0,24 s
+   * de respiro, a coreografia do letreiro assentando por volta de 1,0 s
+   * e meio segundo de leitura antes da saída.
+   */
+  streetAnnounceMs: 1500,
+  /**
+   * O respiro entre o letreiro sair e as cartas da rua caírem: é o tempo
+   * do desfoque se dissolver. Sem ele as comunitárias virariam com a
+   * tela ainda embaçada, e a virada — que é o acontecimento da rua —
+   * aconteceria fora de foco.
+   */
+  streetRevealMs: 420,
+  /**
+   * Espera antes de a mesa virar as comunitárias da rua seguinte — o
+   * tempo de um crupiê recolher as apostas e queimar a carta.
+   */
+  pokerDealStreetMs: 800,
+  /**
+   * Janela em que o rival pensa antes de bater o martelo. Sorteada: um
+   * adversário que decide sempre no mesmo tempo denuncia que é máquina,
+   * e no poker o TEMPO de decisão é informação — um rival que responde
+   * instantaneamente a qualquer aposta não estaria decidindo nada.
+   */
+  pokerThinkMinMs: 900,
+  pokerThinkMaxMs: 2600,
   /**
    * Piso da vez do rival: mesmo sem pedir carta, ele "pensa" por um
    * instante — a vez dele nunca é um corte seco.
@@ -104,11 +156,35 @@ export const TIMINGS = {
    * respira antes do veredito. É o momento clássico da mesa.
    */
   revealMs: 1500,
-  /**
-   * Veredito da rodada em tela (totais e situação lado a lado) antes do
-   * desfecho da partida.
+
+  /* ---------- O EMBATE DO SHOWDOWN ---------- */
+
+  /*
+   * As três batidas do embate, encadeadas. Elas somam `settleMs` de
+   * propósito: o showdown inteiro é `revealMs` (as fechadas virando) +
+   * `settleMs` (o embate), e é esse total que o store agenda antes de
+   * chamar o veredito. Mexer numa destas sem mexer no total deixaria a
+   * placa vencedora sendo cortada no meio da comemoração — ou a mesa
+   * parada esperando um beat que já acabou.
    */
-  settleMs: 1800,
+  /** As duas placas entram das bordas e vêm uma contra a outra. */
+  clashEnterMs: 900,
+  /** A colisão: o impacto, o tranco e as fagulhas. */
+  clashImpactMs: 480,
+  /** O veredito: a perdedora é jogada fora, a vencedora assume o centro. */
+  clashVerdictMs: 1620,
+  /**
+   * Veredito da rodada em tela antes do desfecho da partida. No 1v1 é
+   * exatamente o tempo do EMBATE do showdown (ver `clashEnterMs` e
+   * seguintes) — as duas placas entrando, colidindo e a vencedora
+   * assumindo o centro.
+   *
+   * Ele foi ALONGADO depois de ver a cena rodando: em 1,8s o embate
+   * acontecia, mas não dava tempo de LER as duas mãos antes de uma
+   * delas sair de cena — e ler as duas mãos é a única razão de a cena
+   * existir. Os 3s de agora deixam cada batida respirar.
+   */
+  settleMs: 3000,
   /**
    * Beat do empate: no mata-mata do torneio ninguém pode empatar, então
    * o aviso respira em tela antes de a mesa distribuir de novo.
@@ -118,14 +194,6 @@ export const TIMINGS = {
 
 /** Valor inicial do countdown falado (5 → 1) antes da distribuição. */
 export const COUNTDOWN_START = 5;
-
-/**
- * Duração da rodada de negociação, em segundos. O relógio zera e o
- * duelo abre valendo o que estiver na mesa — a garantia de término da
- * fase. Ele PAUSA enquanto um lance SEU espera a resposta do rival
- * (seria injusto o seu tempo correr com o martelo do outro lado).
- */
-export const NEGOTIATION_SECONDS = 20;
 
 /** Máximo de partidas mantidas no histórico persistido. */
 export const HISTORY_LIMIT = 50;

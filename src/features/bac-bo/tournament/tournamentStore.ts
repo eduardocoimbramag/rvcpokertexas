@@ -280,29 +280,32 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
   const scheduleFill = (): void => {
     const s = get();
     if (s.stage !== 'lobby' || s.members.length >= s.size) return;
-    schedule(() => {
-      const cur = get();
-      if (cur.stage !== 'lobby' || cur.members.length >= cur.size) return;
-      // Ninguém entra duas vezes, e ninguém expulso reentra.
-      const taken = cur.members.map((m) => m.name);
-      const [bot] = makeBots(1, [...taken, ...cur.bannedNames]);
-      if (!bot) {
-        // Elenco esgotado (expulsões demais): a sala não enche sozinha.
-        // Avisa uma vez em vez de deixar o dono esperando um assento que
-        // nunca vem — o botão de iniciar continua travado por desenho.
-        const last = cur.chat[cur.chat.length - 1];
-        if (last?.text !== POOL_EMPTY) {
-          set({ chat: [...cur.chat, systemMessage(POOL_EMPTY)] });
+    schedule(
+      () => {
+        const cur = get();
+        if (cur.stage !== 'lobby' || cur.members.length >= cur.size) return;
+        // Ninguém entra duas vezes, e ninguém expulso reentra.
+        const taken = cur.members.map((m) => m.name);
+        const [bot] = makeBots(1, [...taken, ...cur.bannedNames]);
+        if (!bot) {
+          // Elenco esgotado (expulsões demais): a sala não enche sozinha.
+          // Avisa uma vez em vez de deixar o dono esperando um assento que
+          // nunca vem — o botão de iniciar continua travado por desenho.
+          const last = cur.chat[cur.chat.length - 1];
+          if (last?.text !== POOL_EMPTY) {
+            set({ chat: [...cur.chat, systemMessage(POOL_EMPTY)] });
+          }
+          return;
         }
-        return;
-      }
-      set({
-        members: [...cur.members, bot],
-        chat: [...cur.chat, systemMessage(`${bot.name} entrou na sala`)],
-      });
-      scheduleBotReady(bot.id);
-      scheduleFill();
-    }, 700 + Math.random() * 1100);
+        set({
+          members: [...cur.members, bot],
+          chat: [...cur.chat, systemMessage(`${bot.name} entrou na sala`)],
+        });
+        scheduleBotReady(bot.id);
+        scheduleFill();
+      },
+      700 + Math.random() * 1100,
+    );
   };
 
   /**
@@ -510,11 +513,14 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       // Um bot responde pouco depois.
       const bots = get().members.filter((m) => !m.isYou);
       if (bots.length > 0) {
-        schedule(() => {
-          if (get().stage !== 'lobby') return;
-          const bot = bots[Math.floor(Math.random() * bots.length)];
-          if (bot) set({ chat: [...get().chat, chatMessage(bot, botChatLine())] });
-        }, 900 + Math.random() * 1600);
+        schedule(
+          () => {
+            if (get().stage !== 'lobby') return;
+            const bot = bots[Math.floor(Math.random() * bots.length)];
+            if (bot) set({ chat: [...get().chat, chatMessage(bot, botChatLine())] });
+          },
+          900 + Math.random() * 1600,
+        );
       }
     },
 
@@ -693,7 +699,14 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       }
       audioManager.playSfx(championId === YOU_ID ? 'win' : 'lose');
       set({
-        tableSeries: { ...series, seats, playingIds: [], tiebreak: false, championId, lastVerdict: verdict },
+        tableSeries: {
+          ...series,
+          seats,
+          playingIds: [],
+          tiebreak: false,
+          championId,
+          lastVerdict: verdict,
+        },
       });
     },
 
@@ -744,13 +757,11 @@ export const tournamentSelectors = {
   isOwner: (s: TournamentState) => s.ownerId === YOU_ID,
   seatsFull: (s: TournamentState) => s.members.length === s.size,
   youReady: (s: TournamentState) => s.readyIds.includes(YOU_ID),
-  readyCount: (s: TournamentState) =>
-    s.members.filter((m) => s.readyIds.includes(m.id)).length,
+  readyCount: (s: TournamentState) => s.members.filter((m) => s.readyIds.includes(m.id)).length,
   /** Mesa cheia e todos confirmados: a partida pode ser iniciada. */
   allReady: (s: TournamentState) =>
     s.members.length === s.size && s.members.every((m) => s.readyIds.includes(m.id)),
-  yourPending: (s: TournamentState) =>
-    s.bracket ? yourPendingMatch(s.bracket, YOU_ID) : null,
+  yourPending: (s: TournamentState) => (s.bracket ? yourPendingMatch(s.bracket, YOU_ID) : null),
   youEliminated: (s: TournamentState) => (s.bracket ? isEliminated(s.bracket, YOU_ID) : false),
   activeRound: (s: TournamentState) => (s.bracket ? activeRoundIndex(s.bracket) : 0),
   champion: (s: TournamentState) => (s.bracket ? tournamentChampion(s.bracket) : null),

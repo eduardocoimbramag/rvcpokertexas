@@ -1,9 +1,9 @@
 {
-  "name": "blackjack-arena",
+  "name": "poker-arena",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Blackjack Arena — jogo de blackjack 1v1 mobile-first com engine local, créditos virtuais e experiência premium.",
+  "description": "Poker Arena — Texas Hold'em 1v1 mobile-first com engine local, créditos virtuais e experiência premium.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

@@ -89,7 +89,10 @@ export function openTotalOf(hand: TableSeatHand): number {
  * Com todos os rivais estourados ele para: a rodada já é dele, e pedir
  * carta só jogaria a vitória fora.
  */
-export function botTableAction(hand: TableSeatHand, rivals: readonly TableSeatHand[]): PlayerAction {
+export function botTableAction(
+  hand: TableSeatHand,
+  rivals: readonly TableSeatHand[],
+): PlayerAction {
   const live = rivals.filter((rival) => !isBust(rival.cards));
   // 22 = "não há ameaça viva": o botAction lê isso como rival estourado.
   const target = live.length === 0 ? 22 : Math.max(...live.map(openTotalOf));

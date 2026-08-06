@@ -232,8 +232,7 @@ export function LobbyScreen() {
   // No resumo compacto cabe o topo do pódio; a divisão inteira
   // (50/30/20) vive na ficha da sala, atrás da engrenagem. Na mesa única
   // não há divisão: o campeão leva o bolo.
-  const prize =
-    format === 'table' ? tablePrize(entryFee, size) : prizeFor(1, entryFee, size);
+  const prize = format === 'table' ? tablePrize(entryFee, size) : prizeFor(1, entryFee, size);
   // A taxa não é debitada aqui — mas o saldo precisa cobri-la, porque é
   // ela que sai se o jogador perder.
   const canAfford = balance >= entryFee;
@@ -312,7 +311,10 @@ export function LobbyScreen() {
       {/* Assentos, cada um com o seu estado de prontidão. A sala de 16
           usa a variante densa (compacta e rolável) para o chat
           continuar respirando. */}
-      <div className={`lobby-seats ${size === 16 ? 'lobby-seats--dense' : ''}`} data-testid="lobby-seats">
+      <div
+        className={`lobby-seats ${size === 16 ? 'lobby-seats--dense' : ''}`}
+        data-testid="lobby-seats"
+      >
         {seats.map((player, i) => (
           <Seat
             key={player?.id ?? `empty-${i}`}
@@ -393,7 +395,11 @@ export function LobbyScreen() {
         ) : (
           <div className="flex flex-col items-center gap-1.5">
             {youReady && (
-              <p className="text-xs font-bold text-lavender" role="status" data-testid="lobby-waiting">
+              <p
+                className="text-xs font-bold text-lavender"
+                role="status"
+                data-testid="lobby-waiting"
+              >
                 {allReady ? 'Aguardando o anfitrião iniciar' : 'Aguardando os jogadores'}
                 <span className="waiting-dots" aria-hidden="true">
                   <span className="waiting-dot">.</span>
@@ -431,7 +437,12 @@ export function LobbyScreen() {
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <Button onClick={confirmPresence} size="md" fullWidth data-testid="confirm-presence">
+                  <Button
+                    onClick={confirmPresence}
+                    size="md"
+                    fullWidth
+                    data-testid="confirm-presence"
+                  >
                     <Icon name="check" strokeWidth={2.4} /> CONFIRMAR PRESENÇA
                   </Button>
                 </motion.div>

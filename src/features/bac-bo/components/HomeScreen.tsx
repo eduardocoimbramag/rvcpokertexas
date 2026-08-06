@@ -10,12 +10,16 @@ import { BalancePill } from './BalancePill';
 import { BrandCard } from './BrandCard';
 
 /**
- * Os três andares do logotipo, de cima para baixo. "ARENA" é a linha de
- * ouro — a hierarquia da marca é a mesma de sempre, só empilhada.
+ * Os andares do logotipo, de cima para baixo. "ARENA" é a linha de ouro
+ * — a hierarquia da marca é a mesma de sempre, só empilhada.
+ *
+ * São DOIS andares agora, e não três: o nome do jogo virou uma palavra
+ * só. Cada linha distribui as próprias letras na largura do bloco, então
+ * duas palavras de cinco letras fecham num retângulo justo — a marca
+ * ficou mais compacta e mais legível do que era empilhada em três.
  */
 const BRAND_LINES = [
-  { word: 'BLACK', gold: false },
-  { word: 'JACK', gold: false },
+  { word: 'POKER', gold: false },
   { word: 'ARENA', gold: true },
 ] as const;
 
@@ -34,19 +38,19 @@ export function HomeScreen({
   onOpenTournament,
 }: HomeScreenProps) {
   const balance = useGameStore((state) => state.balance);
-  const tutorialSeen = useGameStore((state) => state.settings.tutorialSeen);
   const startSearch = useGameStore((state) => state.startSearch);
   const refillCredits = useGameStore((state) => state.refillCredits);
 
   const broke = isBroke(balance);
 
+  /* JOGAR vai direto para a mesa, sempre.
+     O botão já desviou para o tutorial na primeira partida, e a ideia
+     era boa no papel: apresentar o jogo antes da primeira mão. Na
+     prática ele interceptava um toque que dizia "quero jogar" e
+     entregava outra coisa — e voltava a interceptar sempre que o estado
+     era limpo. Quem quer aprender tem o COMO JOGAR logo abaixo, que é o
+     botão que promete exatamente isso. */
   const handlePlay = () => {
-    // Fluxo atualizado: Home → Tutorial → Busca direta (a aposta é
-    // negociada com o oponente depois da confirmação do duelo).
-    if (!tutorialSeen) {
-      onOpenTutorial();
-      return;
-    }
     void startSearch();
   };
 
@@ -91,8 +95,8 @@ export function HomeScreen({
             as três terminam exatamente alinhadas nas duas bordas — o
             espacejamento sai da geometria, não de um letter-spacing
             chutado linha por linha. O rótulo acessível é a marca inteira:
-            três linhas soltas leriam "Black. Jack. Arena.". */}
-        <h1 className="brand-title" aria-label="Blackjack Arena">
+            duas linhas soltas leriam "Poker. Arena.". */}
+        <h1 className="brand-title" aria-label="Poker Arena">
           {BRAND_LINES.map(({ word, gold }) => (
             <span
               key={word}

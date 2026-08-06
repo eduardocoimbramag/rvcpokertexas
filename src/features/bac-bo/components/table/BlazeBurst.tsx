@@ -297,10 +297,7 @@ export function BlazeBurst({ variant = 'blackjack', scale = 1 }: BlazeBurstProps
 
       for (let i = 0; i < n; i += 1) {
         const tongue = model.tongues[i] as BlazeTongue;
-        const env = flameEnvelope(
-          elapsed - tongue.delayMs,
-          tongue.sustains ? cfg.flameSustain : 0,
-        );
+        const env = flameEnvelope(elapsed - tongue.delayMs, tongue.sustains ? cfg.flameSustain : 0);
         if (env <= 0.004) {
           liveAlpha[i] = 0;
           continue;
@@ -328,7 +325,13 @@ export function BlazeBurst({ variant = 'blackjack', scale = 1 }: BlazeBurstProps
         if (liveAlpha[i] === 0 || (liveLen[i] as number) < 2) continue;
         const t = model.tongues[i] as BlazeTongue;
         ctx.globalAlpha = 0.82 * (liveAlpha[i] as number);
-        flamePath(t, liveLen[i] as number, liveW[i] as number, liveSway[i] as number, liveBend[i] as number);
+        flamePath(
+          t,
+          liveLen[i] as number,
+          liveW[i] as number,
+          liveSway[i] as number,
+          liveBend[i] as number,
+        );
         ctx.fill();
       }
 

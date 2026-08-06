@@ -47,8 +47,7 @@ export function TournamentSettingsSheet({ open, onClose }: TournamentSettingsShe
           <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">Formato</p>
           <div className="room-fact" data-testid="settings-format">
             <span className="flex items-center gap-2">
-              <Icon name={format === 'bracket' ? 'trophy' : 'users'} />{' '}
-              {formatLabel(format)}
+              <Icon name={format === 'bracket' ? 'trophy' : 'users'} /> {formatLabel(format)}
             </span>
             <span className="room-fact__value">
               {format === 'bracket' ? 'Mata-mata' : `Melhor de ${TABLE_TARGET_WINS}`}

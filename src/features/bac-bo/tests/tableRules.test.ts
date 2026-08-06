@@ -30,7 +30,9 @@ const standing = (
 
 describe('bestTableHands', () => {
   it('a maior mão viva leva a rodada', () => {
-    expect(bestTableHands([standing('a', 20), standing('b', 18), standing('c', 21)])).toEqual(['c']);
+    expect(bestTableHands([standing('a', 20), standing('b', 18), standing('c', 21)])).toEqual([
+      'c',
+    ]);
   });
 
   it('estouro perde para qualquer mão viva', () => {
@@ -100,10 +102,11 @@ describe('judgeTableRound', () => {
   });
 
   it('empate comum: TODOS os empatados pontuam', () => {
-    const verdict = judgeTableRound(
-      [standing('a', 20), standing('b', 20), standing('c', 17)],
-      { a: 0, b: 1, c: 0 },
-    );
+    const verdict = judgeTableRound([standing('a', 20), standing('b', 20), standing('c', 17)], {
+      a: 0,
+      b: 1,
+      c: 0,
+    });
     expect(verdict).toEqual({ kind: 'points', winners: ['a', 'b'], championId: null });
   });
 
@@ -116,30 +119,33 @@ describe('judgeTableRound', () => {
   });
 
   it('empate que coroaria DOIS: ninguém pontua, a mesa vai ao desempate', () => {
-    const verdict = judgeTableRound(
-      [standing('a', 20), standing('b', 20), standing('c', 19)],
-      { a: 2, b: 2, c: 0 },
-    );
+    const verdict = judgeTableRound([standing('a', 20), standing('b', 20), standing('c', 19)], {
+      a: 2,
+      b: 2,
+      c: 0,
+    });
     expect(verdict).toEqual({ kind: 'tiebreak', contenders: ['a', 'b'] });
   });
 
   it('no desempate entram TODOS os empatados da mão, não só os líderes', () => {
     // Os três dividiram a melhor mão: é entre os três que ela se repete.
     // Quem está longe do título ainda pode levar o ponto (e só o ponto).
-    const verdict = judgeTableRound(
-      [standing('a', 20), standing('b', 20), standing('c', 20)],
-      { a: 2, b: 2, c: 1 },
-    );
+    const verdict = judgeTableRound([standing('a', 20), standing('b', 20), standing('c', 20)], {
+      a: 2,
+      b: 2,
+      c: 1,
+    });
     expect(verdict).toEqual({ kind: 'tiebreak', contenders: ['a', 'b', 'c'] });
   });
 
   it('empate LONGE da decisão continua pontuando todo mundo', () => {
     // Nenhum dos empatados fecha a série: aqui a regra do empate vale
     // inteira (é o caso comum das primeiras rodadas).
-    const verdict = judgeTableRound(
-      [standing('a', 20), standing('b', 20), standing('c', 17)],
-      { a: 1, b: 0, c: 0 },
-    );
+    const verdict = judgeTableRound([standing('a', 20), standing('b', 20), standing('c', 17)], {
+      a: 1,
+      b: 0,
+      c: 0,
+    });
     expect(verdict).toEqual({ kind: 'points', winners: ['a', 'b'], championId: null });
   });
 

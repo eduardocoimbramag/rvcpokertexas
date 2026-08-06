@@ -236,9 +236,7 @@ export class LocalBlackjackGameEngine implements GameEngine {
        Ele decide AGORA, com a mesa como estava no início da vez: a sua
        carta desta vez ainda não saiu, e é isso que faz a escolha ser
        simultânea de verdade — nenhum dos dois vê o lance do outro. */
-    const opponentAction = round.opponentClosed
-      ? undefined
-      : blindBotAction(round.opponentHand);
+    const opponentAction = round.opponentClosed ? undefined : blindBotAction(round.opponentHand);
 
     // Sem escolha travada, a mesa PARA a mão pelo dono dela: é o
     // desfecho seguro de um relógio que zerou — parar nunca estoura.

@@ -115,7 +115,11 @@ function applause(durationSec: number, volume: number, clapsPerSec = 36): Float3
     const clapVolume = (0.2 + Math.random() * 0.35) * volume * swellAt(startSec);
     for (let i = 0; i < clapLength && start + i < length; i += 1) {
       const decay = Math.exp((-5 * i) / clapLength);
-      out[start + i] = clamp((out[start + i] ?? 0) + (Math.random() * 2 - 1) * clapVolume * decay, -1, 1);
+      out[start + i] = clamp(
+        (out[start + i] ?? 0) + (Math.random() * 2 - 1) * clapVolume * decay,
+        -1,
+        1,
+      );
     }
   }
   return out;
@@ -228,10 +232,7 @@ export function synthesizeSfx(): Record<SfxName, string> {
       silence(Math.max(0.02, 0.078 - i * 0.006)),
     );
   }
-  const coinToss = mix(
-    noise(0.85, 0.35, { attack: 0.3, release: 0.4 }),
-    sequence(...flutterParts),
-  );
+  const coinToss = mix(noise(0.85, 0.35, { attack: 0.3, release: 0.4 }), sequence(...flutterParts));
 
   /* Pouso da moeda: golpe metálico inarmônico (parciais dessintonizadas)
      com um segundo quique mais fraco — o "tin-tin" assentando na mesa. */

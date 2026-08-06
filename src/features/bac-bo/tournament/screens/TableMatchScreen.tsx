@@ -18,14 +18,9 @@ import { TableScene } from '../../scene/TableScene';
 import type { SceneCamera } from '../../scene/TableScene';
 import type { DealerReaction } from '../../scene/dealer/DealerController';
 import { audioManager } from '../../services/AudioManager';
-import { TURN_SECONDS } from '../../store/gameStore';
+import { TURN_SECONDS } from '../../components/table/duelArena';
 import type { TableRoundState } from '../tableRound';
-import {
-  dealTableRound,
-  isSeatWaiting,
-  lockTableChoice,
-  resolveTableTurn,
-} from '../tableRound';
+import { dealTableRound, isSeatWaiting, lockTableChoice, resolveTableTurn } from '../tableRound';
 import { bestTableHands, tableStandingOf } from '../tableRules';
 import { tablePrize, tournamentSelectors, useTournamentStore } from '../tournamentStore';
 import { TABLE_TARGET_WINS } from '../types';
@@ -416,7 +411,9 @@ export function TableMatchScreen() {
                 initial={reduced ? false : { opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
-                transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 24 }}
+                transition={
+                  reduced ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 24 }
+                }
               >
                 <p className="table-verdict__title">{announce.title}</p>
                 <p className="table-verdict__detail">{announce.detail}</p>

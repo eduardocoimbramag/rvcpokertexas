@@ -11,13 +11,15 @@ import { potChips, potColumns } from './pot';
  * A cena em que o pote está — o que muda é a DENSIDADE, nunca a
  * contagem:
  *
- * - `nego` — a rodada de negociação. O feltro está vazio (as cartas nem
- *   saíram) e o pote é o assunto da tela: fichas grandes, torres altas.
  * - `felt` — o duelo. O pote divide o feltro com duas mãos de cartas, e
  *   no aparelho mais baixo sobra uma faixa de 92px entre elas: fichas
  *   miúdas, colunas curtas, espalhadas.
+ *
+ * Houve uma segunda cena aqui, a da NEGOCIAÇÃO, com fichas grandes num
+ * feltro vazio. Ela saiu com a rodada que a justificava: no Hold'em não
+ * se combina o valor da mesa, entra-se com a entrada fixa.
  */
-export type ChipStackVariant = 'nego' | 'felt';
+export type ChipStackVariant = 'felt';
 
 /**
  * Densidade de cada cena.
@@ -28,21 +30,14 @@ export type ChipStackVariant = 'nego' | 'felt';
  * framer. Dois números soltos divergiriam no primeiro ajuste.
  *
  * `perColumn` é o que decide se o pote cresce para cima ou para os
- * lados, e os dois números foram escolhidos MEDINDO o pior aparelho:
- * - nego (8): com o teto de 30 fichas dá quatro colunas de ~54px, ou
- *   242px de largura — cabe nos 272px do feltro mais estreito (320px de
- *   viewport). Dez por coluna caberia na largura, mas empilhava 154px de
- *   altura e a pilha encostava no compositor num aparelho de 640px.
- * - felt (6): a faixa livre entre as duas mãos tem 92px de altura no
- *   mesmo aparelho; seis fichas de ~31px dão uma coluna de 51px.
+ * lados, e o número foi escolhido MEDINDO o pior aparelho: a faixa livre
+ * entre as duas mãos tem 92px de altura num telefone de 640px, e seis
+ * fichas de ~31px dão uma coluna de 51px.
+ *
+ * `entryPx` é curto pelo mesmo motivo: a faixa é estreita, e uma ficha
+ * vinda de 120px abaixo atravessaria a sua própria mão de cartas.
  */
-const LAYOUT: Record<
-  ChipStackVariant,
-  { perColumn: number; stepPx: number; entryPx: number }
-> = {
-  nego: { perColumn: 8, stepPx: 7, entryPx: 120 },
-  // A entrada é mais curta no duelo: a faixa é estreita, e uma ficha
-  // vinda de 120px abaixo atravessaria a sua própria mão de cartas.
+const LAYOUT: Record<ChipStackVariant, { perColumn: number; stepPx: number; entryPx: number }> = {
   felt: { perColumn: 6, stepPx: 4, entryPx: 70 },
 };
 
@@ -142,7 +137,12 @@ export function ChipStack({
             {chips.map((chip, index) => (
               <motion.span
                 key={index}
-                className={`chip ${chip.gold ? 'chip--gold' : ''}`}
+                /* A MESMA ficha do montante: uma ficha é uma ficha em
+                   toda a mesa. O pote se conta por unidade (dobrar a
+                   aposta dobra as fichas) e o montante por valor — mas a
+                   PEÇA é a da casa nos dois, e é isso que faz o dinheiro
+                   ler como dinheiro de um lugar só. */
+                className={`rvc-chip ${chip.gold ? 'rvc-chip--1000' : 'rvc-chip--100'}`}
                 style={{ zIndex: index }}
                 initial={
                   instant
@@ -161,7 +161,13 @@ export function ChipStack({
                     ? { duration: 0 }
                     : { delay: chip.delay, type: 'spring', stiffness: 320, damping: 23 }
                 }
-              />
+              >
+                {/* O brasão da casa no miolo, como no montante de cada
+                    duelista: a ficha do pote e a da frente do jogador são
+                    a MESMA peça, e uma delas sem a marca denunciava que
+                    eram duas. */}
+                <span className="rvc-chip__crest" />
+              </motion.span>
             ))}
           </div>
         ))}

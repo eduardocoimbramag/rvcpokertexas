@@ -90,7 +90,10 @@ export function ConfirmDialog({
             exit={instant ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.97 }}
             transition={instant ? { duration: 0 } : { type: 'spring', damping: 26, stiffness: 320 }}
           >
-            <h2 id={titleId} className="text-base font-black uppercase tracking-[0.2em] text-copper">
+            <h2
+              id={titleId}
+              className="text-base font-black uppercase tracking-[0.2em] text-copper"
+            >
               {title}
             </h2>
             <p className="mt-3 text-base font-bold leading-snug text-ivory">{message}</p>

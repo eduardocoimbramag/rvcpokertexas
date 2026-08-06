@@ -246,7 +246,8 @@ export function BracketScreen() {
           <div className="flex flex-col items-center gap-1.5">
             {autoSecs !== null && (
               <p className="text-xs font-bold text-lavender" data-testid="auto-start">
-                <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Início automático em {autoSecs}s
+                <Icon name="timer" size="0.95em" className="inline align-[-0.1em]" /> Início
+                automático em {autoSecs}s
               </p>
             )}
             <Button onClick={playMyMatch} size="md" fullWidth data-testid="play-tournament-match">

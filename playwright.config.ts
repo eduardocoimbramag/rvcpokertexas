@@ -6,16 +6,26 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
-  /* O fluxo completo é dramático de propósito (splash ~3,4s + lock-in
-     1,6s + cara-ou-coroa ~10s, já com o beat do veredito + countdown
-     4,5s + rolagem 2s + revelação ~5,9s) e o 1v1 é uma SÉRIE melhor de
-     3: com resultado forçado são duas rodadas + o beat de fim de rodada
-     (~2,6s) entre elas — o duelo inteiro passa dos 60s com folga curta,
-     e o teste do empate re-rolado joga até três rodadas. */
+  /* O fluxo completo é dramático de propósito e uma mão inteira leva
+     tempo real: negociação (~20s de relógio, ou o aceite) + acordo
+     selado 1,2s + apresentação 3,4s + HORA DO DUELO 2,4s + countdown
+     4,5s + distribuição 2,8s, e daí as QUATRO RUAS do Hold'em, cada
+     uma com o beat do lance do rival (~1,3s), a espera dele (0,9–2,6s)
+     e a rua abrindo (~1,9s) — mais o showdown (1,5s de virada + 1,8s
+     de embate). Uma mão que vá até o river passa dos 60s com folga
+     curta. */
   timeout: 120_000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  /* Uma retentativa TAMBÉM fora do CI. A razão não é esconder teste
+     ruim: é que esta suíte dirige uma interface de tempo real — há um
+     relógio de 20s por decisão e beats de animação em segundos — com
+     três navegadores disputando a mesma máquina. Sob contenção, um
+     clique que normalmente custa 200ms custa segundos, e a vez passa
+     no meio da bateria de asserções. O teste falha por ter demorado,
+     não por ter encontrado um defeito, e o sintoma é justamente o que
+     denuncia isso: quem falha muda de rodada para rodada. */
+  retries: process.env.CI ? 2 : 1,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL: 'http://localhost:4173',

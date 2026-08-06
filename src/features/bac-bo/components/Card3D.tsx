@@ -110,7 +110,8 @@ export function Card3D({
   const sceneStyle = (size ? { '--card-size': size } : {}) as CSSProperties;
 
   const red = card ? RED_SUITS.includes(card.suit) : false;
-  const shownLabel = faceDown || !card ? 'carta oculta' : `${card.rank} de ${SUIT_LABEL[card.suit]}`;
+  const shownLabel =
+    faceDown || !card ? 'carta oculta' : `${card.rank} de ${SUIT_LABEL[card.suit]}`;
 
   return (
     <motion.div

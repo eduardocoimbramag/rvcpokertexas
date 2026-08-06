@@ -11,7 +11,7 @@ import { HandTotal } from '../../components/table/HandTotal';
 import { povHand } from '../../components/table/pov';
 import { TIMINGS } from '../../animations/timings';
 import { isNaturalBlackjack } from '../../engine/rules';
-import { TURN_SECONDS } from '../../store/gameStore';
+import { TURN_SECONDS } from '../../components/table/duelArena';
 import { laneSlices } from '../tableLayout';
 import type { TableSeatHand } from '../tableRound';
 import type { TableSeriesSeat } from '../tournamentStore';
@@ -98,15 +98,7 @@ interface RivalSeatProps {
  * mini. Quem está fora da rodada (desempate alheio) aparece apagado, com
  * o selo de quem assiste — está na mesa, mas não nesta mão.
  */
-function RivalSeat({
-  seat,
-  hand,
-  spectator,
-  revealed,
-  winner,
-  ready,
-  choosing,
-}: RivalSeatProps) {
+function RivalSeat({ seat, hand, spectator, revealed, winner, ready, choosing }: RivalSeatProps) {
   const cards = hand?.cards ?? [];
   /* POV: tudo menos a última carta. O corte vale até no showdown — quem
      revela é a fase, não a chegada das cartas. É o MESMO `povHand` do
@@ -256,7 +248,12 @@ export function TableArena({
           {youPlaying && yourCards.length > 0 ? (
             <>
               <div className="table-arena__you-score">
-                <HandTotal variant="seat" cards={yourCards} partial={false} testid="table-total-you" />
+                <HandTotal
+                  variant="seat"
+                  cards={yourCards}
+                  partial={false}
+                  testid="table-total-you"
+                />
               </div>
               {/* A regra de POV vale nos dois sentidos: a última carta da
                   sua mão está virada para TODOS os assentos da mesa. O

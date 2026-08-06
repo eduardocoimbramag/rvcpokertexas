@@ -100,7 +100,10 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
                 </span>
 
                 <div className="flex min-w-0 flex-col items-center gap-0.5">
-                  <h2 id={titleId} className="max-w-full truncate text-xl font-black tracking-wide text-ivory">
+                  <h2
+                    id={titleId}
+                    className="max-w-full truncate text-xl font-black tracking-wide text-ivory"
+                  >
                     {opponent.name}
                   </h2>
                   <p className="max-w-full truncate text-sm font-semibold text-lavender">
@@ -145,10 +148,7 @@ export function OpponentProfileSheet({ open, opponent, onClose }: OpponentProfil
                   flex-1: a coluna tem a largura dos selos e encosta na
                   margem direita (via justify-between), espelhando a
                   esquerda. Começa na mesma altura do avatar. */}
-              <div
-                className="flex flex-col items-center gap-2.5"
-                data-testid="profile-badges"
-              >
+              <div className="flex flex-col items-center gap-2.5" data-testid="profile-badges">
                 {profile.showcased.map((achievement) => (
                   <BadgeChip key={achievement.id} achievement={achievement} />
                 ))}

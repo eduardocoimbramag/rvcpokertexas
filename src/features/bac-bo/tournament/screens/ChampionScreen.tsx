@@ -11,12 +11,7 @@ import { audioManager } from '../../services/AudioManager';
 import { placementOf } from '../bracket';
 import { PODIUM_METALS } from '../podium';
 import { tableStandingsOrder } from '../tableRules';
-import {
-  prizeFor,
-  tablePrize,
-  tournamentSelectors,
-  useTournamentStore,
-} from '../tournamentStore';
+import { prizeFor, tablePrize, tournamentSelectors, useTournamentStore } from '../tournamentStore';
 import type { TournamentPlayer } from '../types';
 import { TABLE_TARGET_WINS } from '../types';
 
@@ -224,7 +219,9 @@ export function ChampionScreen() {
               ) : (
                 <span className="podium__name">—</span>
               )}
-              <span className="podium__prize">+{formatCredits(prizeFor(place, entryFee, size))}</span>
+              <span className="podium__prize">
+                +{formatCredits(prizeFor(place, entryFee, size))}
+              </span>
             </li>
           );
         })}
@@ -240,8 +237,11 @@ export function ChampionScreen() {
         {placement && yourPrize > 0 ? (
           <>
             Você terminou em{' '}
-            <span className="font-black text-gold">{PLACE_LABEL[placement - 1] ?? `${placement}º`}</span>{' '}
-            e levou <span className="font-black text-gold">{formatCredits(yourPrize)} créditos</span>
+            <span className="font-black text-gold">
+              {PLACE_LABEL[placement - 1] ?? `${placement}º`}
+            </span>{' '}
+            e levou{' '}
+            <span className="font-black text-gold">{formatCredits(yourPrize)} créditos</span>
           </>
         ) : placement ? (
           <>

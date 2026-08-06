@@ -123,7 +123,10 @@ export function judgeTableRound(
 }
 
 /** Aplica o ponto da rodada ao contador da série. */
-export function awardTableWins(wins: TableWins, winners: readonly string[]): Record<string, number> {
+export function awardTableWins(
+  wins: TableWins,
+  winners: readonly string[],
+): Record<string, number> {
   const next: Record<string, number> = { ...wins };
   for (const id of winners) next[id] = (next[id] ?? 0) + 1;
   return next;
@@ -133,10 +136,7 @@ export function awardTableWins(wins: TableWins, winners: readonly string[]): Rec
  * Ordem do placar da série: mais vitórias primeiro e, empatado, a ordem
  * de assento (estável — o placar não dança entre rodadas).
  */
-export function tableStandingsOrder(
-  playerIds: readonly string[],
-  wins: TableWins,
-): string[] {
+export function tableStandingsOrder(playerIds: readonly string[], wins: TableWins): string[] {
   return [...playerIds].sort((a, b) => {
     const diff = (wins[b] ?? 0) - (wins[a] ?? 0);
     return diff !== 0 ? diff : playerIds.indexOf(a) - playerIds.indexOf(b);

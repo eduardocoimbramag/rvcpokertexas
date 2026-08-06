@@ -19,8 +19,8 @@ import { audioManager } from '../../services/AudioManager';
 import { TableScene } from '../../scene/TableScene';
 import type { SceneCamera } from '../../scene/TableScene';
 import type { DealerReaction } from '../../scene/dealer/DealerController';
-import type { GamePhase, TurnClock, TurnReveal } from '../../store/gameStore';
-import { TURN_SECONDS } from '../../store/gameStore';
+import type { DuelPhase, TurnClock, TurnReveal } from '../../components/table/duelArena';
+import { TURN_SECONDS } from '../../components/table/duelArena';
 import { useTournamentStore } from '../tournamentStore';
 
 /**
@@ -374,7 +374,7 @@ export function TournamentMatchScreen() {
   /* A fase que a MESA enxerga: enquanto a rodada corre, quem manda é o
      estado do motor; o showdown só entra depois de a última revelação
      respirar (até lá as ocultas continuam viradas). */
-  const arenaPhase: GamePhase =
+  const arenaPhase: DuelPhase =
     phase === 'completed'
       ? 'completed'
       : phase === 'dealing' || round === null

@@ -27,23 +27,52 @@ function sampleState(): PersistedState {
       {
         id: 'r1',
         matchId: 'm1',
-        playerHand: [
-          { rank: '10', suit: 'spades' },
-          { rank: '9', suit: 'hearts' },
+        playerHole: [
+          { rank: 'A', suit: 'spades' },
+          { rank: 'A', suit: 'hearts' },
         ],
-        opponentHand: [
-          { rank: '10', suit: 'clubs' },
+        opponentHole: [
+          { rank: 'K', suit: 'clubs' },
+          { rank: 'K', suit: 'diamonds' },
+        ],
+        board: [
+          { rank: '2', suit: 'clubs' },
           { rank: '7', suit: 'diamonds' },
+          { rank: '9', suit: 'hearts' },
+          { rank: 'J', suit: 'spades' },
+          { rank: '4', suit: 'hearts' },
         ],
-        playerTotal: 19,
-        opponentTotal: 17,
-        playerBust: false,
-        opponentBust: false,
-        playerNatural: false,
-        opponentNatural: false,
+        playerRank: {
+          category: 'pair',
+          label: 'Par de Ases',
+          detail: 'de Ases',
+          cards: [
+            { rank: 'A', suit: 'spades' },
+            { rank: 'A', suit: 'hearts' },
+            { rank: 'J', suit: 'spades' },
+            { rank: '9', suit: 'hearts' },
+            { rank: '7', suit: 'diamonds' },
+          ],
+        },
+        opponentRank: {
+          category: 'pair',
+          label: 'Par de Reis',
+          detail: 'de Reis',
+          cards: [
+            { rank: 'K', suit: 'clubs' },
+            { rank: 'K', suit: 'diamonds' },
+            { rank: 'J', suit: 'spades' },
+            { rank: '9', suit: 'hearts' },
+            { rank: '7', suit: 'diamonds' },
+          ],
+        },
+        showdown: true,
         outcome: 'win',
-        stake: 50,
-        payout: 95,
+        stake: 100,
+        committed: { player: 50, opponent: 50 },
+        contested: 50,
+        pot: 100,
+        payout: 145,
         netChange: 45,
         completedAt: 1700000000000,
         opponentName: 'Luna',
@@ -124,6 +153,67 @@ describe('GameStorageService', () => {
     expect(loaded?.balance).toBe(620);
     expect(loaded?.history).toEqual([]);
     expect(loaded?.settings.tutorialSeen).toBe(true);
+  });
+
+  it('migra estado v2 (Blackjack): o saldo atravessa, o extrato de 21 não', () => {
+    const storage = createMemoryStorage();
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        state: {
+          balance: 1240,
+          history: [
+            {
+              id: 'r1',
+              matchId: 'm1',
+              playerHand: [
+                { rank: '10', suit: 'spades' },
+                { rank: '9', suit: 'hearts' },
+              ],
+              opponentHand: [
+                { rank: '10', suit: 'clubs' },
+                { rank: '7', suit: 'diamonds' },
+              ],
+              playerTotal: 19,
+              opponentTotal: 17,
+              playerBust: false,
+              opponentBust: false,
+              playerNatural: false,
+              opponentNatural: false,
+              outcome: 'win',
+              stake: 50,
+              payout: 95,
+              netChange: 45,
+              completedAt: 1700000000000,
+              opponentName: 'Luna',
+            },
+          ],
+          settings: { ...DEFAULT_SETTINGS, tutorialSeen: true, scenery: 'low' },
+        },
+      }),
+    );
+    const service = new GameStorageService(storage);
+    const loaded = service.load();
+    // Um "19 × 17" não descreve mão de poker nenhuma: o extrato do jogo
+    // velho vai embora. O que é da PESSOA — saldo e preferências —
+    // atravessa a mudança de jogo, como já atravessou a anterior.
+    expect(loaded?.balance).toBe(1240);
+    expect(loaded?.history).toEqual([]);
+    expect(loaded?.settings.tutorialSeen).toBe(true);
+    expect(loaded?.settings.scenery).toBe('low');
+  });
+
+  it('migra em cadeia: um estado v1 atravessa as duas migrações até a v3', () => {
+    const storage = createMemoryStorage();
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        state: { balance: 300, history: [{ qualquer: 'coisa' }], settings: DEFAULT_SETTINGS },
+      }),
+    );
+    expect(new GameStorageService(storage).load()?.balance).toBe(300);
   });
 
   it('não propaga erros de quota ao salvar', () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   MIN_STAKE,
+  TABLE_ANTE,
   creditPayout,
   debitStake,
   isBroke,
@@ -50,8 +51,9 @@ describe('creditPayout', () => {
 });
 
 describe('isBroke', () => {
-  it('detecta saldo insuficiente para o menor stake', () => {
-    expect(isBroke(MIN_STAKE - 1)).toBe(true);
-    expect(isBroke(MIN_STAKE)).toBe(false);
+  it('detecta saldo insuficiente para a ENTRADA da mesa', () => {
+    // Sem a entrada não há mão a jogar: é ela que abre o pote.
+    expect(isBroke(TABLE_ANTE - 1)).toBe(true);
+    expect(isBroke(TABLE_ANTE)).toBe(false);
   });
 });

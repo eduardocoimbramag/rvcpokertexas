@@ -91,7 +91,12 @@ export function AdvanceOverlay({
             opacity: [0, 1, 1, 0],
             scale: [0.6, 1.12, 1, 0.9],
           }}
-          transition={{ duration: 1.15, times: [0, 0.55, 0.85, 1], ease: [0.4, 0, 0.2, 1], delay: 0.2 }}
+          transition={{
+            duration: 1.15,
+            times: [0, 0.55, 0.85, 1],
+            ease: [0.4, 0, 0.2, 1],
+            delay: 0.2,
+          }}
         >
           <span className="advance-token__streak" aria-hidden="true" />
           <span className="advance-token__avatar" aria-hidden="true">

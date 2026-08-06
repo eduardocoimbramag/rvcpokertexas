@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CHIP_MAX, CHIP_UNIT, potChips, potColumns } from '../components/table/pot';
-import { DEFAULT_STAKE, MIN_STAKE } from '../engine/credits';
+import { MIN_STAKE, TABLE_ANTE } from '../engine/credits';
 
 /**
  * O pote é a única peça da mesa cujo VALOR é lido em quantidade, não em
@@ -19,8 +19,8 @@ describe('pot — quantas fichas o valor da mesa vale', () => {
   });
 
   it('a aposta padrão da casa põe quatro fichas na mesa', () => {
-    expect(potChips(DEFAULT_STAKE)).toBe(4);
-    expect(potChips(DEFAULT_STAKE * 2)).toBe(8);
+    expect(potChips(TABLE_ANTE)).toBe(4);
+    expect(potChips(TABLE_ANTE * 2)).toBe(8);
   });
 
   it('a aposta mínima ainda é dinheiro na mesa: nunca some', () => {

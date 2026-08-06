@@ -4,220 +4,354 @@ import { vi } from 'vitest';
 import { createId } from '@/shared/lib/ids';
 import { SeededRng } from '@/shared/lib/random';
 
-import { COUNTDOWN_START, NEGOTIATION_SECONDS, TIMINGS } from '../animations/timings';
+import { COUNTDOWN_START, TIMINGS } from '../animations/timings';
+import type { FindMatchParams, SetStakeParams } from '../engine/GameEngine';
+import { LocalPokerEngine } from '../engine/poker/LocalPokerEngine';
 import type {
-  BeginRoundParams,
-  CommitParams,
-  FindMatchParams,
-  GameEngine,
-  ResolveTurnParams,
-  SetStakeParams,
-} from '../engine/GameEngine';
-import { LocalBlackjackGameEngine } from '../engine/LocalBlackjackGameEngine';
-import {
-  handValue,
-  isBust,
-  isNaturalBlackjack,
-  netChangeFor,
-  payoutFor,
-  visibleCards,
-} from '../engine/rules';
-import type { BlackjackRoundState, Card, Match, RoundOutcome, RoundResult } from '../engine/types';
+  ActParams,
+  AdvanceParams,
+  BeginHandParams,
+  PokerEngine,
+} from '../engine/poker/PokerEngine';
+import type {
+  PokerAction,
+  PokerOutcome,
+  PokerResult,
+  PokerRoundState,
+  PokerSession,
+  Street,
+} from '../engine/poker/types';
+import type { Card, Match } from '../engine/types';
 import { audioManager } from '../services/AudioManager';
 import type { PersistedState } from '../services/GameStorageService';
 import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageService';
-import { TURN_SECONDS, canTransition, createGameStore } from '../store/gameStore';
-import type { Negotiator } from '../store/negotiation';
-import { BOT_BEATS, BOT_OPENING_MAX_MS, BOT_REPLY_MAX_MS } from '../store/negotiation';
+import { TABLE_ANTE } from '../engine/credits';
+import {
+  ACTION_SECONDS,
+  HANDOVER_SECONDS,
+  SHOW_CARDS_SECONDS,
+  canTransition,
+  createGameStore,
+} from '../store/gameStore';
 
 function card(rank: Card['rank'], suit: Card['suit'] = 'spades'): Card {
   return { rank, suit };
 }
 
-/**
- * Mãos roteirizadas por resultado do duelo direto (sem casa para bater):
- * vence quem chegar mais perto de 21. As mãos são TUPLAS de propósito —
- * o TS sabe que as duas cartas iniciais sempre existem, e é delas que sai
- * a carta oculta do rival.
- */
-const CARDS_FOR_OUTCOME: Record<RoundOutcome, { player: [Card, Card]; opponent: [Card, Card] }> = {
-  // 19 contra 17: o jogador leva a mesa.
+/** Mão do jogador e do rival por desfecho roteirizado do showdown. */
+const HOLE_FOR_OUTCOME: Record<PokerOutcome, { player: [Card, Card]; opponent: [Card, Card] }> = {
+  // Par de Ases contra par de Reis, no board seco abaixo.
   win: {
-    player: [card('10'), card('9', 'hearts')],
-    opponent: [card('10', 'clubs'), card('7', 'diamonds')],
+    player: [card('A'), card('A', 'hearts')],
+    opponent: [card('K', 'diamonds'), card('K', 'clubs')],
   },
-  // Espelho: 17 contra 19.
   lose: {
-    player: [card('10'), card('7', 'hearts')],
-    opponent: [card('10', 'clubs'), card('9', 'diamonds')],
+    player: [card('K', 'diamonds'), card('K', 'clubs')],
+    opponent: [card('A'), card('A', 'hearts')],
   },
-  // Mesmo total: empate devolve a aposta.
+  // Mesmo par: as duas mãos leem igual e o pote se divide.
   tie: {
-    player: [card('10'), card('9', 'hearts')],
-    opponent: [card('10', 'clubs'), card('9', 'diamonds')],
+    player: [card('A'), card('A', 'hearts')],
+    opponent: [card('A', 'diamonds'), card('A', 'clubs')],
   },
 };
 
-/** Blackjack natural do jogador (21 em duas cartas). */
-const NATURAL_CARDS: { player: [Card, Card]; opponent: [Card, Card] } = {
-  player: [card('A'), card('K', 'hearts')],
-  opponent: [card('10', 'clubs'), card('7', 'diamonds')],
-};
+/** Board seco: não completa sequência nem naipe para ninguém. */
+const BOARD: Card[] = [
+  card('2', 'clubs'),
+  card('7', 'diamonds'),
+  card('9', 'hearts'),
+  card('J', 'spades'),
+  card('4', 'hearts'),
+];
 
 /**
- * Engine determinística instantânea. Recebe um resultado fixo ou uma
- * SEQUÊNCIA (um por partida, já que agora a rodada é única); o último da
- * fila se repete.
+ * Engine de poker determinística e instantânea. Recebe um desfecho fixo
+ * ou uma SEQUÊNCIA (um por partida); o último da fila se repete.
  *
- * O roteiro é o mais curto que respeita o contrato: a rodada abre uma
- * janela de escolha (com a mão do rival mostrando só a primeira carta),
- * o `commit` trava a escolha sem mexer na mesa e o `resolveTurn` fecha a
- * rodada no resultado roteirizado. Com `natural: true` a mão do jogador
- * já nasce fechada e a janela abre sem escolha nenhuma para ele.
+ * O roteiro é o MAIS CURTO que exercita o contrato inteiro do
+ * `PokerEngine`, e é por isso que ele existe: o store tem de conduzir
+ * uma mão de Hold'em (`beginHand` → `act` → `advance` → `act` →
+ * showdown) sem saber uma única regra de poker, e é exatamente isso que
+ * este stub verifica.
+ *
+ *   pré-flop, palavra do jogador (ele tem o botão e fala primeiro)
+ *     → act(fold)   → mão morta: o rival leva o que estava no pote
+ *     → act(call)   → palavra do rival
+ *   advance() com a palavra do rival → ele vai de ALL-IN, palavra volta
+ *   act(call)                        → os dois com tudo no meio
+ *   advance() com a rua fechada      → showdown no desfecho roteirizado
+ *
+ * O all-in é de propósito: com os dois stacks inteiros no pote, o que
+ * está em disputa é o stake cheio — e é aí que a conta de créditos do
+ * store fica visível nos testes.
  */
-class StubEngine implements GameEngine {
-  private readonly queue: RoundOutcome[];
-  private lastStake = 0;
-  private readonly natural: boolean;
+class StubPokerEngine implements PokerEngine {
+  private readonly queue: PokerOutcome[];
+  private stake = 0;
+  /** A MESA entre as mãos: fichas de cada lado, mãos jogadas, se acabou. */
+  private stacks = { player: 0, opponent: 0 };
+  private handsPlayed = 0;
+  private button: 'player' | 'opponent' = 'player';
+  private over = false;
+  private leftBy: 'player' | undefined;
+  private bustedBy: 'player' | 'opponent' | undefined;
+  private outcome: PokerOutcome = 'win';
+  /** Fichas que cada lado pôs na mão (o stub joga uma rua só). */
+  private committed = { player: 0, opponent: 0 };
+  private toAct: 'player' | 'opponent' | null = 'player';
+  private settled = false;
+  /** A mão já foi contabilizada nos stacks (ver `state`). */
+  private closed = false;
+  private lastMove: PokerRoundState['lastMove'];
 
-  constructor(
-    outcomes: RoundOutcome | readonly RoundOutcome[],
-    options: { natural?: boolean } = {},
-  ) {
+  /** O rival CORRE em vez de jogar a vez dele (para o convite de mostrar). */
+  private readonly opponentFolds: boolean;
+
+  constructor(outcomes: PokerOutcome | readonly PokerOutcome[], opponentFolds = false) {
     this.queue = typeof outcomes === 'string' ? [outcomes] : [...outcomes];
-    this.natural = options.natural ?? false;
+    this.opponentFolds = opponentFolds;
   }
 
-  private currentOutcome: RoundOutcome = 'win';
-  private choice: 'hit' | 'stand' | undefined;
-
   findMatch(params: FindMatchParams): Promise<Match> {
-    this.lastStake = params.stake ?? 10;
-    return Promise.resolve({
-      id: 'match-1',
-      opponent: { id: 'opp-1', name: 'Stub', avatar: 'S', rating: 1000 },
-      stake: this.lastStake,
-      createdAt: 0,
-    });
+    this.stake = params.stake ?? 10;
+    this.stacks = { player: this.stake, opponent: this.stake };
+    this.handsPlayed = 0;
+    this.over = false;
+    this.leftBy = undefined;
+    return Promise.resolve(this.match('match-1'));
   }
 
   setStake(params: SetStakeParams): Promise<Match> {
-    this.lastStake = params.stake;
-    return Promise.resolve({
-      id: params.matchId,
-      opponent: { id: 'opp-1', name: 'Stub', avatar: 'S', rating: 1000 },
-      stake: params.stake,
-      createdAt: 0,
-    });
+    this.stake = params.stake;
+    return Promise.resolve(this.match(params.matchId));
   }
 
-  beginRound(params: BeginRoundParams): Promise<BlackjackRoundState> {
-    // Consome a fila partida a partida; o último resultado se repete.
-    const outcome = (this.queue.length > 1 ? this.queue.shift() : this.queue[0]) ?? 'win';
-    this.currentOutcome = outcome;
-
-    this.choice = undefined;
-    const cards = this.natural ? NATURAL_CARDS : CARDS_FOR_OUTCOME[outcome];
-    return Promise.resolve({
-      matchId: params.matchId,
-      phase: 'choosing',
-      playerHand: [...cards.player],
-      // A regra da mesa: a última carta do rival é segredo dele.
-      opponentVisible: visibleCards(cards.opponent),
-      opponentHidden: 1,
-      // Natural já fecha a sua mão: não sobra escolha nenhuma para você.
-      legalActions: this.natural ? [] : ['hit', 'stand'],
-      playerClosed: this.natural,
-      opponentClosed: false,
-    });
-  }
-
-  commit(params: CommitParams): Promise<BlackjackRoundState> {
-    // Trava a escolha SEM mexer na mesa — como manda o contrato.
-    this.choice = params.action;
-    const cards = this.natural ? NATURAL_CARDS : CARDS_FOR_OUTCOME[this.currentOutcome];
-    return Promise.resolve({
-      matchId: params.matchId,
-      phase: 'choosing',
-      playerHand: [...cards.player],
-      opponentVisible: visibleCards(cards.opponent),
-      opponentHidden: 1,
-      legalActions: [],
-      playerChoice: params.action,
-      playerClosed: false,
-      opponentClosed: false,
-    });
-  }
-
-  resolveTurn(params: ResolveTurnParams): Promise<BlackjackRoundState> {
-    // A primeira vez que fecha já resolve a rodada no roteiro do stub.
-    return Promise.resolve(this.settledState(params.matchId, this.currentOutcome, this.natural));
-  }
-
-  private settledState(
-    matchId: string,
-    outcome: RoundOutcome,
-    natural: boolean,
-  ): BlackjackRoundState {
-    const cards = natural ? NATURAL_CARDS : CARDS_FOR_OUTCOME[outcome];
-    const playerHand: Card[] = [...cards.player];
-    const opponentHand: Card[] = [...cards.opponent];
-    const result: RoundResult = {
-      id: createId(),
-      matchId,
-      playerHand,
-      opponentHand,
-      playerTotal: handValue(playerHand).total,
-      opponentTotal: handValue(opponentHand).total,
-      playerBust: isBust(playerHand),
-      opponentBust: isBust(opponentHand),
-      playerNatural: isNaturalBlackjack(playerHand),
-      opponentNatural: isNaturalBlackjack(opponentHand),
-      outcome,
-      stake: this.lastStake,
-      payout: payoutFor(outcome, this.lastStake),
-      netChange: netChangeFor(outcome, this.lastStake),
-      completedAt: 0,
+  beginHand(params: BeginHandParams): Promise<PokerRoundState> {
+    this.outcome = (this.queue.length > 1 ? this.queue.shift() : this.queue[0]) ?? 'win';
+    // Entrada igual dos dois lados, cobrada A CADA mão.
+    const ante = Math.min(TABLE_ANTE, this.stacks.player, this.stacks.opponent);
+    this.stacks = {
+      player: this.stacks.player - ante,
+      opponent: this.stacks.opponent - ante,
     };
+    this.committed = { player: ante, opponent: ante };
+    this.toAct = 'player';
+    this.settled = false;
+    this.closed = false;
+    this.lastMove = undefined;
+    return Promise.resolve(this.state(params.matchId));
+  }
+
+  act(params: ActParams): Promise<PokerRoundState> {
+    if (this.toAct !== 'player') {
+      return Promise.reject(new Error('Não é a vez do jogador.'));
+    }
+    this.apply('player', params.action, params.to, params.timedOut ?? false);
+    if (params.action === 'fold') {
+      this.settled = true;
+      this.toAct = null;
+    } else if (this.committed.player >= this.stake) {
+      // Cobriu o all-in do rival: não sobrou decisão para ninguém.
+      this.toAct = null;
+    } else {
+      this.toAct = 'opponent';
+    }
+    return Promise.resolve(this.state(params.matchId));
+  }
+
+  leaveTable(): Promise<PokerSession> {
+    this.over = true;
+    this.leftBy = 'player';
+    return Promise.resolve(this.session());
+  }
+
+  /** A mesa como ela está entre as mãos. */
+  private session(): PokerSession {
+    return {
+      matchId: 'match-1',
+      buyIn: this.stake,
+      stacks: { ...this.stacks },
+      handsPlayed: this.handsPlayed,
+      button: this.button,
+      over: this.over,
+      ...(this.bustedBy ? { bustedBy: this.bustedBy } : {}),
+      ...(this.leftBy ? { leftBy: this.leftBy } : {}),
+    };
+  }
+
+  advance(params: AdvanceParams): Promise<PokerRoundState> {
+    if (this.toAct === 'opponent' && this.opponentFolds) {
+      // Ele larga a mão: o pote é do jogador SEM showdown, que é a única
+      // situação em que mostrar as cartas é jogada.
+      this.apply('opponent', 'fold', undefined, false);
+      this.settled = true;
+      this.toAct = null;
+    } else if (this.toAct === 'opponent') {
+      // O rival empurra o stack inteiro e devolve a palavra ao jogador.
+      this.apply('opponent', 'raise', this.stake, false);
+      this.toAct = 'player';
+    } else {
+      this.settled = true;
+    }
+    return Promise.resolve(this.state(params.matchId));
+  }
+
+  /** Aplica um lance ao compromisso de um lado. */
+  private apply(
+    by: 'player' | 'opponent',
+    action: PokerAction,
+    to: number | undefined,
+    timedOut: boolean,
+  ): void {
+    const other = by === 'player' ? 'opponent' : 'player';
+    let amount = 0;
+    if (action === 'call') amount = Math.max(0, this.committed[other] - this.committed[by]);
+    if (action === 'raise') amount = (to ?? this.committed[by]) - this.committed[by];
+    this.committed[by] += amount;
+    // A ficha apostada SAI DO STACK: sem isto o montante da mesa cresceria
+    // a cada aposta, e a sessão inventaria fichas que ninguém comprou.
+    this.stacks[by] -= amount;
+    this.lastMove = {
+      by,
+      action,
+      amount,
+      to: this.committed[by],
+      allIn: this.committed[by] >= this.stake,
+      timedOut,
+    };
+  }
+
+  private match(id: string): Match {
+    return {
+      id,
+      opponent: { id: 'opp-1', name: 'Stub', avatar: 'S', rating: 1000 },
+      stake: this.stake,
+      createdAt: 0,
+    };
+  }
+
+  private state(matchId: string): PokerRoundState {
+    const hole = HOLE_FOR_OUTCOME[this.outcome];
+    const ante = Math.min(TABLE_ANTE, this.stake);
+    const contested = Math.min(this.committed.player, this.committed.opponent);
+    const folded = this.settled && this.lastMove?.action === 'fold';
+    const foldedBy = folded ? this.lastMove?.by : undefined;
+    const outcome: PokerOutcome = folded ? (foldedBy === 'player' ? 'lose' : 'win') : this.outcome;
+
+    /* O pote volta para os stacks assim que a mão fecha — é o que faz a
+       mesa ser uma SESSÃO e não uma sequência de mãos soltas. Só na
+       primeira leitura do estado fechado: `state` é chamado mais de uma
+       vez para a mesma mão. */
+    if (this.settled && !this.closed) {
+      this.closed = true;
+      this.handsPlayed += 1;
+      const back = {
+        player: this.committed.player - contested,
+        opponent: this.committed.opponent - contested,
+      };
+      const pot = contested * 2;
+      if (outcome === 'win') back.player += pot;
+      else if (outcome === 'lose') back.opponent += pot;
+      else {
+        back.player += contested;
+        back.opponent += contested;
+      }
+      this.stacks = {
+        player: this.stacks.player + back.player,
+        opponent: this.stacks.opponent + back.opponent,
+      };
+      this.button = this.button === 'player' ? 'opponent' : 'player';
+      this.bustedBy =
+        this.stacks.player < TABLE_ANTE
+          ? 'player'
+          : this.stacks.opponent < TABLE_ANTE
+            ? 'opponent'
+            : undefined;
+      this.over = this.over || this.bustedBy !== undefined;
+    }
+
+    const result: PokerResult | undefined = this.settled
+      ? {
+          id: createId(),
+          matchId,
+          playerHole: [...hole.player],
+          opponentHole: [...hole.opponent],
+          board: folded ? [] : [...BOARD],
+          // As duas mãos são lidas SEMPRE — inclusive na desistência, que
+          // é o que deixa a mesa mostrar o que cada um tinha.
+          playerRank: {
+            category: 'pair',
+            label: 'Par de Ases',
+            detail: 'de Ases',
+            cards: folded ? [...hole.player] : BOARD.slice(0, 5),
+          },
+          opponentRank: {
+            category: 'pair',
+            label: 'Par de Reis',
+            detail: 'de Reis',
+            cards: folded ? [...hole.opponent] : BOARD.slice(0, 5),
+          },
+          showdown: !folded,
+          ...(foldedBy ? { foldedBy } : {}),
+          outcome,
+          stake: this.stake,
+          committed: { ...this.committed },
+          contested,
+          pot: contested * 2,
+          payout: 0,
+          netChange: 0,
+          session: this.session(),
+          completedAt: 0,
+        }
+      : undefined;
+
+    const toCall =
+      this.toAct === 'player' ? Math.max(0, this.committed.opponent - this.committed.player) : 0;
+
     return {
       matchId,
-      phase: 'settled',
-      playerHand,
-      // Showdown: a mão do rival vira inteira, nada mais escondido.
-      opponentVisible: opponentHand,
-      opponentHidden: 0,
-      legalActions: [],
-      lastTurn: {
-        player: {
-          by: 'player',
-          action: this.choice ?? 'stand',
-          closed: true,
-          bust: false,
-          timedOut: this.choice === undefined,
-        },
-        opponent: { by: 'opponent', action: 'stand', closed: true, bust: false, timedOut: false },
+      street: this.settled && !folded ? 'showdown' : 'preflop',
+      phase: this.settled ? 'settled' : 'betting',
+      // O jogador tem o botão: primeira palavra no pré-flop (ver firstToAct).
+      button: 'player',
+      playerHole: [...hole.player],
+      // As fechadas do rival só atravessam no showdown — nunca antes, e
+      // nunca numa mão morta por desistência.
+      opponentHole: this.settled && !folded ? [...hole.opponent] : [],
+      board: this.settled && !folded ? [...BOARD] : [],
+      stacks: {
+        player: this.stake - this.committed.player,
+        opponent: this.stake - this.committed.opponent,
       },
-      playerClosed: true,
-      opponentClosed: true,
-      result,
+      committed: { ...this.committed },
+      pot: this.committed.player + this.committed.opponent,
+      toCall,
+      minRaiseTo: this.committed.opponent + ante,
+      maxRaiseTo: this.stake,
+      legalActions:
+        this.toAct === 'player' ? legalFor(toCall, this.committed.opponent < this.stake) : [],
+      toAct: this.toAct,
+      // A leitura da mão existe desde a distribuição: no pré-flop são as
+      // duas fechadas, do flop em diante a melhor de cinco.
+      playerHandLabel: 'Par de Ases',
+      session: this.session(),
+      ...(this.lastMove ? { lastMove: this.lastMove } : {}),
+      ...(result ? { result } : {}),
     };
   }
 }
 
-/** Negociador-stub satisfeito com a mesa que cobre qualquer lance. */
-function acceptAllNegotiator(): Negotiator {
-  return {
-    opening: () => null,
-    respond: () => ({ action: 'accept' }),
-  };
-}
-
-/** Negociador-stub que abre em 40 e recusa tudo contrapropondo +10. */
-function counterAllNegotiator(): Negotiator {
-  return {
-    opening: () => 40,
-    respond: (amount) => ({ action: 'decline', counter: amount + 10 }),
-  };
+/**
+ * As ações legais do stub: as mesmas regras de mesa, em miniatura —
+ * desistir só com aposta na frente, aumentar só com quem cubra.
+ */
+function legalFor(toCall: number, rivalHasChips: boolean): PokerAction[] {
+  // CORRER está SEMPRE na mesa: numa sessão, largar a mão custa a entrada
+  // que já está no meio (ver `legalActionsFor`).
+  const actions: PokerAction[] = toCall > 0 ? ['fold', 'call'] : ['fold', 'check'];
+  if (rivalHasChips) actions.push('raise');
+  return actions;
 }
 
 function createMemoryStorage(): Storage {
@@ -236,39 +370,33 @@ function createMemoryStorage(): Storage {
 
 /** Store isolado: engine roteirizada, storage em memória e saldo de 500. */
 function createTestStore(
-  outcomes: RoundOutcome | readonly RoundOutcome[],
+  outcomes: PokerOutcome | readonly PokerOutcome[],
   storage = createMemoryStorage(),
   rng: () => number = () => 0.25,
-  createNegotiator: () => Negotiator = acceptAllNegotiator,
+  opponentFolds = false,
 ) {
   return createGameStore({
-    engine: new StubEngine(outcomes),
+    engine: new StubPokerEngine(outcomes, opponentFolds),
     storage: new GameStorageService(storage),
     initialBalance: 500,
     rng,
-    createNegotiator,
   });
 }
 
 type TestStore = ReturnType<typeof createTestStore>;
 
-/** Showdown completo: as ocultas viram, o quadro respira, veredito. */
-const SHOWDOWN_MS = TIMINGS.revealMs + TIMINGS.settleMs;
-
 /**
- * Do fim do acordo até o countdown: acordo selado → apresentação do
- * rival → HORA DO DUELO. Três beats encadeados, uma constante só —
- * assim nenhum teste precisa saber a coreografia de cor.
+ * Da confirmação até o countdown: o beat do duelo travado, a
+ * apresentação do rival e a HORA DO DUELO. Três beats encadeados, uma
+ * constante só — assim nenhum teste precisa saber a coreografia de cor.
  */
-const SEAL_TO_COUNTDOWN_MS =
-  TIMINGS.negotiationSealMs + TIMINGS.foundSplashMs + TIMINGS.duelAnnounceMs;
+const CONFIRM_TO_COUNTDOWN_MS =
+  TIMINGS.confirmLockInMs + TIMINGS.foundSplashMs + TIMINGS.duelAnnounceMs;
 
 /**
- * Da Home até a mesa de negociação (busca + confirmação dupla). A busca
- * entrega DIRETO na confirmação: a apresentação do rival acontece lá na
- * frente, depois do acordo. O `advanceTimersByTimeAsync(0)` só drena o
- * microtask do findMatch — avançar tempo aqui deixaria o oponente
- * confirmar sozinho antes de o teste olhar.
+ * Da Home até a confirmação do duelo. O `advanceTimersByTimeAsync(0)` só
+ * drena o microtask do findMatch — avançar tempo aqui deixaria o
+ * oponente confirmar sozinho antes de o teste olhar.
  */
 async function reachConfirmPhase(store: TestStore) {
   void store.getState().startSearch();
@@ -276,97 +404,117 @@ async function reachConfirmPhase(store: TestStore) {
   expect(store.getState().phase).toBe('confirm');
 }
 
-async function reachNegotiation(store: TestStore) {
-  await reachConfirmPhase(store);
-
-  store.getState().confirmMatch();
-  await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
-  expect(store.getState().phase).toBe('negotiate');
-}
-
 /**
- * Fecha a mesa no valor dado: o lance entra, o stub cobre, o balão
- * segura o beat e a mesa abre o duelo sozinha (HORA DO DUELO →
- * countdown). Não existe mais botão de iniciar: cobrir É o acordo.
+ * Da confirmação até o countdown. Confirmado o duelo pelos dois lados, a
+ * mesa abre sozinha: não há mais nada a combinar — a entrada é fixa e o
+ * stack saiu do saldo no ato da busca.
  */
-async function agreeAndStart(store: TestStore, stake: number) {
-  store.getState().sendProposal(stake);
-  await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS);
-  expect(store.getState().negotiation?.proposal).toMatchObject({
-    amount: stake,
-    status: 'accepted',
-  });
-  expect(store.getState().negotiation?.tableStake).toBe(stake);
-
-  // O beat do balão aceito → a mesa fecha (setStake num microtask) →
-  // acordo selado → apresentação → HORA DO DUELO → countdown.
-  await vi.advanceTimersByTimeAsync(TIMINGS.negoAnswerHoldMs);
-  expect(store.getState().negotiation?.agreedStake).toBe(stake);
-  await vi.advanceTimersByTimeAsync(0);
-  await vi.advanceTimersByTimeAsync(SEAL_TO_COUNTDOWN_MS);
+async function confirmAndStart(store: TestStore) {
+  store.getState().confirmMatch();
+  await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs);
+  await vi.advanceTimersByTimeAsync(CONFIRM_TO_COUNTDOWN_MS);
   expect(store.getState().phase).toBe('countdown');
 }
 
-/** Countdown falado → distribuição → mesa pronta para a decisão. */
+/** Da Home até o countdown, sem escalas. */
+async function reachCountdown(store: TestStore) {
+  await reachConfirmPhase(store);
+  await confirmAndStart(store);
+}
+
+/** Countdown falado → distribuição → pré-flop aberto na sua palavra. */
 async function passDealing(store: TestStore) {
   await vi.advanceTimersByTimeAsync(TIMINGS.countdownTickMs * COUNTDOWN_START);
   expect(store.getState().phase).toBe('dealing');
-  // A distribuição não tem lance a anunciar: a primeira vez abre logo
-  // depois das cartas assentarem.
-  await vi.advanceTimersByTimeAsync(TIMINGS.dealMs);
+  // As quatro fechadas assentam e o LETREIRO DO PRÉ-FLOP carimba o
+  // feltro — a primeira rua é anunciada como qualquer outra, e a palavra
+  // só volta ao jogador depois do beat dela.
+  await vi.advanceTimersByTimeAsync(TIMINGS.dealMs + TIMINGS.pokerStreetMs);
 }
 
 /**
- * Para na primeira oportunidade e atravessa a vez até o desfecho: você
- * trava a escolha, o rival bate o martelo dele, a vez fecha revelando os
- * dois lances e a mesa vai ao showdown.
+ * Deixa a MESA andar sozinha e para no instante em que a palavra volta
+ * para o jogador — ou em que a mão acaba.
+ *
+ * Avança em passos curtos de propósito: assim o helper não atropela os
+ * beats que vêm depois (o anúncio do lance, a rua abrindo, o showdown) e
+ * os testes não precisam saber a coreografia da mesa de cor. Enquanto a
+ * palavra é sua a mesa não anda sozinha — o relógio de 20 s é o único
+ * que a move, e nenhum teste daqui chega perto disso.
  */
-async function standAndSettle(store: TestStore) {
-  expect(store.getState().phase).toBe('turn');
-  store.getState().stand();
-  await vi.advanceTimersByTimeAsync(0); // engine.commit resolve num microtask
-  // A vez fecha quando o martelo do rival também cair — que pode já ter
-  // caído (se ele decidiu antes) ou ainda estar por vir.
-  await closeTurn(store);
-  await passTurn(store);
-  expect(store.getState().phase).toBe('settle');
-
-  await vi.advanceTimersByTimeAsync(SHOWDOWN_MS);
-}
-
-/**
- * Espera o rival bater o martelo e a vez fechar na engine. Avança em
- * passos curtos e PARA no instante em que a rodada muda: assim o helper
- * não atropela os beats que vêm depois (revelação, showdown).
- */
-async function closeTurn(store: TestStore) {
-  const before = store.getState().round;
-  for (let step = 0; step < 100; step += 1) {
-    const current = store.getState().round;
-    // Já mudou (ou a vez nem estava aberta): não há o que esperar.
-    if (current !== before || current?.phase === 'settled') break;
-    await vi.advanceTimersByTimeAsync(250);
+async function letTableRun(store: TestStore) {
+  for (let step = 0; step < 400; step += 1) {
+    const { phase, round, actionPending } = store.getState();
+    if (phase !== 'dealing' && phase !== 'betting') break;
+    if (phase === 'betting' && !actionPending && round?.toAct === 'player') break;
+    await vi.advanceTimersByTimeAsync(50);
   }
-  await vi.advanceTimersByTimeAsync(0); // engine.resolveTurn num microtask
+  await vi.advanceTimersByTimeAsync(0);
   return store;
 }
 
-/** O beat da revelação, ao fim do qual a vez seguinte (ou o showdown) abre. */
-async function passTurn(store: TestStore) {
-  await vi.advanceTimersByTimeAsync(TIMINGS.turnRevealMs);
-  return store;
+/** Da mão em andamento até o CAIXA da sessão. */
+async function runToCompleted(store: TestStore) {
+  for (let step = 0; step < 800 && store.getState().phase !== 'completed'; step += 1) {
+    await vi.advanceTimersByTimeAsync(50);
+  }
+  expect(store.getState().phase).toBe('completed');
+}
+
+/** Da mão em andamento até o beat ENTRE AS MÃOS (a mão fechou). */
+async function runToHandover(store: TestStore) {
+  for (let step = 0; step < 400 && store.getState().phase !== 'handover'; step += 1) {
+    await vi.advanceTimersByTimeAsync(50);
+  }
+  expect(store.getState().phase).toBe('handover');
 }
 
 /**
- * Percorre o duelo inteiro (negociação, countdown, rodada única) até o
- * desfecho da partida. A rodada é ÚNICA: não há série a fechar.
+ * A LINHA MAIS PASSIVA POSSÍVEL até a mão fechar: passa quando é de
+ * graça, paga quando não é. Nunca desiste, nunca aumenta — o que garante
+ * chegar ao showdown sem que o teste precise saber quantas palavras a
+ * mesa vai dar ao jogador.
+ *
+ * O "passa quando é de graça" não é detalhe: a entrada da mesa é IGUAL
+ * dos dois lados, então a primeira palavra do pré-flop nunca tem aposta
+ * na frente — e `call` ali seria um lance ilegal, que a mesa recusa.
  */
-async function playUntilCompleted(store: TestStore, stake: number) {
-  await reachNegotiation(store);
-  await agreeAndStart(store, stake);
+async function callDown(store: TestStore) {
+  for (let guard = 0; guard < 8; guard += 1) {
+    await letTableRun(store);
+    const { phase, round } = store.getState();
+    if (phase !== 'betting' || round?.toAct !== 'player') break;
+    if (round.legalActions.includes('check')) store.getState().check();
+    else store.getState().call();
+    await vi.advanceTimersByTimeAsync(0); // engine.act resolve num microtask
+  }
+  await runToCompleted(store);
+}
+
+/**
+ * Percorre o duelo inteiro (busca, confirmação, countdown, mão única)
+ * até o desfecho da partida. A mão é ÚNICA: não há série a fechar.
+ *
+ * O STACK não é parâmetro: ele sai do saldo no ato da busca (ver
+ * `tableStackFor`), e não há mais nada a combinar no caminho.
+ */
+/** Como o `callDown`, mas parando no beat ENTRE AS MÃOS. */
+async function callDownToHandover(store: TestStore) {
+  for (let guard = 0; guard < 8; guard += 1) {
+    await letTableRun(store);
+    const { phase, round } = store.getState();
+    if (phase !== 'betting' || round?.toAct !== 'player') break;
+    if (round.legalActions.includes('check')) store.getState().check();
+    else store.getState().call();
+    await vi.advanceTimersByTimeAsync(0);
+  }
+  await runToHandover(store);
+}
+
+async function playUntilCompleted(store: TestStore) {
+  await reachCountdown(store);
   await passDealing(store);
-  await standAndSettle(store);
-  expect(store.getState().phase).toBe('completed');
+  await callDown(store);
 }
 
 beforeEach(() => {
@@ -381,33 +529,35 @@ describe('máquina de estados', () => {
   it('só permite transições declaradas', () => {
     expect(canTransition('idle', 'search')).toBe(true);
     expect(canTransition('idle', 'dealing')).toBe(false);
-    // A ordem das cenas de abertura: busca → confirmação → negociação →
-    // APRESENTAÇÃO → countdown. O splash do rival desceu para depois do
-    // acordo (é lá que ele deixa de ser anônimo), e a busca passou a
-    // entregar direto na confirmação.
+    // A ordem das cenas de abertura: busca → confirmação →
+    // APRESENTAÇÃO → countdown. O splash do rival vem depois da
+    // confirmação (é lá que ele deixa de ser anônimo), e a busca entrega
+    // direto na confirmação.
     expect(canTransition('search', 'confirm')).toBe(true);
     expect(canTransition('search', 'found')).toBe(false);
-    expect(canTransition('confirm', 'negotiate')).toBe(true);
-    expect(canTransition('negotiate', 'found')).toBe(true);
+    expect(canTransition('confirm', 'found')).toBe(true);
     expect(canTransition('found', 'countdown')).toBe(true);
     // Nem pular a apresentação, nem voltar a ela pela porta antiga.
-    expect(canTransition('negotiate', 'countdown')).toBe(false);
-    expect(canTransition('found', 'confirm')).toBe(false);
-    expect(canTransition('negotiate', 'idle')).toBe(true);
     expect(canTransition('confirm', 'countdown')).toBe(false);
+    expect(canTransition('found', 'confirm')).toBe(false);
     expect(canTransition('countdown', 'dealing')).toBe(true);
-    // A rodada interativa: distribuição → vez (simultânea, repetindo
-    // dentro da própria fase) → showdown. Com os dois naturais na
-    // distribuição a mesa vai direto ao showdown.
-    expect(canTransition('dealing', 'turn')).toBe(true);
-    expect(canTransition('dealing', 'settle')).toBe(true);
-    expect(canTransition('turn', 'settle')).toBe(true);
-    // A vez se repete DENTRO da fase: não há transição de `turn` para
-    // `turn` a declarar.
-    expect(canTransition('turn', 'turn')).toBe(false);
-    // Rodada única: o showdown só desemboca no fim da partida.
-    expect(canTransition('settle', 'completed')).toBe(true);
-    expect(canTransition('settle', 'countdown')).toBe(false);
+    // A mão de Hold'em: distribuição → apostas (as quatro ruas correm
+    // DENTRO da própria fase) → showdown. Não há atalho da distribuição
+    // para o showdown: no Hold'em sempre há pré-flop antes de tudo.
+    expect(canTransition('dealing', 'betting')).toBe(true);
+    expect(canTransition('dealing', 'settle')).toBe(false);
+    expect(canTransition('betting', 'settle')).toBe(true);
+    // As ruas se repetem DENTRO da fase: não há transição de `betting`
+    // para `betting` a declarar.
+    expect(canTransition('betting', 'betting')).toBe(false);
+    /* A MESA É UMA SESSÃO: o showdown desemboca no beat entre as mãos, e
+       é de lá que sai OUTRA distribuição — ou o caixa, quando alguém
+       quebrou ou o jogador se levantou. */
+    expect(canTransition('settle', 'handover')).toBe(true);
+    expect(canTransition('settle', 'completed')).toBe(false);
+    expect(canTransition('handover', 'dealing')).toBe(true);
+    expect(canTransition('handover', 'completed')).toBe(true);
+    expect(canTransition('handover', 'betting')).toBe(false);
     expect(canTransition('completed', 'search')).toBe(true);
     expect(canTransition('search', 'dealing')).toBe(false);
   });
@@ -417,15 +567,11 @@ describe('máquina de estados', () => {
     // confirmMatch em idle não faz nada.
     store.getState().confirmMatch();
     expect(store.getState().phase).toBe('idle');
-    // Lances e respostas fora da mesa de negociação não fazem nada.
-    store.getState().sendProposal(50);
-    store.getState().acceptProposal();
-    store.getState().declineProposal();
-    expect(store.getState().phase).toBe('idle');
-    expect(store.getState().negotiation).toBeNull();
-    // Pedir carta ou parar fora da vez do jogador não faz nada.
-    store.getState().hit();
-    store.getState().stand();
+    // Lances de poker fora da sua vez não fazem nada.
+    store.getState().fold();
+    store.getState().check();
+    store.getState().call();
+    store.getState().raise(100);
     expect(store.getState().phase).toBe('idle');
     expect(store.getState().round).toBeNull();
     expect(store.getState().actionPending).toBe(false);
@@ -442,106 +588,339 @@ describe('máquina de estados', () => {
   });
 });
 
-describe('fluxo completo do duelo', () => {
-  it('vitória: devolve o stake e credita 90% do ganho uma única vez', async () => {
+describe('fluxo completo da sessão', () => {
+  /* O saldo de teste é 500, então o buy-in da mesa é 500 (ver
+     `tableStackFor`) e o stub leva os dois ao all-in na primeira mão: um
+     dos lados zera, a mesa fecha e o caixa abre. */
+  it('lucro na mesa: o caixa credita o buy-in mais 90% do lucro', async () => {
     const store = createTestStore('win');
-    await playUntilCompleted(store, 50);
+    await playUntilCompleted(store);
 
-    expect(store.getState().balance).toBe(545);
+    /* Sentou com 500 (debitados), levantou com 1.000. Lucro de 500, dos
+       quais a casa fica com 10% — 500 + 450 voltam ao saldo. É a ÚNICA
+       vez que a comissão incide: dentro da sessão as fichas só trocam de
+       lado (ver `potShareFor`). */
+    expect(store.getState().session?.stacks.player).toBe(1000);
+    expect(store.getState().balance).toBe(950);
     expect(store.getState().result?.outcome).toBe('win');
-    // Uma partida, UMA entrada no histórico.
+    // Uma mão jogada, UMA entrada no histórico.
     expect(store.getState().history).toHaveLength(1);
-    expect(store.getState().history[0]?.netChange).toBe(45);
     expect(store.getState().history[0]?.opponentName).toBe('Stub');
   });
 
-  it('derrota: o stake negociado é perdido uma única vez', async () => {
+  it('quebrar na mesa zera o stack, e o caixa não cobra de quem perdeu', async () => {
     const store = createTestStore('lose');
-    await playUntilCompleted(store, 50);
+    await playUntilCompleted(store);
 
-    expect(store.getState().balance).toBe(450);
+    expect(store.getState().session?.stacks.player).toBe(0);
+    expect(store.getState().session?.bustedBy).toBe('player');
+    expect(store.getState().balance).toBe(0);
     expect(store.getState().result?.outcome).toBe('lose');
-    expect(store.getState().history).toHaveLength(1);
-    expect(store.getState().history[0]?.netChange).toBe(-50);
   });
 
-  it('empate devolve a aposta e encerra a partida do mesmo jeito', async () => {
+  it('a MESA CONTINUA quando ninguém quebra: o empate distribui de novo', async () => {
     const store = createTestStore('tie');
-    await playUntilCompleted(store, 50);
+    await reachCountdown(store);
+    await passDealing(store);
+    await callDownToHandover(store);
 
-    // Sem re-distribuição: o empate é um desfecho, não um adiamento.
-    expect(store.getState().balance).toBe(500);
+    /* No empate cada um recupera o que pôs, e ninguém fica sem fichas
+       para a entrada. Numa mesa de mão única isto era um desfecho; numa
+       SESSÃO é só uma mão que passou. */
     expect(store.getState().result?.outcome).toBe('tie');
-    expect(store.getState().history).toHaveLength(1);
-    expect(store.getState().history[0]?.netChange).toBe(0);
+    expect(store.getState().session?.stacks).toEqual({ player: 500, opponent: 500 });
+    expect(store.getState().session?.over).toBe(false);
+    // O saldo NÃO se mexe entre as mãos: as fichas ficam no feltro.
+    expect(store.getState().balance).toBe(0);
+
+    // E a mesa distribui outra em vez de abrir o caixa.
+    await vi.advanceTimersByTimeAsync(HANDOVER_SECONDS * 1000 + TIMINGS.dealMs);
+    expect(store.getState().phase).not.toBe('completed');
   });
 
-  it('a distribuição preenche a rodada e abre a vez do jogador', async () => {
+  it('o BOTÃO PASSA de lado a cada mão', async () => {
+    const store = createTestStore('tie');
+    await reachCountdown(store);
+    await passDealing(store);
+    const primeira = store.getState().round?.button;
+    await callDownToHandover(store);
+
+    // Quem abriu a primeira não abre a segunda: a posição se reparte.
+    expect(store.getState().session?.button).not.toBe(primeira);
+  });
+
+  it('LEVANTAR DA MESA fecha a sessão e abre o caixa', async () => {
+    const store = createTestStore('tie');
+    await reachCountdown(store);
+    await passDealing(store);
+    await callDownToHandover(store);
+
+    expect(store.getState().session?.handsPlayed).toBe(1);
+    store.getState().leaveTable();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(store.getState().phase).toBe('completed');
+    expect(store.getState().session?.leftBy).toBe('player');
+    // Empatou a noite inteira: leva de volta exatamente o que trouxe.
+    expect(store.getState().balance).toBe(500);
+  });
+
+  it('quando o RIVAL corre, a mesa oferece abrir a mão — com 5 s', async () => {
+    const store = createTestStore('win', createMemoryStorage(), () => 0.25, true);
+    await reachCountdown(store);
+    await passDealing(store);
+    // Passa a palavra: o rival larga a mão em vez de responder.
+    store.getState().check();
+    await vi.advanceTimersByTimeAsync(0);
+    await runToHandover(store);
+
+    /* O pote foi levado SEM showdown: as cartas iriam para o descarte sem
+       que o rival soubesse o que havia nelas. Mostrar é jogada — e é das
+       poucas do poker que não custa ficha nenhuma. */
+    expect(store.getState().result?.foldedBy).toBe('opponent');
+    expect(store.getState().showPrompt?.seconds).toBe(SHOW_CARDS_SECONDS);
+    expect(store.getState().showPrompt?.handLabel).toBe('Par de Ases');
+    expect(store.getState().cardsShown).toBe(false);
+  });
+
+  it('o SILÊNCIO vale por "não mostro", e a mesa segue sozinha', async () => {
+    const store = createTestStore('win', createMemoryStorage(), () => 0.25, true);
+    await reachCountdown(store);
+    await passDealing(store);
+    store.getState().check();
+    await vi.advanceTimersByTimeAsync(0);
+    await runToHandover(store);
+    expect(store.getState().showPrompt).not.toBeNull();
+
+    // Cinco segundos sem resposta: as cartas vão para o descarte de
+    // bruços, que é o que uma sala de verdade faz com quem não diz nada.
+    await vi.advanceTimersByTimeAsync(SHOW_CARDS_SECONDS * 1000);
+    expect(store.getState().showPrompt).toBeNull();
+    expect(store.getState().cardsShown).toBe(false);
+  });
+
+  it('MOSTRAR abre a mão e a mesa distribui a seguinte', async () => {
+    const store = createTestStore('win', createMemoryStorage(), () => 0.25, true);
+    await reachCountdown(store);
+    await passDealing(store);
+    store.getState().check();
+    await vi.advanceTimersByTimeAsync(0);
+    await runToHandover(store);
+
+    store.getState().answerShowCards(true);
+    expect(store.getState().cardsShown).toBe(true);
+    expect(store.getState().showPrompt).toBeNull();
+
+    // E o gesto vale AQUELE pote: a mão seguinte volta a ser segredo.
+    await vi.advanceTimersByTimeAsync(HANDOVER_SECONDS * 1000 + TIMINGS.dealMs);
+    expect(store.getState().cardsShown).toBe(false);
+  });
+
+  it('LEVANTAR no meio da mão CORRE a mão junto', async () => {
+    /* É o que uma sala faz com quem se levanta: a mão é dada por
+       perdida, não desfeita — as fichas que já estão no meio ficaram no
+       meio. A engine (com razão) não deixa abandonar mão viva, então o
+       pedido fica marcado e a mesa o cumpre quando o pote fecha. */
+    const store = createTestStore('tie');
+    await reachCountdown(store);
+    await passDealing(store);
+    await callDownToHandover(store);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Segunda mão em andamento, com a palavra do jogador na mesa.
+    await vi.advanceTimersByTimeAsync(HANDOVER_SECONDS * 1000 + TIMINGS.dealMs);
+    for (let passo = 0; passo < 200; passo += 1) {
+      const { phase, round } = store.getState();
+      if (phase === 'betting' && round?.toAct === 'player') break;
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    expect(store.getState().phase).toBe('betting');
+    expect(store.getState().round?.toAct).toBe('player');
+
+    store.getState().leaveTable();
+    await vi.advanceTimersByTimeAsync(0);
+    for (let passo = 0; passo < 400 && store.getState().phase !== 'completed'; passo += 1) {
+      await vi.advanceTimersByTimeAsync(50);
+    }
+
+    expect(store.getState().phase).toBe('completed');
+    expect(store.getState().result?.foldedBy).toBe('player');
+    expect(store.getState().session?.leftBy).toBe('player');
+  });
+
+  it('o INTERVALO entre as mãos corre em segundos, com a porta aberta', async () => {
+    const store = createTestStore('tie');
+    await reachCountdown(store);
+    await passDealing(store);
+    await callDownToHandover(store);
+
+    // O relógio aparece cheio e desce de um em um.
+    expect(store.getState().handoverSeconds).toBe(HANDOVER_SECONDS);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(store.getState().handoverSeconds).toBe(HANDOVER_SECONDS - 3);
+
+    /* Zerado, a mesa distribui SOZINHA: uma sessão que exigisse um toque
+       a cada mão para continuar seria uma sessão que se joga com o dedo,
+       não com a cabeça. */
+    await vi.advanceTimersByTimeAsync(HANDOVER_SECONDS * 1000);
+    expect(store.getState().phase).not.toBe('handover');
+  });
+
+  it('a PRIMEIRA mão é compromisso: não se levanta antes de ela fechar', async () => {
+    const store = createTestStore('tie');
+    await reachCountdown(store);
+    await passDealing(store);
+
+    /* Comprar fichas e sair antes de a primeira mão fechar não é jogar, é
+       olhar as cartas — e a entrada dos dois já está no meio. */
+    store.getState().leaveTable();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().phase).toBe('betting');
+  });
+
+  it('a distribuição abre o pré-flop com a entrada na mesa', async () => {
     const store = createTestStore('win');
-    await reachNegotiation(store);
-    await agreeAndStart(store, 50);
+    await reachCountdown(store);
 
     await passDealing(store);
-    expect(store.getState().phase).toBe('turn');
+    expect(store.getState().phase).toBe('betting');
     const round = store.getState().round;
-    expect(round?.playerHand).toHaveLength(2);
-    // Do rival só a primeira carta está na mesa; a outra é segredo dele.
-    expect(round?.opponentVisible).toHaveLength(1);
-    expect(round?.opponentHidden).toBe(1);
-    expect(round?.legalActions).toEqual(['hit', 'stand']);
+    expect(round?.street).toBe('preflop');
+    expect(round?.playerHole).toHaveLength(2);
+    // Nem uma carta do rival na mesa, e nenhuma comunitária ainda.
+    expect(round?.opponentHole).toEqual([]);
+    expect(round?.board).toEqual([]);
+    // A entrada dos DOIS já está no pote antes de qualquer decisão.
+    expect(round?.pot).toBe(TABLE_ANTE * 2);
+    expect(round?.committed.player).toBe(TABLE_ANTE);
+    expect(round?.committed.opponent).toBe(TABLE_ANTE);
     // Nada de resultado enquanto o jogador não age.
     expect(store.getState().result).toBeNull();
   });
 
-  it('blackjack natural pula a vez do jogador e paga como toda vitória', async () => {
-    const store = createGameStore({
-      engine: new StubEngine('win', { natural: true }),
-      storage: new GameStorageService(createMemoryStorage()),
-      initialBalance: 500,
-      rng: () => 0.25,
-      createNegotiator: acceptAllNegotiator,
-    });
-    await reachNegotiation(store);
-    await agreeAndStart(store, 50);
+  it('o letreiro anuncia o PRÉ-FLOP, e não só as ruas do meio', async () => {
+    const store = createTestStore('win');
+    await reachCountdown(store);
+    await vi.advanceTimersByTimeAsync(TIMINGS.countdownTickMs * COUNTDOWN_START);
 
-    // O natural fecha a sua mão na distribuição: a vez abre sem escolha
-    // nenhuma do seu lado, esperando só o martelo do rival.
-    await passDealing(store);
-    expect(store.getState().phase).toBe('turn');
-    expect(store.getState().round?.legalActions).toEqual([]);
-    expect(store.getState().turn.seconds).toBe(0);
+    /* A mesa é publicada em `round` antes de as fechadas voarem, e essa
+       antecipação já engoliu o letreiro do pré-flop uma vez: o condutor
+       comparava a rua nova com a do estado anterior e via a mesma rua
+       duas vezes. Quem manda no letreiro é o que foi ANUNCIADO. */
+    await vi.advanceTimersByTimeAsync(TIMINGS.dealMs);
+    expect(store.getState().streetAnnounce).toBe('preflop');
 
-    await closeTurn(store);
-    await passTurn(store);
-    expect(store.getState().phase).toBe('settle');
-    await vi.advanceTimersByTimeAsync(SHOWDOWN_MS);
-
-    expect(store.getState().phase).toBe('completed');
-    expect(store.getState().result?.playerNatural).toBe(true);
-    // O natural decide a mão, mas não paga a mais: o pote é fechado.
-    // 450 + payout(50) = 450 + 50 + 45 = 545.
-    expect(store.getState().balance).toBe(545);
-    expect(store.getState().history[0]?.netChange).toBe(45);
+    // E ele sai do feltro sozinho, sem prender a mão.
+    await vi.advanceTimersByTimeAsync(TIMINGS.streetAnnounceMs);
+    expect(store.getState().streetAnnounce).toBeNull();
   });
 
-  it('o débito só acontece na virada para o countdown, depois do acordo', async () => {
+  it('cada rua nova é carimbada uma vez só, do pré-flop ao showdown', async () => {
     const store = createTestStore('win');
-    await reachNegotiation(store);
-    expect(store.getState().balance).toBe(500);
+    const vistas: string[] = [];
+    const parar = store.subscribe((state) => {
+      const rua = state.streetAnnounce;
+      if (rua && vistas[vistas.length - 1] !== rua) vistas.push(rua);
+    });
 
-    store.getState().sendProposal(80);
-    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS);
-    // Lance coberto e a mesa valendo 80 — nada debitado ainda.
-    expect(store.getState().negotiation?.tableStake).toBe(80);
-    expect(store.getState().balance).toBe(500);
+    await playUntilCompleted(store);
+    parar();
 
-    // O beat do balão fecha a mesa; o débito só cai com o countdown.
-    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnswerHoldMs);
-    expect(store.getState().balance).toBe(500);
+    // A ordem é a da mão, e nenhuma rua se repete: um letreiro que
+    // piscasse duas vezes na mesma rua diria que algo novo aconteceu.
+    expect(vistas).toEqual([...new Set(vistas)]);
+    expect(vistas[0]).toBe('preflop');
+    expect(vistas.length).toBeGreaterThan(1);
+  });
+
+  it('a mesa só muda DEPOIS que o letreiro da rua sai', async () => {
+    const store = createTestStore('win');
+
+    /* Fotografa, a cada letreiro que sobe, qual rua a MESA ainda está
+       mostrando. Uma assinatura vale mais que um laço aqui: ela não pode
+       atravessar o beat de um salto nem depender de quanto tempo cada
+       passo do teste avança. */
+    const anuncios: { anunciada: Street; mesa: Street }[] = [];
+    const parar = store.subscribe((state) => {
+      const rua = state.streetAnnounce;
+      if (!rua || !state.round) return;
+      if (anuncios[anuncios.length - 1]?.anunciada === rua) return;
+      anuncios.push({ anunciada: rua, mesa: state.round.street });
+    });
+
+    await playUntilCompleted(store);
+    parar();
+
+    expect(anuncios.length).toBeGreaterThan(1);
+    // O pré-flop é a exceção: a mesa já está nele quando ele é anunciado
+    // (as fechadas voaram antes, na distribuição).
+    expect(anuncios[0]).toEqual({ anunciada: 'preflop', mesa: 'preflop' });
+
+    /* Em todas as outras, a mesa ainda é a rua ANTERIOR enquanto o
+       letreiro está no ar. Virar as cartas aqui as esconderia por trás
+       do desfoque — e a virada é o acontecimento que a rua É. */
+    for (const anuncio of anuncios.slice(1)) {
+      expect(anuncio.mesa).not.toBe(anuncio.anunciada);
+    }
+  });
+
+  it('desistir entrega o pote e custa só o que já estava na mesa', async () => {
+    const store = createTestStore('win');
+    await reachCountdown(store);
+    await passDealing(store);
+    expect(store.getState().phase).toBe('betting');
+
+    // Desistir só existe com aposta na frente: passa a primeira palavra
+    // e deixa o rival empurrar.
+    store.getState().check();
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(SEAL_TO_COUNTDOWN_MS);
+    await letTableRun(store);
+
+    // A entrada é tudo o que ele pôs: correr não põe mais nenhuma ficha
+    // no pote, e o resto do stack fica no feltro para a mão seguinte.
+    store.getState().fold();
+    await vi.advanceTimersByTimeAsync(0);
+    await runToHandover(store);
+
+    expect(store.getState().result?.outcome).toBe('lose');
+    expect(store.getState().result?.showdown).toBe(false);
+    expect(store.getState().result?.foldedBy).toBe('player');
+    expect(store.getState().result?.contested).toBe(TABLE_ANTE);
+    /* CORRER custa a entrada e nada mais — e é por isso que ele existe
+       numa sessão: largar a mão guarda as outras 400 fichas. A MESA
+       CONTINUA: ninguém ficou sem fichas para a entrada seguinte. */
+    expect(store.getState().session?.stacks.player).toBe(500 - TABLE_ANTE);
+    expect(store.getState().session?.over).toBe(false);
+  });
+
+  it('o showdown abre as duas mãos e paga sobre o que foi disputado', async () => {
+    const store = createTestStore('win');
+    await playUntilCompleted(store);
+
+    const result = store.getState().result;
+    expect(result?.showdown).toBe(true);
+    // Os dois foram com tudo: o disputado é o stack inteiro.
+    expect(result?.contested).toBe(500);
+    expect(store.getState().round?.opponentHole).toHaveLength(2);
+  });
+
+  it('o STACK sai do saldo só na virada para o countdown', async () => {
+    const store = createTestStore('win');
+    await reachConfirmPhase(store);
+    // A partida já nasce sabendo quanto vale — e nada saiu do bolso.
+    expect(store.getState().match?.stake).toBe(500);
+    expect(store.getState().balance).toBe(500);
+
+    store.getState().confirmMatch();
+    await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs);
+    // Confirmado, mas a apresentação ainda corre: o débito não caiu.
+    expect(store.getState().balance).toBe(500);
+
+    await vi.advanceTimersByTimeAsync(CONFIRM_TO_COUNTDOWN_MS);
     expect(store.getState().phase).toBe('countdown');
-    expect(store.getState().balance).toBe(420);
+    // Comprar fichas para sentar custa o stack inteiro; o que não for
+    // apostado volta no fim da mão.
+    expect(store.getState().balance).toBe(0);
   });
 
   it('a distribuição embaralha e a vitória fecha com fanfarra + aplauso', async () => {
@@ -551,7 +930,7 @@ describe('fluxo completo do duelo', () => {
       played.push(name);
     });
 
-    await playUntilCompleted(store, 50);
+    await playUntilCompleted(store);
     expect(played).toContain('shuffle');
     // Vitória: fanfarra E a ovação, como efeitos separados.
     expect(played).toContain('win');
@@ -566,13 +945,16 @@ describe('fluxo completo do duelo', () => {
     });
 
     const losing = createTestStore('lose');
-    await playUntilCompleted(losing, 50);
+    await playUntilCompleted(losing);
     expect(played).toContain('lose');
     expect(played).not.toContain('applause');
 
     played.length = 0;
     const tied = createTestStore('tie');
-    await playUntilCompleted(tied, 50);
+    await reachCountdown(tied);
+    await passDealing(tied);
+    // O empate não quebra ninguém: a sessão segue, e o aviso é da MÃO.
+    await callDownToHandover(tied);
     expect(played).toContain('tie');
     expect(played).not.toContain('applause');
     spy.mockRestore();
@@ -580,8 +962,7 @@ describe('fluxo completo do duelo', () => {
 
   it('o resultado forçado do DevTools vale a rodada e morre com ela', async () => {
     const store = createTestStore('win');
-    await reachNegotiation(store);
-    await agreeAndStart(store, 50);
+    await reachCountdown(store);
     // Injetado direto no estado: o setter público é gateado pelo
     // devToolsEnabled, que fica desligado sob teste.
     store.setState({ devForcedDeal: 'win' });
@@ -589,116 +970,148 @@ describe('fluxo completo do duelo', () => {
     await passDealing(store);
     expect(store.getState().devForcedDeal).toBe('win');
 
-    await standAndSettle(store);
-    expect(store.getState().phase).toBe('completed');
+    await callDown(store);
     expect(store.getState().devForcedDeal).toBeNull();
   });
 
   it('jogar de novo limpa a rodada e abre uma nova busca mantendo o saldo', async () => {
     const store = createTestStore('win');
-    await playUntilCompleted(store, 50);
+    await playUntilCompleted(store);
     store.getState().playAgain();
 
     expect(store.getState().phase).toBe('search');
-    expect(store.getState().balance).toBe(545);
+    expect(store.getState().balance).toBe(950);
     expect(store.getState().result).toBeNull();
     expect(store.getState().round).toBeNull();
-    expect(store.getState().match).toBeNull();
-    expect(store.getState().negotiation).toBeNull();
   });
 });
 
-describe('vez do jogador', () => {
+describe('a sua vez de apostar', () => {
   async function reachPlayerTurn(store: TestStore) {
-    await reachNegotiation(store);
-    await agreeAndStart(store, 50);
+    await reachCountdown(store);
     await passDealing(store);
-    expect(store.getState().phase).toBe('turn');
+    expect(store.getState().phase).toBe('betting');
+    return store;
   }
 
-  it('parar fecha a mão e a mesa atravessa rival → showdown → desfecho', async () => {
-    const store = createTestStore('win');
-    await reachPlayerTurn(store);
-    await standAndSettle(store);
+  it('passar move a mesa: o rival responde e a palavra volta', async () => {
+    const store = await reachPlayerTurn(createTestStore('win'));
+    // A janela abriu e o relógio está correndo.
+    expect(store.getState().actionClock.open).toBe(true);
+    expect(store.getState().actionClock.seconds).toBeGreaterThan(0);
 
-    expect(store.getState().phase).toBe('completed');
-    expect(store.getState().result?.outcome).toBe('win');
-    // No showdown a mão do rival está inteira na mesa.
-    expect(store.getState().round?.opponentHidden).toBe(0);
+    // Entrada igual dos dois lados: no pré-flop não há o que pagar, e o
+    // lance de graça é passar.
+    store.getState().check();
+    await vi.advanceTimersByTimeAsync(0);
+    // O lance é seu e a mesa o anuncia; o relógio da sua vez morre aqui.
+    expect(store.getState().round?.lastMove).toMatchObject({ by: 'player', action: 'check' });
+    expect(store.getState().actionClock.seconds).toBe(0);
+
+    // A mesa anda sozinha: o rival joga a vez dele e a palavra volta.
+    await letTableRun(store);
+    expect(store.getState().round?.lastMove?.by).toBe('opponent');
+    expect(store.getState().round?.toAct).toBe('player');
   });
 
-  it('travar a escolha não mexe na mesa: a vez só fecha com os dois dentro', async () => {
-    const store = createTestStore('win');
-    await reachPlayerTurn(store);
-    expect(store.getState().turn.seconds).toBe(TURN_SECONDS);
-
-    store.getState().hit();
+  it('o lance do rival é anunciado por um beat e sai de cena', async () => {
+    const store = await reachPlayerTurn(createTestStore('win'));
+    store.getState().check();
     await vi.advanceTimersByTimeAsync(0);
-    // O martelo caiu do seu lado e a mesa continua parada: sem ações
-    // disponíveis, sem revelação, esperando o rival.
-    expect(store.getState().round?.playerChoice).toBe('hit');
-    expect(store.getState().round?.legalActions).toEqual([]);
-    expect(store.getState().reveal).toBeNull();
-    expect(store.getState().phase).toBe('turn');
+    await letTableRun(store);
 
-    // Com o martelo dele, a vez fecha e os DOIS lances são revelados.
-    await closeTurn(store);
-    expect(store.getState().reveal).toMatchObject({
-      player: { by: 'player', action: 'hit' },
-      opponent: { by: 'opponent' },
-    });
+    expect(store.getState().announce).toMatchObject({ by: 'opponent', action: 'raise' });
+    await vi.advanceTimersByTimeAsync(TIMINGS.moveHoldMs);
+    expect(store.getState().announce).toBeNull();
   });
 
-  it('o relógio zerado para a sua mão pela mesa (e ninguém estoura por isso)', async () => {
-    const store = createTestStore('win');
-    await reachPlayerTurn(store);
-
-    // Deixa os 20 s correrem inteiros sem escolher nada.
-    await vi.advanceTimersByTimeAsync(TURN_SECONDS * 1000);
+  it('o relógio zerado joga por você: passa quando o lance é de graça', async () => {
+    const store = await reachPlayerTurn(createTestStore('win'));
+    // Deixa os 20 s correrem inteiros sem decidir nada. Sem aposta na
+    // frente, o lance seguro é seguir de graça — jogar a mão fora ali
+    // seria a mesa jogando fora uma mão que não custava nada manter.
+    await vi.advanceTimersByTimeAsync(ACTION_SECONDS * 1000);
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(store.getState().reveal?.player).toMatchObject({
-      action: 'stand',
+    expect(store.getState().round?.lastMove).toMatchObject({
+      by: 'player',
+      action: 'check',
       timedOut: true,
-      bust: false,
     });
   });
 
-  it('a escolha em trânsito trava os botões (actionPending)', async () => {
-    const store = createTestStore('win');
-    await reachPlayerTurn(store);
+  it('o relógio zerado DESISTE quando há aposta na frente', async () => {
+    const store = await reachPlayerTurn(createTestStore('win'));
+    // Passa a primeira palavra; o rival empurra tudo e a palavra volta
+    // com uma aposta na frente. Agora o lance seguro é jogar fora.
+    store.getState().check();
+    await vi.advanceTimersByTimeAsync(0);
+    await letTableRun(store);
+    expect(store.getState().round?.toCall).toBeGreaterThan(0);
+
+    /* O relógio só começa quando a JANELA abre, e ela abre um beat depois
+       de o lance do rival ser anunciado (ver ActionClock.open). Contar só
+       os 20 s a partir daqui pararia o teste um beat antes de o relógio
+       zerar. */
+    await vi.advanceTimersByTimeAsync(TIMINGS.pokerMoveMs + ACTION_SECONDS * 1000);
+    await vi.advanceTimersByTimeAsync(0);
+    // A mesa jogou por ele, e o lance seguro com aposta na frente é
+    // jogar a mão fora.
+    expect(store.getState().result?.foldedBy).toBe('player');
+  });
+
+  it('o lance em trânsito trava a barra (actionPending)', async () => {
+    const store = await reachPlayerTurn(createTestStore('win'));
     expect(store.getState().actionPending).toBe(false);
 
-    store.getState().stand();
+    store.getState().check();
     // Antes do microtask da engine, a trava está de pé.
     expect(store.getState().actionPending).toBe(true);
-    // Uma segunda ação no meio do trânsito não chega à engine.
-    store.getState().hit();
+    // Um segundo lance no meio do trânsito não chega à engine.
+    store.getState().raise(500);
     await vi.advanceTimersByTimeAsync(0);
     expect(store.getState().actionPending).toBe(false);
+    expect(store.getState().round?.lastMove?.action).toBe('check');
+  });
+
+  it('um lance ilegal não chega à engine', async () => {
+    const store = await reachPlayerTurn(createTestStore('win'));
+    // Sem aposta na frente não há o que pagar. (CORRER, sim: numa sessão
+    // largar a mão custa a entrada que já está no meio.)
+    expect(store.getState().round?.legalActions).not.toContain('call');
+
+    store.getState().call();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().round?.lastMove).toBeUndefined();
+    expect(store.getState().phase).toBe('betting');
+  });
+
+  it('aumentar leva o total da rua ao valor pedido', async () => {
+    const store = await reachPlayerTurn(createTestStore('win'));
+    const target = store.getState().round?.minRaiseTo ?? 0;
+    expect(target).toBeGreaterThan(0);
+
+    store.getState().raise(target);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().round?.lastMove).toMatchObject({ action: 'raise', to: target });
+    expect(store.getState().round?.committed.player).toBe(target);
   });
 
   it('o resultado não vaza antes do showdown: settle é quem exibe', async () => {
-    const store = createTestStore('win');
-    await reachPlayerTurn(store);
+    const store = await reachPlayerTurn(createTestStore('win'));
 
-    store.getState().stand();
+    store.getState().call();
     await vi.advanceTimersByTimeAsync(0);
-    // Travar a escolha não resolve nada: o resultado ainda nem existe.
+    // O pote ainda está em disputa: não há resultado nenhum a mostrar.
     expect(store.getState().result).toBeNull();
-
-    await closeTurn(store);
-    // A vez fechada traz o resultado — mas o veredito ainda espera o
-    // beat da revelação para virar as cartas.
-    expect(store.getState().result).not.toBeNull();
-    expect(store.getState().phase).toBe('turn');
+    expect(store.getState().round?.opponentHole).toEqual([]);
   });
 });
 
 describe('cancelamento e recusa', () => {
   it('cancelar a busca volta ao menu sem debitar', async () => {
     const store = createGameStore({
-      engine: new LocalBlackjackGameEngine({
+      engine: new LocalPokerEngine({
         rng: new SeededRng(1),
         matchmakingDelayMs: [1000, 1000],
       }),
@@ -746,12 +1159,12 @@ describe('confirmação dupla', () => {
     expect(store.getState().confirmations).toEqual({ player: true, opponent: false });
     expect(store.getState().phase).toBe('confirm');
 
-    // Com os dois prontos, o lock-in abre a mesa de negociação — sem
-    // débito nenhum (o valor ainda vai nascer da conversa).
+    // Com os dois prontos, o lock-in leva à APRESENTAÇÃO do rival — e
+    // ainda sem débito nenhum: comprar as fichas é o último ato antes
+    // das cartas.
     await vi.advanceTimersByTimeAsync(TIMINGS.opponentConfirmMaxMs + TIMINGS.confirmLockInMs);
-    expect(store.getState().phase).toBe('negotiate');
+    expect(store.getState().phase).toBe('found');
     expect(store.getState().balance).toBe(500);
-    expect(store.getState().negotiation?.agreedStake).toBeNull();
   });
 
   it('o oponente confirmando primeiro não abre a mesa nem debita', async () => {
@@ -790,436 +1203,14 @@ describe('confirmação dupla', () => {
   });
 });
 
-describe('dobra da aposta', () => {
-  /** Da Home até a sua vez, com o valor da mesa já debitado. */
-  async function reachPlayerTurn(store: TestStore, stake: number) {
-    await reachNegotiation(store);
-    await agreeAndStart(store, stake);
-    await passDealing(store);
-    expect(store.getState().phase).toBe('turn');
-  }
-
-  /** Resposta do rival: a janela dele + o microtask do setStake. */
-  async function waitForAnswer() {
-    await vi.advanceTimersByTimeAsync(TIMINGS.doubleAnswerMaxMs);
-    await vi.advanceTimersByTimeAsync(0);
-  }
-
-  it('rival topa: a mesa passa a valer o dobro e a diferença sai do saldo', async () => {
-    // rng 0,25 contra a mesa aberta do stub (só o 10♠): ele aceita.
-    const store = createTestStore('win', createMemoryStorage(), () => 0.25);
-    await reachPlayerTurn(store, 50);
-    expect(store.getState().balance).toBe(450);
-
-    store.getState().requestDouble();
-    expect(store.getState().doubleBet).toMatchObject({ status: 'pending', amount: 100 });
-
-    // Enquanto a dobra está no ar a mesa não anda: parar agora fecharia a
-    // mão por um valor que ainda está sendo decidido.
-    store.getState().stand();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(store.getState().phase).toBe('turn');
-
-    await waitForAnswer();
-    expect(store.getState().doubleBet.status).toBe('accepted');
-    expect(store.getState().match?.stake).toBe(100);
-    expect(store.getState().balance).toBe(400);
-
-    // A nuvem sai de cena, mas o pedido não volta a existir: uma por mão.
-    await vi.advanceTimersByTimeAsync(TIMINGS.doubleAnswerHoldMs);
-    expect(store.getState().doubleBet.open).toBe(false);
-    store.getState().requestDouble();
-    expect(store.getState().doubleBet.status).toBe('accepted');
-
-    // O payout deriva do valor dobrado: 400 + 100 + 90.
-    await standAndSettle(store);
-    expect(store.getState().result?.stake).toBe(100);
-    expect(store.getState().balance).toBe(590);
-  });
-
-  it('rival recusa: a mesa segue valendo o mesmo e nada é debitado', async () => {
-    const store = createTestStore('win', createMemoryStorage(), () => 0.99);
-    await reachPlayerTurn(store, 50);
-
-    store.getState().requestDouble();
-    await waitForAnswer();
-
-    expect(store.getState().doubleBet.status).toBe('declined');
-    expect(store.getState().match?.stake).toBe(50);
-    expect(store.getState().balance).toBe(450);
-
-    await standAndSettle(store);
-    expect(store.getState().result?.stake).toBe(50);
-    expect(store.getState().balance).toBe(545);
-  });
-
-  it('sem saldo para cobrir a diferença o pedido nem sai', async () => {
-    const store = createGameStore({
-      engine: new StubEngine('win'),
-      storage: new GameStorageService(createMemoryStorage()),
-      initialBalance: 90,
-      rng: () => 0.25,
-      createNegotiator: acceptAllNegotiator,
-    });
-    await reachPlayerTurn(store, 50);
-    expect(store.getState().balance).toBe(40);
-
-    store.getState().requestDouble();
-    expect(store.getState().doubleBet.status).toBe('idle');
-  });
-
-  it('a dobra só existe na sua vez e morre com a partida', async () => {
-    const store = createTestStore('win', createMemoryStorage(), () => 0.25);
-    await reachNegotiation(store);
-
-    // Fora da vez do jogador não há mão para dobrar.
-    store.getState().requestDouble();
-    expect(store.getState().doubleBet.status).toBe('idle');
-
-    await agreeAndStart(store, 50);
-    await passDealing(store);
-    store.getState().requestDouble();
-    await waitForAnswer();
-    expect(store.getState().doubleBet.status).toBe('accepted');
-
-    await standAndSettle(store);
-    void store.getState().startSearch();
-    expect(store.getState().doubleBet).toEqual({ status: 'idle', amount: 0, open: false });
-  });
-});
-
-describe('mesa de negociação', () => {
-  it('a mesa abre na aposta padrão de 100 com o relógio de 20 s', async () => {
-    const store = createTestStore('win');
-    await reachNegotiation(store);
-
-    const negotiation = store.getState().negotiation;
-    expect(negotiation?.tableStake).toBe(100);
-    expect(negotiation?.proposal).toBeNull();
-    expect(negotiation?.agreedStake).toBeNull();
-    expect(negotiation?.starting).toBe(false);
-    expect(negotiation?.announcing).toBe(true);
-    expect(negotiation?.secondsLeft).toBe(NEGOTIATION_SECONDS);
-  });
-
-  it('o relógio da rodada só começa quando o título de abertura sai', async () => {
-    const store = createTestStore('win');
-    await reachNegotiation(store);
-
-    // Durante o letreiro a contagem fica parada nos 20 s cheios.
-    await vi.advanceTimersByTimeAsync(200);
-    expect(store.getState().negotiation?.announcing).toBe(true);
-    expect(store.getState().negotiation?.secondsLeft).toBe(NEGOTIATION_SECONDS);
-
-    // Avança em passos curtos até o letreiro sair: no instante em que
-    // ele cede, a rodada tem os 20 s INTEIROS — o título não comeu
-    // segundo nenhum de negociação.
-    for (let step = 0; step < 60 && store.getState().negotiation?.announcing; step += 1) {
-      await vi.advanceTimersByTimeAsync(100);
-    }
-    expect(store.getState().negotiation?.announcing).toBe(false);
-    expect(store.getState().negotiation?.secondsLeft).toBe(NEGOTIATION_SECONDS);
-
-    // E só a partir daí ela corre.
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(store.getState().negotiation?.secondsLeft).toBe(NEGOTIATION_SECONDS - 2);
-  });
-
-  it('propor durante o título dispensa o letreiro e abre a mesa na hora', async () => {
-    const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
-    await reachNegotiation(store);
-    expect(store.getState().negotiation?.announcing).toBe(true);
-
-    store.getState().sendProposal(50);
-    expect(store.getState().negotiation?.announcing).toBe(false);
-    expect(store.getState().negotiation?.proposal).toMatchObject({
-      from: 'player',
-      amount: 50,
-      status: 'pending',
-    });
-  });
-
-  it('a mesa nunca abre acima do saldo do jogador', async () => {
-    const store = createGameStore({
-      engine: new StubEngine('win'),
-      storage: new GameStorageService(createMemoryStorage()),
-      initialBalance: 74,
-      rng: () => 0.25,
-      createNegotiator: acceptAllNegotiator,
-    });
-    await reachNegotiation(store);
-    // 74 de saldo → a aposta padrão desce para a dezena pagável (70).
-    expect(store.getState().negotiation?.tableStake).toBe(70);
-  });
-
-  it('sem lances, o relógio zera e o duelo abre valendo a mesa', async () => {
-    const store = createTestStore('win');
-    await reachNegotiation(store);
-
-    // O beat do letreiro + os 20 s cheios da rodada.
-    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnnounceMs + NEGOTIATION_SECONDS * 1000);
-    const negotiation = store.getState().negotiation;
-    expect(negotiation?.starting).toBe(true);
-    expect(negotiation?.agreedStake).toBe(100);
-
-    await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(SEAL_TO_COUNTDOWN_MS);
-    expect(store.getState().phase).toBe('countdown');
-    expect(store.getState().balance).toBe(400);
-    expect(store.getState().match?.stake).toBe(100);
-  });
-
-  it('o lance do jogador vira balão pendente e o aceite fecha a mesa nele', async () => {
-    const store = createTestStore('win');
-    await reachNegotiation(store);
-
-    store.getState().sendProposal(80);
-    expect(store.getState().negotiation?.proposal).toMatchObject({
-      from: 'player',
-      amount: 80,
-      status: 'pending',
-      open: true,
-    });
-    // A mesa ainda vale a aposta padrão enquanto o lance está no ar.
-    expect(store.getState().negotiation?.tableStake).toBe(100);
-
-    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS);
-    expect(store.getState().negotiation?.proposal?.status).toBe('accepted');
-    expect(store.getState().negotiation?.tableStake).toBe(80);
-
-    // Cobrir É o acordo: a mesa fecha sozinha depois do beat do balão.
-    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnswerHoldMs);
-    expect(store.getState().negotiation?.starting).toBe(true);
-    expect(store.getState().negotiation?.agreedStake).toBe(80);
-  });
-
-  it('propor o valor que já está na mesa é confirmá-la', async () => {
-    const store = createTestStore('win');
-    await reachNegotiation(store);
-
-    store.getState().sendProposal(100);
-    expect(store.getState().negotiation?.proposal?.status).toBe('accepted');
-
-    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnswerHoldMs);
-    expect(store.getState().negotiation?.agreedStake).toBe(100);
-  });
-
-  it('o relógio PARA enquanto um lance seu espera a resposta do rival', async () => {
-    // rng 1: todos os delays no máximo — a resposta do bot chega
-    // exatamente em BOT_REPLY_MAX_MS e a linha do tempo é exata.
-    const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
-    await reachNegotiation(store);
-    // Deixa o letreiro sair para o relógio estar de fato correndo.
-    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnnounceMs);
-    const before = store.getState().negotiation?.secondsLeft ?? 0;
-
-    store.getState().sendProposal(50);
-    // Três segundos com o lance no ar: o relógio não anda.
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(store.getState().negotiation?.secondsLeft).toBe(before);
-
-    // A recusa chega (em BOT_REPLY_MAX_MS) e o relógio volta a correr.
-    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS + 2500);
-    expect(store.getState().negotiation?.secondsLeft).toBeLessThan(before);
-  });
-
-  it('recusa do bot mantém a mesa e a contraproposta dele entra como lance novo', async () => {
-    const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
-    await reachNegotiation(store);
-
-    store.getState().sendProposal(50);
-    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS);
-    expect(store.getState().negotiation?.proposal).toMatchObject({
-      from: 'player',
-      amount: 50,
-      status: 'declined',
-    });
-    expect(store.getState().negotiation?.tableStake).toBe(100);
-
-    // A contraproposta (50 + 10) entra um beat depois, virada para você.
-    await vi.advanceTimersByTimeAsync(BOT_BEATS.counterDelayMaxMs);
-    expect(store.getState().negotiation?.proposal).toMatchObject({
-      from: 'opponent',
-      amount: 60,
-      status: 'pending',
-    });
-
-    // Cobrir o lance dele fecha a mesa no valor dele.
-    store.getState().acceptProposal();
-    expect(store.getState().negotiation?.proposal?.status).toBe('accepted');
-    expect(store.getState().negotiation?.tableStake).toBe(60);
-  });
-
-  it('recusar o lance do rival mantém a mesa valendo o mesmo', async () => {
-    const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
-    await reachNegotiation(store);
-
-    // A abertura espontânea do bot (40) chega.
-    await vi.advanceTimersByTimeAsync(BOT_OPENING_MAX_MS);
-    expect(store.getState().negotiation?.proposal).toMatchObject({
-      from: 'opponent',
-      amount: 40,
-      status: 'pending',
-    });
-
-    store.getState().declineProposal();
-    expect(store.getState().negotiation?.proposal?.status).toBe('declined');
-    expect(store.getState().negotiation?.tableStake).toBe(100);
-
-    // O balão recusado sai de cena sozinho depois do beat.
-    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnswerHoldMs);
-    expect(store.getState().negotiation?.proposal?.open).toBe(false);
-  });
-
-  it('um lance seu por cima do lance vivo do rival substitui o balão', async () => {
-    const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
-    await reachNegotiation(store);
-    await vi.advanceTimersByTimeAsync(BOT_OPENING_MAX_MS);
-    expect(store.getState().negotiation?.proposal?.from).toBe('opponent');
-
-    store.getState().sendProposal(90);
-    expect(store.getState().negotiation?.proposal).toMatchObject({
-      from: 'player',
-      amount: 90,
-      status: 'pending',
-    });
-  });
-
-  it('propor o valor exato do lance vivo do rival é um aperto de mãos', async () => {
-    const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
-    await reachNegotiation(store);
-    await vi.advanceTimersByTimeAsync(BOT_OPENING_MAX_MS);
-
-    store.getState().sendProposal(40);
-    expect(store.getState().negotiation?.proposal?.status).toBe('accepted');
-    expect(store.getState().negotiation?.tableStake).toBe(40);
-  });
-
-  it('um lance sem resposta morre com o relógio — vale o que está na mesa', async () => {
-    const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
-    await reachNegotiation(store);
-
-    // A abertura do bot entra e fica sem resposta até o relógio zerar.
-    await vi.advanceTimersByTimeAsync(BOT_OPENING_MAX_MS);
-    expect(store.getState().negotiation?.proposal?.status).toBe('pending');
-
-    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnnounceMs + NEGOTIATION_SECONDS * 1000);
-    const negotiation = store.getState().negotiation;
-    expect(negotiation?.proposal?.status).toBe('declined');
-    expect(negotiation?.starting).toBe(true);
-    expect(negotiation?.agreedStake).toBe(100);
-  });
-
-  it('o aceite SELA a mesa: lance novo e desistência morrem no beat do ✓', async () => {
-    const store = createTestStore('win');
-    await reachNegotiation(store);
-
-    store.getState().sendProposal(80);
-    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS);
-    expect(store.getState().negotiation?.proposal?.status).toBe('accepted');
-
-    // Dentro do hold do balão aceito, o aperto de mãos já vale: nem um
-    // lance novo nem a desistência passam.
-    store.getState().sendProposal(300);
-    expect(store.getState().negotiation?.proposal).toMatchObject({
-      amount: 80,
-      status: 'accepted',
-    });
-    store.getState().abandonNegotiation();
-    expect(store.getState().phase).toBe('negotiate');
-
-    await vi.advanceTimersByTimeAsync(TIMINGS.negoAnswerHoldMs);
-    expect(store.getState().negotiation?.agreedStake).toBe(80);
-  });
-
-  it('abandonar durante a HORA DO DUELO é ignorado e o duelo abre normal', async () => {
-    const store = createTestStore('win');
-    await reachNegotiation(store);
-
-    store.getState().sendProposal(80);
-    await vi.advanceTimersByTimeAsync(BOT_REPLY_MAX_MS + TIMINGS.negoAnswerHoldMs);
-    expect(store.getState().negotiation?.starting).toBe(true);
-
-    store.getState().abandonNegotiation();
-    expect(store.getState().phase).toBe('negotiate');
-
-    await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(SEAL_TO_COUNTDOWN_MS);
-    expect(store.getState().phase).toBe('countdown');
-    expect(store.getState().balance).toBe(420);
-  });
-
-  it('um segundo lance seu com o primeiro no ar é ignorado', async () => {
-    const store = createTestStore('win', createMemoryStorage(), () => 1, counterAllNegotiator);
-    await reachNegotiation(store);
-
-    store.getState().sendProposal(50);
-    store.getState().sendProposal(80);
-    expect(store.getState().negotiation?.proposal).toMatchObject({
-      from: 'player',
-      amount: 50,
-      status: 'pending',
-    });
-  });
-
-  it('um lance impagável do rival não pode ser coberto (só recusado)', async () => {
-    // Cabeça fora da régua: propõe acima do saldo do jogador. O aceite
-    // precisa barrar — cobrir um lance impagável travaria o débito.
-    const store = createTestStore('win', createMemoryStorage(), () => 1, () => ({
-      opening: () => 4000,
-      respond: () => ({ action: 'accept' }),
-    }));
-    await reachNegotiation(store);
-    await vi.advanceTimersByTimeAsync(BOT_OPENING_MAX_MS);
-    expect(store.getState().negotiation?.proposal).toMatchObject({
-      from: 'opponent',
-      amount: 4000,
-      status: 'pending',
-    });
-
-    store.getState().acceptProposal();
-    expect(store.getState().negotiation?.proposal?.status).toBe('pending');
-
-    store.getState().declineProposal();
-    expect(store.getState().negotiation?.proposal?.status).toBe('declined');
-    expect(store.getState().negotiation?.tableStake).toBe(100);
-  });
-
-  it('lances inválidos são ignorados (abaixo do mínimo, acima do saldo, quebrado)', async () => {
-    const store = createTestStore('win');
-    await reachNegotiation(store);
-
-    store.getState().sendProposal(5);
-    store.getState().sendProposal(10_000);
-    store.getState().sendProposal(50.5);
-    expect(store.getState().negotiation?.proposal).toBeNull();
-  });
-
-  it('desistir volta ao menu sem rastro nem timer residual', async () => {
-    const store = createTestStore('win');
-    await reachNegotiation(store);
-
-    store.getState().abandonNegotiation();
-    expect(store.getState().phase).toBe('idle');
-    expect(store.getState().negotiation).toBeNull();
-    expect(store.getState().match).toBeNull();
-
-    // Nenhum timer residual (relógio da mesa, resposta do bot)
-    // ressuscita a negociação nem abre um duelo fantasma.
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(store.getState().phase).toBe('idle');
-    expect(store.getState().balance).toBe(500);
-  });
-});
-
 describe('persistência', () => {
   it('salva saldo e histórico após a partida e hidrata um novo store', async () => {
     const storage = createMemoryStorage();
     const store = createTestStore('win', storage);
-    await playUntilCompleted(store, 50);
+    await playUntilCompleted(store);
 
     const rehydrated = createTestStore('win', storage);
-    expect(rehydrated.getState().balance).toBe(545);
+    expect(rehydrated.getState().balance).toBe(950);
     expect(rehydrated.getState().history).toHaveLength(1);
   });
 

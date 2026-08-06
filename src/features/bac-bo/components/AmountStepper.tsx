@@ -2,9 +2,9 @@ import { motion, useReducedMotion } from 'framer-motion';
 import type { ReactNode, Ref } from 'react';
 
 /**
- * Campo de créditos com atalhos de incremento (+10 / +100) — o padrão
- * de digitar valor da casa, nascido na mesa de negociação do 1v1 e
- * reaproveitado na taxa de entrada do torneio.
+ * Campo de créditos com atalhos de incremento (+10 / +100) — o padrão de
+ * digitar valor da casa, usado no aumento da mesa de poker e na taxa de
+ * entrada do torneio.
  *
  * O valor é uma STRING, não um número: o campo precisa poder ficar
  * vazio enquanto a pessoa apaga para redigitar, e um `number` obrigaria
@@ -27,7 +27,7 @@ export interface AmountStepperProps {
   trailing?: ReactNode;
   className?: string;
   'data-testid'?: string;
-  /** Prefixo dos testids dos atalhos: `nego-plus` → `nego-plus-10`. */
+  /** Prefixo dos testids dos atalhos: `raise-plus` → `raise-plus-10`. */
   stepTestIdPrefix?: string;
   /** Ref do input — quem consome devolve o foco aqui após enviar. */
   inputRef?: Ref<HTMLInputElement>;

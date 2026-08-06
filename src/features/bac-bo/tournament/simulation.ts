@@ -161,8 +161,7 @@ export function makeLobbyListings(): LobbyListing[] {
             ((3 + Math.floor(roll * 4)) as TournamentSize);
       // Uma em cada três, e nunca a primeira: a lista abre com uma sala
       // de entrada livre em vez de uma porta trancada.
-      const visibility: LobbyVisibility =
-        index > 0 && Math.random() < 0.34 ? 'private' : 'public';
+      const visibility: LobbyVisibility = index > 0 && Math.random() < 0.34 ? 'private' : 'public';
       return {
         id: createId(),
         name,
@@ -178,7 +177,14 @@ export function makeLobbyListings(): LobbyListing[] {
 }
 
 export function systemMessage(text: string): ChatMessage {
-  return { id: createId(), authorId: 'system', authorName: 'Sistema', text, system: true, at: Date.now() };
+  return {
+    id: createId(),
+    authorId: 'system',
+    authorName: 'Sistema',
+    text,
+    system: true,
+    at: Date.now(),
+  };
 }
 
 export function chatMessage(author: TournamentPlayer, text: string): ChatMessage {

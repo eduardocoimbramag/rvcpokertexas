@@ -3,40 +3,40 @@ import { useState } from 'react';
 import { Icon } from '@/shared/components/Icon';
 import { appEnv } from '@/shared/config/env';
 
-import type { ForcedDeal } from '../engine/types';
+import type { ForcedPokerDeal } from '../engine/poker/types';
 import { useGameStore } from '../store/gameStore';
 
 /**
  * Painel oculto de desenvolvimento (seção 21 da especificação).
  * Renderizado apenas quando `VITE_ENABLE_DEVTOOLS=true`; permite forçar
- * o resultado da próxima rodada, adicionar créditos e zerar o estado.
+ * o resultado da próxima mão, adicionar créditos e zerar o estado.
  */
 export function DevToolsPanel() {
   const [open, setOpen] = useState(false);
   const forcedDeal = useGameStore((state) => state.devForcedDeal);
   const devSetForcedDeal = useGameStore((state) => state.devSetForcedDeal);
-  const negoAutoAccept = useGameStore((state) => state.devNegotiationAutoAccept);
-  const devSetNegotiationAutoAccept = useGameStore((state) => state.devSetNegotiationAutoAccept);
   const devAddCredits = useGameStore((state) => state.devAddCredits);
   const devResetAll = useGameStore((state) => state.devResetAll);
 
   if (!appEnv.devToolsEnabled) return null;
 
-  /* "Puxar blackjack" também é uma vitória garantida (natural ganha de
-     qualquer 21 montado), mas deixa o rival com mão VIVA: a mesa joga as
-     vezes dele e dá para ver a brasa das cartas com o duelo andando. */
-  const deals: readonly { value: ForcedDeal; label: string }[] = [
+  /* A mão empilhada garante o SHOWDOWN, não a mão: quem desiste é quem
+     joga, e um jogador que jogue fora um par de Ases perde do mesmo
+     jeito. Para conferir o desfecho, vá até o fim. */
+  const deals: readonly { value: ForcedPokerDeal; label: string }[] = [
     { value: 'win', label: 'Vitória' },
     { value: 'lose', label: 'Derrota' },
     { value: 'tie', label: 'Empate' },
-    { value: 'blackjack', label: 'Puxar blackjack' },
+    // Não é um desfecho, é uma MÃO: serve para ver o placar do vencedor
+    // com as cinco cartas do naipe.
+    { value: 'flush', label: 'Puxar flush' },
   ];
 
   return (
     <div className="fixed bottom-2 left-2 z-40 flex flex-col items-start gap-2 text-xs">
       {open && (
         <div className="flex flex-col gap-2 rounded-xl border border-arena-line bg-arena-900/95 p-3 shadow-xl">
-          <p className="font-bold text-lavender">Forçar o resultado da rodada:</p>
+          <p className="font-bold text-lavender">Forçar o showdown da mão:</p>
           <div className="flex flex-wrap gap-1">
             {deals.map((deal) => (
               <button
@@ -52,17 +52,6 @@ export function DevToolsPanel() {
               </button>
             ))}
           </div>
-          <p className="font-bold text-lavender">Negociação:</p>
-          <button
-            type="button"
-            onClick={() => devSetNegotiationAutoAccept(!negoAutoAccept)}
-            data-testid="force-nego-accept"
-            className={`focus-ring rounded-lg px-2 py-1 text-left font-bold ${
-              negoAutoAccept ? 'bg-gold text-arena-950' : 'bg-arena-700 text-ivory'
-            }`}
-          >
-            Bot aceita qualquer proposta
-          </button>
           <button
             type="button"
             onClick={() => devAddCredits(1000)}

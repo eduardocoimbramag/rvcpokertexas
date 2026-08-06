@@ -4,23 +4,30 @@ import { expect, test } from '@playwright/test';
 /**
  * E2E do fluxo de jogo em viewport mobile.
  * O DevTools (habilitado no build de preview do Playwright) força os
- * resultados para tornar as verificações determinísticas — inclusive o
- * auto-aceite da negociação (o bot fecha qualquer proposta), que fixa o
- * valor da aposta nos fluxos de resultado.
+ * resultados para tornar as verificações determinísticas.
  *
- * Como o forçar funciona no duelo de 21: a engine empilha o baralho com
- * blackjacks naturais, que decidem sozinhos — mas NÃO fecham a mão de
- * ninguém (um natural que saísse do rodízio denunciaria o 21). Em todos
- * os casos o jogador precisa PARAR (action-stand) uma vez para fechar a
- * própria mão; o desfecho forçado vale para quem para.
- * - 'win': o jogador recebe o natural e o rival, 20.
- * - 'lose': o rival recebe o natural e o jogador fica com 20.
- * - 'tie': os dois recebem naturais.
+ * A MESA É UMA SESSÃO: os stacks sobrevivem de uma mão para a seguinte e
+ * a mesa só fecha quando alguém fica sem fichas para a entrada ou quando
+ * o jogador se levanta. Por isso os testes param em dois lugares
+ * diferentes: `callDownToHandover` fecha UMA MÃO (é lá que a placa do
+ * vencedor entra) e `cashOut` fecha a MESA (é lá que o extrato aparece).
+ *
+ * COMO O FORÇAR FUNCIONA na mão de Texas Hold'em: a engine empilha o
+ * baralho com as fechadas dos dois lados e as cinco da mesa, garantindo
+ * o desfecho do SHOWDOWN — nunca o caminho até ele. Quem desiste é quem
+ * joga, então os testes de desfecho vão até o fim pagando tudo: quem só
+ * paga e passa nunca põe o rival diante de uma aposta, e por isso o
+ * rival nunca tem o que desistir.
+ *
+ * O QUE NÃO SE VERIFICA AQUI é o VALOR exato do saldo no fim. Quanto
+ * entra no pote depende do que o rival aposta, e ele aposta com a mão
+ * dele e um dado — como qualquer jogador. O que é determinístico é o
+ * DESFECHO e a DIREÇÃO do saldo, e é isso que os testes cobram.
  */
 
 /** Estado persistido com tutorial já visto e sons desligados. */
 const SEEDED_STATE = {
-  version: 2,
+  version: 3,
   state: {
     balance: 1000,
     history: [],
@@ -28,6 +35,7 @@ const SEEDED_STATE = {
       audio: { muted: true, musicVolume: 0.4, sfxVolume: 0.8 },
       vibrationEnabled: false,
       tutorialSeen: true,
+      scenery: 'high',
     },
   },
 };
@@ -48,210 +56,391 @@ async function forceOutcome(page: Page, outcome: string) {
   await page.getByTestId('devtools-toggle').click();
 }
 
-/** Liga o auto-aceite da negociação: o bot fecha qualquer proposta. */
-async function forceNegoAutoAccept(page: Page) {
-  await page.getByTestId('devtools-toggle').click();
-  await page.getByTestId('force-nego-accept').click();
-  await page.getByTestId('devtools-toggle').click();
+/**
+ * O saldo da pílula do topo, como número.
+ *
+ * Lê o RÓTULO ACESSÍVEL, não o texto: dentro da pílula convive a ficha
+ * animada da variação ("+48"), e um `textContent` colaria os dois
+ * números num só — "1.000" com "+48" vira 100048, que passa em
+ * `toBeGreaterThan` e reprova em `toBeLessThan` sem dizer por quê.
+ */
+async function saldo(page: Page): Promise<number> {
+  const rotulo = (await page.getByTestId('balance').getAttribute('aria-label')) ?? '';
+  return Number(rotulo.replace(/\D/g, ''));
 }
 
 /**
- * Atravessa a rodada de negociação propondo `stake` (bot em
- * auto-aceite). Não há botão de iniciar: o aceite fecha a mesa sozinho e
- * a cena segue sem intervenção — acordo selado → apresentação do rival
- * → HORA DO DUELO → countdown (~7 s no total, daí o timeout largo).
+ * Confirma o duelo e espera a mesa abrir sozinha. Não há mais nada a
+ * combinar: a entrada é fixa e o stack saiu do saldo no ato da busca —
+ * confirmado, a cena segue sem intervenção (apresentação do rival →
+ * HORA DO DUELO → countdown, ~7 s no total, daí o timeout largo).
  */
-async function negotiateStake(page: Page, stake: number) {
-  // Matchmaking (1,2–2,6 s) → confirmação dupla → negociação.
-  await page.getByTestId('nego-input').fill(String(stake), { timeout: 15_000 });
-  await page.getByTestId('nego-send').click();
+async function confirmAndSit(page: Page) {
+  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
   await expect(page.getByTestId('countdown-value')).toBeVisible({ timeout: 25_000 });
 }
 
 /**
- * Joga a rodada inteira com o resultado forçado já ligado. Com 'win' e
- * 'tie' (naturais) ela resolve sozinha; com 'lose' o jogador precisa
- * PARAR uma vez — `stands` cobre os dois casos.
+ * PAGA TUDO O QUE VIER até o veredito entrar em cena — a linha mais
+ * passiva possível. Nunca aposta e nunca desiste, o que garante chegar
+ * ao showdown: quem só paga jamais põe o rival diante de uma aposta, e
+ * um rival que não tem o que pagar não tem o que jogar fora.
+ *
+ * O laço corre contra um PRAZO, não contra um número de voltas, e a
+ * diferença já custou um teste: quantas voltas uma mão pede depende dos
+ * beats da mesa (o anúncio do lance, o rival pensando, a rua abrindo), e
+ * um teto de voltas estourava no meio da mão. Aí o laço soltava o
+ * controle, ninguém mais decidia nada — e os 20 s do relógio jogavam a
+ * mão fora por inatividade, com o teste cobrando um showdown que ele
+ * mesmo tinha deixado de alcançar.
  */
-async function playRound(page: Page, stake: number, stands = 1) {
-  await forceNegoAutoAccept(page);
-  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
-  await negotiateStake(page, stake);
-  // Câmera vertical: só o feltro em quadro enquanto as cartas correm
-  // (o timeout cobre o beat de início + countdown 4,5 s).
+async function callDownToHandover(page: Page) {
+  const placa = page.getByTestId('winner-plate');
+  const balao = page.getByTestId('show-prompt');
+  const prazo = Date.now() + 90_000;
+  while (Date.now() < prazo) {
+    if ((await placa.count()) > 0 || (await balao.count()) > 0) break;
+    const pagar = page.getByTestId('action-call');
+    const passar = page.getByTestId('action-check');
+    // O botão pode sair de cena entre a leitura e o clique (a mesa anda
+    // sozinha): um clique perdido aqui é normal, e a volta seguinte
+    // reencontra a barra.
+    if ((await pagar.count()) > 0) await pagar.click({ timeout: 5_000 }).catch(() => undefined);
+    else if ((await passar.count()) > 0)
+      await passar.click({ timeout: 5_000 }).catch(() => undefined);
+    else await page.waitForTimeout(400);
+  }
+  // O rival pode ter corrido: aí quem entra é o convite de mostrar a mão,
+  // e guardar as cartas devolve a placa do vencedor.
+  if ((await balao.count()) > 0) await page.getByTestId('show-cards-no').click();
+  await expect(placa).toBeVisible({ timeout: 30_000 });
+}
+
+/**
+ * Levanta da mesa e espera o CAIXA da sessão.
+ *
+ * A porta de saída só existe entre as mãos, e a mesa distribui de novo
+ * sozinha: se este beat passar, o laço espera a mão seguinte fechar e
+ * tenta na próxima janela. É o que um jogador faria.
+ */
+async function cashOut(page: Page) {
+  const sair = page.getByTestId('leave-table');
+  const prazo = Date.now() + 60_000;
+  while (Date.now() < prazo) {
+    if ((await page.getByTestId('result-title').count()) > 0) break;
+    /* A porta fica em cena o tempo todo e APAGADA na primeira mão: só
+       clicar quando ela abriu. No meio de uma mão levantar corre a mão
+       junto, e é um caminho legítimo para o caixa. */
+    if ((await sair.count()) > 0 && (await sair.isEnabled())) {
+      await sair.click({ timeout: 3_000 }).catch(() => undefined);
+      await page.waitForTimeout(400);
+      continue;
+    }
+    const pagar = page.getByTestId('action-call');
+    const passar = page.getByTestId('action-check');
+    if ((await pagar.count()) > 0) await pagar.click({ timeout: 3_000 }).catch(() => undefined);
+    else if ((await passar.count()) > 0)
+      await passar.click({ timeout: 3_000 }).catch(() => undefined);
+    else await page.waitForTimeout(300);
+  }
+  await expect(page.getByTestId('result-title')).toBeVisible({ timeout: 20_000 });
+}
+
+/** Joga a mão inteira com o desfecho forçado já ligado. */
+async function playHand(page: Page) {
+  await confirmAndSit(page);
+  // Câmera vertical: só o feltro em quadro enquanto a mão corre.
   await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'overhead', {
     timeout: 20_000,
   });
-  for (let i = 0; i < stands; i += 1) {
-    const stand = page.getByTestId('action-stand');
-    await stand.click({ timeout: 30_000 });
-    // O botão segue em cena por um beat após a ação (a carta final
-    // assenta antes de a mesa virar): esperar ele SAIR evita um repique.
-    await expect(stand).toBeHidden({ timeout: 15_000 });
-  }
-  await expect(page.getByTestId('result-title')).toBeVisible({ timeout: 45_000 });
-  // No resultado a câmera volta para a crupiê reagir.
-  await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'front');
+  await callDownToHandover(page);
+  // Entre as mãos a câmera SEGUE de cima: a mesa não acabou, e a placa do
+  // vencedor entra sobre o feltro.
+  await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'overhead');
 }
 
-test('primeira jogada: tutorial, negociação e a vitória com blackjack', async ({ page }) => {
+test('da Home à mesa: o duelo abre sem nada a combinar', async ({ page }) => {
+  await seedStorage(page);
   await page.goto('/');
 
-  // Home → Tutorial (primeira visita, 4 passos) → busca por oponente.
-  await page.getByTestId('play-button').click();
-  await page.getByTestId('tutorial-next').click();
-  await page.getByTestId('tutorial-next').click();
-  await page.getByTestId('tutorial-next').click();
-  await page.getByTestId('tutorial-next').click();
+  // A marca é desenhada letra a letra em dois andares (POKER / ARENA),
+  // então quem responde por ela é o NOME ACESSÍVEL do título.
+  await expect(page.getByRole('heading', { name: 'Poker Arena' })).toBeVisible();
 
   await forceOutcome(page, 'win');
-  await forceNegoAutoAccept(page);
+  // JOGAR leva à MESA, e a nada mais: o tutorial não intercepta ninguém.
+  await page.getByTestId('play-button').click();
+  await expect(page.getByRole('dialog', { name: 'Como jogar' })).toHaveCount(0);
 
   await page.getByTestId('confirm-match').click({ timeout: 15_000 });
 
-  // Rodada de negociação sobre o próprio feltro; a crupiê apresenta a
-  // mesa (docs/scenario.md §9.1) e o título de ouro carimba a abertura.
-  await expect(page.getByTestId('negotiation-panel')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId('dealer')).toHaveAttribute('data-reaction', 'present');
-  await expect(page.getByTestId('nego-open-announce')).toHaveText(/rodada de negociação/i);
-
-  // Proposta de 50: o balão do lance entra e o bot cobre — o aceite
-  // fecha a mesa sozinho (não existe botão de iniciar).
-  await page.getByTestId('nego-input').fill('50');
-  await page.getByTestId('nego-send').click();
-  await expect(page.getByTestId('nego-proposal')).toHaveAttribute('data-from', 'player');
-  await expect(page.getByTestId('nego-proposal')).toHaveAttribute('data-status', 'accepted', {
-    timeout: 15_000,
-  });
-
-  // Selado o acordo, a cena corta para a APRESENTAÇÃO do rival — e é
-  // aqui, com a aposta fechada, que ele enfim ganha nome: da busca até a
-  // negociação ele foi só "Oponente".
+  // Confirmado o duelo, a cena corta direto para a APRESENTAÇÃO do
+  // rival — é aqui que ele deixa de ser "Oponente".
   await expect(page.getByText('Partida confirmada')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/^Oponente$/i)).toHaveCount(0);
-  // Só depois da apresentação a HORA DO DUELO carimba o feltro.
   await expect(page.getByTestId('duel-announce')).toHaveText(/hora do duelo/i, {
     timeout: 15_000,
   });
 
-  // O natural não fecha a mão: a vez abre normal, com relógio e botões —
-  // é isso que impede o 21 de denunciar a si mesmo.
-  await expect(page.getByTestId('turn-clock')).toBeVisible({ timeout: 30_000 });
-  await page.getByTestId('action-stand').click();
+  // A MESA ABRE NO PRÉ-FLOP, com a ENTRADA fixa dos dois lados e os
+  // cinco lugares da mesa vazios à espera do flop.
+  await expect(page.getByTestId('street-announce')).toHaveText(/pré-flop/i, { timeout: 40_000 });
+  await expect(page.getByTestId('board-slot-1')).toHaveClass(/board__slot--empty/);
+  await expect(page.getByTestId('board-slot-5')).toHaveClass(/board__slot--empty/);
 
-  await expect(page.getByTestId('result-title')).toHaveText(/VITÓRIA/, { timeout: 45_000 });
-  // No desfecho o placar migra para as placas ao lado da crupiê: 21 na
-  // sua (o natural) contra a mão do rival.
-  await expect(page.getByTestId('player-total')).toHaveText('21');
+  // OS MONTANTES: as fichas de cada um em cima do pano, ao lado da mão.
+  await expect(page.getByTestId('chip-rack-player')).toBeVisible();
+  await expect(page.getByTestId('chip-rack-opponent')).toBeVisible();
 
-  // O pote é fechado, natural ou não: 50 de aposta → +45 de ganho
-  // líquido (90% do lance do rival; os 10% ficam com a casa).
-  await expect(page.getByTestId('balance')).toContainText('1.045');
-  // ...e a crupiê comemora a vitória do jogador.
+  await callDownToHandover(page);
+
+  // A MÃO fecha na placa do vencedor — não numa tela de vitória. A mesa
+  // segue de pé, e o par de Ases é o que a mão empilhada garante.
+  await expect(page.getByTestId('winner-plate')).toHaveClass(/winner-plate--player/);
+  await expect(page.getByTestId('winner-hand')).toContainText(/par/i);
+  /* E as cartas que decidiram, abertas ao lado do nome da mão: um par
+     são DUAS, não a mão de cinco. Os outros três kickers estão na mão
+     porque a mão de poker tem cinco cartas, e não porque decidiram
+     alguma coisa. */
+  await expect(page.getByTestId('winner-cards').locator('> *')).toHaveCount(2);
+  // O stack subiu: o pote virou ficha na frente do jogador.
+  expect(await saldo(page), 'ganhar a mão engorda o stack').toBeGreaterThan(1000);
+
+  // A MESA fecha no CAIXA, e é lá que o saldo se mexe.
+  await cashOut(page);
+  await expect(page.getByTestId('result-title')).toHaveText(/LUCROU/);
+  await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'front');
   await expect(page.getByTestId('dealer')).toHaveAttribute('data-reaction', 'celebrate');
 });
 
-test('derrota: você para com 20 e o blackjack do rival leva a aposta', async ({ page }) => {
+test('o COMO JOGAR abre sob demanda e ensina Texas Hold’em', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByRole('button', { name: /como jogar/i }).click();
+  await expect(page.getByRole('dialog', { name: 'Como jogar' })).toBeVisible();
+  await expect(page.getByText(/Texas Hold/i)).toBeVisible();
+  // Nada de 21 sobrou: o jogo mudou, a folha mudou com ele.
+  await expect(page.getByText(/blackjack/i)).toHaveCount(0);
+});
+
+test('a leitura da mão está em cena desde as fechadas, antes de qualquer flop', async ({
+  page,
+}) => {
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByTestId('play-button').click();
+  await forceOutcome(page, 'win');
+  await confirmAndSit(page);
+
+  // Pré-flop: os cinco lugares da mesa estão vazios e a placa JÁ diz o
+  // que você tem. A decisão do pré-flop é a mais tomada do Hold'em, e é
+  // exatamente onde a leitura não pode calar.
+  await expect(page.getByTestId('street-announce')).toHaveText(/pré-flop/i, { timeout: 40_000 });
+  await expect(page.getByTestId('board-slot-1')).toHaveClass(/board__slot--empty/);
+  // A mão empilhada garante o par de Ases ao jogador.
+  await expect(page.getByTestId('hand-reading')).toHaveText(/Ases/i);
+});
+
+test('a aposta se digita: campo, +10 e +100 no padrão da casa', async ({ page }) => {
+  // O teste atravessa uma mão inteira até a primeira palavra do jogador
+  // (busca, confirmação, distribuição) antes de mexer no painel: sob
+  // três workers isso passa do orçamento padrão.
+  test.slow();
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByTestId('play-button').click();
+  await confirmAndSit(page);
+
+  await expect(page.getByTestId('bet-controls')).toBeVisible({ timeout: 45_000 });
+  await page.getByTestId('action-raise').click();
+
+  /* O QUE ESTE TESTE CONFERE, E POR QUÊ SÓ ISTO.
+     A partir do momento em que a palavra chega ao jogador, os 20 s do
+     relógio da mesa correm de verdade — e sob três workers cada ida ao
+     navegador custa mais de um segundo. Um teste que ficasse aqui
+     digitando e conferindo perderia a vez no meio da própria bateria de
+     asserções, e falharia por ter demorado, não por estar errado.
+     Então ele confere aqui a única coisa que EXIGE uma mão de verdade:
+     que o painel de aumento abre sobre uma mesa viva com um campo
+     digitável e VAZIO, com os limites daquela rua em cena e os atalhos
+     de +10/+100 da casa à mão.
+     A aritmética do campo, a recusa de valor fora dos limites e o VOLTAR
+     são regras da PEÇA, não da mesa, e estão cobertos no teste de
+     componente da PokerArena — onde nenhum relógio corre. */
+  const campo = page.getByTestId('raise-input');
+  await expect(campo).toBeVisible();
+  await expect(page.getByTestId('raise-plus-10')).toBeVisible();
+  await expect(page.getByTestId('raise-plus-100')).toBeVisible();
+  /* O campo abre VAZIO: um valor já preenchido responderia a pergunta no
+     lugar de quem joga, e quem só queria ver os limites sairia tendo
+     apostado o que a casa escolheu. */
+  await expect(campo).toHaveValue('');
+  await expect(page.getByTestId('raise-confirm')).toBeDisabled();
+  // E os limites da rua estão escritos, que é o que o campo vazio pede.
+  const minimo = Number(
+    (await page.getByTestId('raise-hint').textContent())?.split('–')[0]?.replace(/\D/g, '') ?? '0',
+  );
+  expect(minimo).toBeGreaterThan(0);
+
+  // Um toque em +100 já dá um lance legal e libera o envio.
+  await page.getByTestId('raise-plus-100').click();
+  await page.getByTestId('raise-plus-100').click();
+  await expect(campo).toHaveValue('200');
+});
+
+test('a desistência também abre as duas mãos: é onde o blefe aparece', async ({ page }) => {
+  test.slow();
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByTestId('play-button').click();
+  // Rival com Ases: ele aposta, e a palavra volta com algo a pagar.
+  await forceOutcome(page, 'lose');
+  await confirmAndSit(page);
+
+  /* CORRER está na mesa desde a primeira palavra — passou a estar quando
+     o duelo virou sessão. A entrada desta mão já está no meio, e largá-la
+     é abrir mão de 100 fichas para guardar as outras. */
+  const desistir = page.getByTestId('action-fold');
+  await expect(desistir).toBeVisible({ timeout: 60_000 });
+  await desistir.click({ timeout: 5_000 });
+
+  /* O EMBATE roda mesmo sem showdown, e é aqui que ele mais serve: ver
+     que o rival tinha Ases (ou que blefava com nada) é a única leitura
+     que este duelo dá dele. Numa sala de verdade quem desiste mucha;
+     aqui as cartas abrem, porque a mão já acabou e mostrá-las não conta
+     nada a ninguém. */
+  await expect(page.getByTestId('showdown-clash')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('clash-player')).toContainText(/desistiu/i);
+  await expect(page.getByTestId('clash-opponent')).toContainText(/par/i);
+  // E as fechadas dele estão abertas na mesa.
+  await expect(page.getByRole('img', { name: /Carta de .*1: A de/ })).toBeVisible();
+
+  // O placar é do rival, e a nota diz que foi você quem largou.
+  await expect(page.getByTestId('winner-plate')).toHaveClass(/winner-plate--opponent/, {
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId('winner-note')).toContainText(/você desistiu/i);
+
+  /* E a MESA CONTINUA: correr custou a entrada, não a sessão. É a porta
+     de saída que a sessão trouxe — e ela só abre da segunda mão em
+     diante. */
+  await expect(page.getByTestId('leave-table')).toBeVisible({ timeout: 10_000 });
+});
+
+test('o showdown encena o embate, e só a mão vencedora fica', async ({ page }) => {
+  await seedStorage(page);
+  await page.goto('/');
+
+  await page.getByTestId('play-button').click();
+  await forceOutcome(page, 'win');
+  await playHand(page);
+
+  // O embate roda ANTES da placa e some com ela: quando o veredito da mão
+  // entra, a encenação já cumpriu o papel dela.
+  await expect(page.getByTestId('showdown-clash')).toHaveCount(0);
+  // E o que sobra na tela é UMA placa, com a mão que levou o pote.
+  await expect(page.getByTestId('winner-plate')).toHaveCount(1);
+  await expect(page.getByTestId('winner-hand')).toContainText(/par/i);
+});
+
+test('a barra nunca oferece um lance ilegal, rua após rua', async ({ page }) => {
+  // Atravessa a mão INTEIRA parando em toda decisão, e cada rua agora
+  // custa também o beat do letreiro: sob três workers isso passa do
+  // orçamento padrão.
+  test.slow();
   await seedStorage(page);
   await page.goto('/');
 
   await page.getByTestId('play-button').click();
   await forceOutcome(page, 'lose');
-  await forceNegoAutoAccept(page);
-  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
-  await negotiateStake(page, 25);
+  await confirmAndSit(page);
+  await expect(page.getByTestId('board')).toBeVisible({ timeout: 40_000 });
 
-  // A vez do jogador abre com a MESA CEGA em cena: a mão do rival está
-  // inteira de bruços (duas cartas, dois versos), o total dele é um "?"
-  // e as SUAS não levam selo nenhum — ele não vê nenhuma delas.
-  await expect(page.getByTestId('action-stand')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('img', { name: /Carta de .*1: carta oculta/ })).toBeVisible();
-  await expect(page.getByRole('img', { name: /Carta de .*2: carta oculta/ })).toBeVisible();
-  const opponentTotal = page.getByTestId('opponent-total');
-  await expect(opponentTotal).toHaveAttribute('data-partial', 'true');
-  await expect(opponentTotal).toHaveText('?');
-  await expect(page.getByTestId('card-veil')).toHaveCount(0);
+  /* A REGRA DA MESA, conferida em toda decisão que a mão oferecer:
+     DESISTIR e PASSAR são mutuamente exclusivos, e a razão é de jogo, não
+     de layout — jogar a mão fora podendo seguir de GRAÇA não é um lance
+     que mesa nenhuma aceite, e passar com aposta na frente também não.
+     Quem decide o que é legal é a engine; a barra só desenha o que ela
+     permite, e é isso que este teste cobra a cada rua.
+     O número de decisões varia (o botão é sorteado, o rival aposta com a
+     mão dele), então o laço acompanha a mão em vez de contar passos. */
+  let decisoes = 0;
+  // A MÃO fecha na placa do vencedor: a mesa segue de pé depois dela.
+  const veredito = page.getByTestId('winner-plate');
+  const prazo = Date.now() + 90_000;
+  while (Date.now() < prazo && (await veredito.count()) === 0) {
+    const pagar = page.getByTestId('action-call');
+    const passar = page.getByTestId('action-check');
+    const desistir = page.getByTestId('action-fold');
 
-  await page.getByTestId('action-stand').click();
+    if ((await passar.count()) > 0) {
+      /* Nada a pagar: PASSAR e CORRER convivem — largar a mão custa a
+         entrada que já está no meio, e numa sessão isso é decisão. */
+      await expect(desistir, 'faltou CORRER sem aposta na frente').toHaveCount(1);
+      await expect(pagar, 'PAGAR apareceu sem nada a pagar').toHaveCount(0);
+      decisoes += 1;
+      await passar.click({ timeout: 5_000 }).catch(() => undefined);
+    } else if ((await pagar.count()) > 0) {
+      // Com aposta na frente as três saídas existem, e PASSAR não é uma.
+      await expect(desistir, 'faltou CORRER com aposta na frente').toHaveCount(1);
+      await expect(page.getByTestId('action-raise')).toHaveCount(1);
+      decisoes += 1;
+      await pagar.click({ timeout: 5_000 }).catch(() => undefined);
+    } else {
+      await page.waitForTimeout(600);
+    }
+  }
 
-  // No showdown a oculta vira e o blackjack do rival decide: 21 dele
-  // contra os 20 com que você parou.
-  await expect(page.getByTestId('result-title')).toHaveText(/DERROTA/, { timeout: 45_000 });
-  await expect(page.getByTestId('opponent-total')).toHaveText('21');
-  await expect(page.getByTestId('player-total')).toHaveText('20');
-  await expect(page.getByTestId('balance')).toContainText('975');
-});
-
-test('empate: dois blackjacks devolvem a aposta', async ({ page }) => {
-  await seedStorage(page);
-  await page.goto('/');
-
-  await page.getByTestId('play-button').click();
-  await forceOutcome(page, 'tie');
-  await playRound(page, 25);
-
-  await expect(page.getByTestId('result-title')).toHaveText(/EMPATE/);
-  await expect(page.getByTestId('result-delta')).toHaveText(/Aposta devolvida/);
-  // Nada saiu do bolso: o saldo volta exatamente ao que era.
-  await expect(page.getByTestId('balance')).toContainText('1.000');
+  await expect(veredito).toBeVisible({ timeout: 45_000 });
+  expect(decisoes, 'a mão passou sem oferecer uma decisão sequer').toBeGreaterThan(0);
 });
 
 test('persistência: saldo e histórico sobrevivem ao reload', async ({ page }) => {
+  // A sessão tem uma mão inteira mais o intervalo antes de o caixa abrir.
+  test.slow();
   await seedStorage(page);
   await page.goto('/');
 
   await page.getByTestId('play-button').click();
   await forceOutcome(page, 'win');
-  await playRound(page, 50);
-  await expect(page.getByTestId('balance')).toContainText('1.045');
+  await playHand(page);
+  // O saldo só se mexe no CAIXA: dentro da sessão as fichas ficam no
+  // feltro, como em qualquer sala.
+  await cashOut(page);
+  const ganho = await saldo(page);
+  expect(ganho).toBeGreaterThan(1000);
 
   await page.reload();
 
-  // De volta à Home com o saldo persistido.
-  await expect(page.getByTestId('balance')).toContainText('1.045');
+  // De volta à Home com o MESMO saldo — até o último crédito.
+  await expect(page.getByTestId('play-button')).toBeVisible();
+  expect(await saldo(page)).toBe(ganho);
   await page.getByTestId('history-button').click();
   await expect(page.getByTestId('history-list').locator('li')).toHaveCount(1);
-  await expect(page.getByTestId('history-list')).toContainText('+45');
+  // O extrato conta a MÃO que decidiu o pote, não um total.
+  await expect(page.getByTestId('history-list')).toContainText(/Ases/i);
 });
 
-test('negociação: sair da mesa não debita nada e volta ao menu', async ({ page }) => {
+test('a mesa abre com a ENTRADA fixa, sem nada a combinar', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');
 
   await page.getByTestId('play-button').click();
-  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
+  await confirmAndSit(page);
 
-  // A rodada abre com a aposta padrão de 100 já nas fichas da mesa.
-  await expect(page.getByTestId('negotiation-panel')).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId('nego-table-stake')).toContainText('100', { timeout: 10_000 });
+  /* A rodada de negociação não existe mais, e este teste guarda a
+     ausência dela: entre confirmar e sentar não há tela nenhuma pedindo
+     valor. O que a mesa cobra é fixo, e o stack saiu do saldo no ato da
+     busca. */
+  await expect(page.getByTestId('ante-note')).toContainText('100', { timeout: 20_000 });
+  await expect(page.getByTestId('ante-note')).toContainText('1.000');
 
-  // Sair da mesa abandona a rodada sem debitar nada.
-  await page.getByTestId('nego-quit').click();
-  await expect(page.getByTestId('play-button')).toBeVisible();
-  await expect(page.getByTestId('balance')).toContainText('1.000');
-});
-
-test('negociação: a contraproposta do bot pode ser coberta e vira a mesa', async ({ page }) => {
-  await seedStorage(page);
-  await page.goto('/');
-
-  await page.getByTestId('play-button').click();
-  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
-
-  // Lance mínimo (10): com saldo de 1.000 o alvo do bot é sempre maior,
-  // então a resposta é garantidamente uma RECUSA com contraproposta —
-  // que chega como um balão dele, com o ✓ e o ✗ na sua mão.
-  await page.getByTestId('nego-input').fill('10', { timeout: 15_000 });
-  await page.getByTestId('nego-send').click();
-  await expect(page.getByTestId('nego-accept')).toBeVisible({ timeout: 15_000 });
-
-  // Cobrir fecha a mesa no valor dele e o duelo abre sozinho:
-  // apresentação do rival → HORA DO DUELO → countdown.
-  await page.getByTestId('nego-accept').click();
-  await expect(page.getByTestId('duel-announce')).toHaveText(/hora do duelo/i, {
-    timeout: 20_000,
-  });
-  await expect(page.getByTestId('countdown-value')).toBeVisible({ timeout: 10_000 });
+  // A entrada dos DOIS já está no pote antes de qualquer decisão.
+  await expect(page.getByTestId('pot-value')).toContainText('200', { timeout: 30_000 });
 });
 
 /**
@@ -315,79 +504,80 @@ test('foco de teclado: todo controle acende o anel âmbar', async ({ page }) => 
 });
 
 /**
- * Geometria do pote no feltro: ele mora na faixa livre ENTRE as duas
- * mãos, e essa faixa é o recurso mais escasso da tela — mede 92px de
- * altura num aparelho de 640px. Nada disso se verifica lendo CSS: só
- * medindo no navegador, com a aposta mais alta que o pote comporta.
+ * Geometria do CENTRO da mesa: o pote e as cinco comunitárias dividem a
+ * faixa entre os dois assentos, e essa faixa é o recurso mais escasso da
+ * tela — num aparelho de 640px ela é o que sobra depois de duas mãos
+ * fechadas e da barra de apostas. Nada disso se verifica lendo CSS: só
+ * medindo no navegador.
  */
-async function medirPote(page: Page) {
+async function medirCentro(page: Page) {
   return page.evaluate(() => {
     const caixa = (s: string) => {
       const el = document.querySelector(s);
       return el ? el.getBoundingClientRect() : null;
     };
-    const pote = document.querySelector('[data-testid="felt-pot"]');
-    if (!pote) throw new Error('sem pote no feltro');
+    const pote = document.querySelector('[data-testid="pot"]');
+    const mesa = document.querySelector('[data-testid="board"]');
+    if (!pote || !mesa) throw new Error('sem pote ou mesa no feltro');
     const p = pote.getBoundingClientRect();
+    const m = mesa.getBoundingClientRect();
     const rival = caixa('[data-testid="hand-opponent"]');
     const voce = caixa('[data-testid="hand-player"]');
     const centro = document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2);
     return {
-      fichas: document.querySelectorAll('[data-testid="felt-pot"] .chip').length,
-      largura: Math.round(p.width),
-      altura: Math.round(p.height),
+      fichas: document.querySelectorAll('[data-testid="pot"] .rvc-chip').length,
+      // As cinco comunitárias têm de caber DEITADAS: elas nunca se
+      // sobrepõem, então a fileira é o gargalo de largura da mesa.
+      mesaLargura: Math.round(m.width),
+      mesaDentroDaTela: m.left >= 0 && m.right <= window.innerWidth,
       folgaAcima: rival ? Math.round(p.top - rival.bottom) : -1,
-      folgaAbaixo: voce ? Math.round(voce.top - p.bottom) : -1,
-      dentroDaTela: p.left >= 0 && p.right <= window.innerWidth,
+      folgaAbaixo: voce ? Math.round(voce.top - m.bottom) : -1,
       // O pote é cenário: um toque no meio dele atravessa.
       atravessaOToque: !pote.contains(centro),
     };
   });
 }
 
-test('o pote de fichas cabe na faixa livre e não rouba toque', async ({ page }) => {
+test('o centro da mesa cabe no feltro e não rouba toque', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');
   await page.getByTestId('play-button').click();
-  await forceNegoAutoAccept(page);
-  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
-  // 400 créditos são 16 fichas — o monte mais largo que se vê jogando.
-  await negotiateStake(page, 400);
-  await expect(page.getByTestId('turn-clock')).toBeVisible({ timeout: 30_000 });
-  await page.waitForTimeout(600);
+  await confirmAndSit(page);
+  await expect(page.getByTestId('board')).toBeVisible({ timeout: 40_000 });
+  await page.waitForTimeout(800);
 
-  const alto = await medirPote(page);
-  expect(alto.fichas, 'aposta de 400 põe 16 fichas na mesa').toBe(16);
+  const alto = await medirCentro(page);
+  expect(alto.fichas, 'os blinds põem fichas na mesa desde o pré-flop').toBeGreaterThan(0);
   expect(alto.atravessaOToque, 'o pote é cenário, não controle').toBe(true);
-  expect(alto.dentroDaTela).toBe(true);
+  expect(alto.mesaDentroDaTela, 'as cinco comunitárias vazaram da tela').toBe(true);
   expect(alto.folgaAcima, 'o pote encostou na mão do rival').toBeGreaterThan(0);
-  expect(alto.folgaAbaixo, 'o pote encostou na sua mão').toBeGreaterThan(0);
+  expect(alto.folgaAbaixo, 'a mesa encostou na sua mão').toBeGreaterThan(0);
 
-  // O caso que aperta: viewport de 640px, onde a faixa livre cai para
-  // ~92px. O pote encolhe junto (o termo em dvh do clamp) e continua
-  // sem encostar em carta nenhuma.
+  // O caso que aperta: viewport de 640px, o mais baixo que a casa
+  // suporta. A carta encolhe junto (o termo em dvh do clamp) e o centro
+  // continua sem encostar em mão nenhuma.
   await page.setViewportSize({ width: 412, height: 640 });
   await page.waitForTimeout(400);
-  const baixo = await medirPote(page);
-  expect(baixo.fichas, 'a contagem NÃO muda com o aparelho').toBe(16);
-  expect(baixo.altura, 'o pote tem de caber nos 92px da faixa').toBeLessThan(70);
+  const baixo = await medirCentro(page);
+  expect(baixo.mesaDentroDaTela, 'as comunitárias vazaram na tela baixa').toBe(true);
   expect(baixo.folgaAcima, 'o pote encostou na mão do rival na tela baixa').toBeGreaterThan(0);
-  expect(baixo.folgaAbaixo, 'o pote encostou na sua mão na tela baixa').toBeGreaterThan(0);
+  expect(baixo.folgaAbaixo, 'a mesa encostou na sua mão na tela baixa').toBeGreaterThan(0);
 });
 
 test('alvo de toque: os atalhos +10/+100 respondem além do próprio selo', async ({ page }) => {
   await seedStorage(page);
   await page.goto('/');
   await page.getByTestId('play-button').click();
-  await page.getByTestId('confirm-match').click({ timeout: 15_000 });
-  await expect(page.getByTestId('negotiation-panel')).toBeVisible({ timeout: 15_000 });
+  await confirmAndSit(page);
+  await expect(page.getByTestId('bet-controls')).toBeVisible({ timeout: 45_000 });
+  await page.getByTestId('action-raise').click();
 
   // Um toque errado aqui MUDA O VALOR DA APOSTA. O selo continua do
   // tamanho que era; quem cresceu foi a área tocável (um `::after`
   // esticado), e pseudo-elemento só se mede perguntando ao navegador
   // quem recebe o toque em cada ponto.
   const probe = await page.evaluate(() => {
-    const el = document.querySelector('[data-testid="nego-plus-10"]');
+    const el = document.querySelector('[data-testid="raise-plus-10"]');
     if (!el) throw new Error('sem atalho de +10');
     const r = el.getBoundingClientRect();
     const hits = (x: number, y: number) => {

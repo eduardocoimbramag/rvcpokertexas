@@ -393,8 +393,7 @@ describe('blaze — geometria e determinismo', () => {
     const mini = buildBurst(new SeededRng(5), HAND, 'blackjack', 0.5);
     expect(mini.particles.length).toBeLessThan(full.particles.length);
     expect(mini.tongues.length).toBeLessThan(full.tongues.length);
-    const avg = (v: readonly { len: number }[]) =>
-      v.reduce((sum, t) => sum + t.len, 0) / v.length;
+    const avg = (v: readonly { len: number }[]) => v.reduce((sum, t) => sum + t.len, 0) / v.length;
     expect(avg(mini.tongues)).toBeLessThan(avg(full.tongues));
   });
 

@@ -13,13 +13,24 @@ import { ConfirmPanel } from './ConfirmPanel';
 import { CountdownOverlay } from './CountdownOverlay';
 import { FoundSplash } from './FoundSplash';
 import { GoldAnnounce } from './GoldAnnounce';
-import { HandsArena } from './HandsArena';
 import { MatchmakingOverlay } from './MatchmakingOverlay';
-import { NegotiationHud, NegotiationPanel } from './NegotiationPanel';
-import { ResultBanner } from './ResultBanner';
+import { SessionBanner } from './SessionBanner';
+import { PokerArena } from './poker/PokerArena';
+import { StreetAnnounce } from './poker/StreetAnnounce';
 
-/** Fases em que a rodada está sobre a mesa (grupo arena). */
-const ARENA_PHASES: readonly GamePhase[] = ['dealing', 'turn', 'settle', 'completed'];
+/** Fases em que as fichas estão no feltro — a pílula segue o STACK. */
+const SESSION_PHASES: readonly GamePhase[] = ['dealing', 'betting', 'settle', 'handover'];
+
+/** Fases em que a mão está sobre a mesa (grupo arena). */
+const ARENA_PHASES: readonly GamePhase[] = [
+  'dealing',
+  'betting',
+  'settle',
+  // O beat entre as mãos é da MESA: a placa do vencedor e o convite de
+  // mostrar as cartas ficam sobre o feltro, e a sessão segue dali.
+  'handover',
+  'completed',
+];
 
 /**
  * Tela de jogo: renderiza o conteúdo correspondente à fase atual da
@@ -33,48 +44,48 @@ export function GameScreen() {
   const round = useGameStore((state) => state.round);
   const actionPending = useGameStore((state) => state.actionPending);
   const result = useGameStore((state) => state.result);
-  const hit = useGameStore((state) => state.hit);
-  const stand = useGameStore((state) => state.stand);
-  const doubleBet = useGameStore((state) => state.doubleBet);
-  const requestDouble = useGameStore((state) => state.requestDouble);
-  const reveal = useGameStore((state) => state.reveal);
-  const turn = useGameStore((state) => state.turn);
+  const session = useGameStore((state) => state.session);
+  const showPrompt = useGameStore((state) => state.showPrompt);
+  const handoverSeconds = useGameStore((state) => state.handoverSeconds);
+  const cardsShown = useGameStore((state) => state.cardsShown);
+  const answerShowCards = useGameStore((state) => state.answerShowCards);
+  const leaveTable = useGameStore((state) => state.leaveTable);
+  const fold = useGameStore((state) => state.fold);
+  const check = useGameStore((state) => state.check);
+  const call = useGameStore((state) => state.call);
+  const raise = useGameStore((state) => state.raise);
+  const announce = useGameStore((state) => state.announce);
+  const streetAnnounce = useGameStore((state) => state.streetAnnounce);
+  const actionClock = useGameStore((state) => state.actionClock);
   const countdown = useGameStore((state) => state.countdown);
   const duelAnnounce = useGameStore((state) => state.duelAnnounce);
   const error = useGameStore((state) => state.error);
   const dismissError = useGameStore((state) => state.dismissError);
   const dealerReaction = useDealerReaction();
 
-  // Saldo segurado: enquanto a rodada corre (stake já debitado no início
-  // do duelo), a pílula continua exibindo o saldo PRÉ-duelo — o débito
-  // fica invisível e só aparece na animação do resultado. No completed a
-  // pílula recebe o saldo final + o netChange para animar a variação.
-  const roundActive =
-    phase === 'countdown' || phase === 'dealing' || phase === 'turn' || phase === 'settle';
-  const displayBalance = roundActive && match ? balance + match.stake : balance;
-  const balanceDelta = phase === 'completed' && result ? result.netChange : null;
-
-  // Dobrar custa outro tanto do que já está na mesa, e vale uma vez por
-  // mão: sem saldo para cobrir a diferença — ou com o pedido já feito —
-  // o botão fica em cena, apagado, em vez de sumir do nada.
-  const canRequestDouble = doubleBet.status === 'idle' && match !== null && balance >= match.stake;
+  /* A PÍLULA DE SALDO SAI DE CENA ENQUANTO A SESSÃO CORRE.
+     O buy-in já saiu do saldo quando você sentou, e o que está em jogo
+     está desenhado na mesa: as duas pilhas de fichas e os dois números
+     nas plaquinhas. Um terceiro número no canto — o saldo parado do lado
+     de fora — não participa de decisão nenhuma e ainda compete com os
+     que participam. Ele volta quando a mesa fecha, que é quando o
+     dinheiro volta a ser dinheiro: no caixa, nos menus e no extrato. */
+  const atTable = SESSION_PHASES.includes(phase);
+  const balanceDelta =
+    phase === 'completed' && session ? session.stacks.player - session.buyIn : null;
 
   return (
     // min-h-0: o viewport é fixo (#root overflow hidden) — a fase de
     // negociação rola DENTRO do chat, nunca estica a página.
     <main className="flex min-h-0 flex-1 flex-col px-6 py-4">
       {/* relative z-20: na câmera vertical a mesa toma a tela inteira
-          (o recorte da cena sobe além do header) — o HUD flutua acima. */}
-      {/* HUD: à esquerda quem está do outro lado da mesa (só enquanto a
-          aposta se negocia), à direita o seu saldo. A faixa fica ACIMA
-          da dealer — nada da negociação cobre a cena. */}
+          (o recorte da cena sobe além do header) — o HUD flutua acima.
+          O vão à esquerda é reservado, e não colapsado: o saldo fica na
+          MESMA coluna em todas as fases, e nada dança de lugar quando a
+          cena muda. */}
       <header className="relative z-20 mb-4 flex items-center justify-between gap-3">
-        {phase === 'negotiate' && match ? (
-          <NegotiationHud />
-        ) : (
-          <span className="h-11 w-11" aria-hidden="true" />
-        )}
-        <BalancePill balance={displayBalance} delta={balanceDelta} />
+        <span className="h-11 w-11" aria-hidden="true" />
+        {!atTable && <BalancePill balance={balance} delta={balanceDelta} />}
       </header>
 
       {/* A TableScene fica FORA do AnimatePresence: a crupiê e a mesa
@@ -91,7 +102,6 @@ export function GameScreen() {
           >
             {phase === 'search' && <MatchmakingOverlay />}
             {phase === 'confirm' && match && <ConfirmPanel />}
-            {phase === 'negotiate' && match && <NegotiationPanel />}
             {/* A fase da APRESENTAÇÃO tem duas cenas, e o store diz qual
                 está no ar: a placa do rival — que aqui, com a aposta já
                 fechada, enfim traz o nome dele (ver opponentIdentity.ts)
@@ -111,21 +121,31 @@ export function GameScreen() {
               // de disputar o flex com as mãos — as cartas não pulam de
               // lugar quando o veredito entra.
               <div className="relative flex flex-1 flex-col">
-                <HandsArena
+                <PokerArena
                   phase={phase}
                   match={match}
                   round={round}
                   result={result}
-                  onHit={hit}
-                  onStand={stand}
+                  onFold={fold}
+                  onCheck={check}
+                  onCall={call}
+                  onRaise={raise}
                   actionPending={actionPending}
-                  onRequestDouble={requestDouble}
-                  doubleBet={doubleBet}
-                  canRequestDouble={canRequestDouble}
-                  reveal={reveal}
-                  turn={turn}
+                  clock={actionClock}
+                  announce={announce}
+                  session={session}
+                  showPrompt={showPrompt}
+                  handoverSeconds={handoverSeconds}
+                  cardsShown={cardsShown}
+                  onAnswerShowCards={answerShowCards}
+                  onLeaveTable={leaveTable}
                 />
-                {phase === 'completed' && result && <ResultBanner result={result} />}
+                {/* O CAIXA da sessão, e não o veredito de uma mão: numa
+                    mesa que corre até alguém quebrar, quem ganhou a
+                    última mão não é o assunto (ver SessionBanner). */}
+                {phase === 'completed' && session && match && (
+                  <SessionBanner session={session} opponentName={match.opponent.name} />
+                )}
               </div>
             )}
             {phase === 'error' && (
@@ -147,23 +167,30 @@ export function GameScreen() {
           </motion.div>
         </AnimatePresence>
       </TableScene>
+
+      {/* O LETREIRO DA RUA mora aqui em cima, fora da cena do jogo, e não
+          é frescura de organização: ele desfoca a TELA INTEIRA, e a cena
+          inteira vive num contexto de empilhamento abaixo do cabeçalho.
+          Nascido lá dentro, ele jamais passaria por cima da pílula de
+          saldo — e meia tela fora de foco com um HUD nítido no canto não
+          é um corte de cena. Ver StreetAnnounce. */}
+      <StreetAnnounce street={streetAnnounce} />
     </main>
   );
 }
 
 /**
  * Agrupa fases que compartilham o mesmo layout para a transição de tela
- * não desmontar as cartas entre dealing → playerTurn → … → completed.
+ * não desmontar as cartas entre dealing → betting → … → completed.
  */
 function phaseGroup(phase: GamePhase): string {
   return ARENA_PHASES.includes(phase) ? 'arena' : phase;
 }
 
 /**
- * Enquadramento por fase: câmera vertical sobre o feltro enquanto as
- * cartas são distribuídas, decididas e reveladas; frontal em todo o
- * resto, e em `completed` a crupiê volta ao quadro reagindo ao
- * resultado.
+ * Enquadramento por fase: câmera vertical sobre o feltro enquanto a mão
+ * é distribuída, apostada e revelada; frontal em todo o resto, e em
+ * `completed` a crupiê volta ao quadro reagindo ao resultado.
  */
 function cameraFor(phase: GamePhase): SceneCamera {
   return phase !== 'completed' && ARENA_PHASES.includes(phase) ? 'overhead' : 'front';

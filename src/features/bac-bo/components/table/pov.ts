@@ -31,11 +31,7 @@ export interface PovHand {
  * @param pruned   `hand` já vem sem a oculta (a engine do duelo entrega a
  *                 mão do rival podada quando ela guarda carta virada).
  */
-export function povHand(
-  hand: readonly Card[],
-  revealed: boolean,
-  pruned = false,
-): PovHand {
+export function povHand(hand: readonly Card[], revealed: boolean, pruned = false): PovHand {
   if (revealed) return { shown: [...hand], counted: hand };
   const counted = pruned ? hand : hand.slice(0, -1);
   return { shown: [...counted, null], counted };

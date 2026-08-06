@@ -5,44 +5,49 @@ import type { IconName } from '@/shared/components/Icon';
 import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
 
-import { NEGOTIATION_SECONDS } from '../animations/timings';
-import { DEFAULT_STAKE } from '../engine/credits';
-import { useGameStore } from '../store/gameStore';
+import { TABLE_ANTE, TABLE_MAX_STACK } from '../engine/credits';
+import { ACTION_SECONDS, useGameStore } from '../store/gameStore';
 import { TABLE_TARGET_WINS } from '../tournament/types';
 
 export interface TutorialSheetProps {
   open: boolean;
   onClose: () => void;
-  /** Quando verdadeiro, fechar o tutorial já inicia a busca por oponente. */
-  continueToGame?: boolean;
 }
 
 /**
- * Os passos do tutorial, na ordem do que o jogador vai encontrar: acha o
- * rival, acerta a aposta, joga a mão — e, no fim, fica sabendo que existe
- * um torneio.
+ * Os passos do COMO JOGAR, na ordem do que o jogador vai encontrar:
+ * acha o rival, senta na mesa, joga as quatro ruas, chega ao showdown —
+ * e, no fim, fica sabendo que existe um torneio.
  *
- * Este texto é CONTRATO COM A INTERFACE: é a primeira coisa que se lê no
- * jogo, então descrever uma tela que não existe mais é pior do que não
- * explicar nada. Mudou a fase, mude aqui.
+ * Este texto é CONTRATO COM A INTERFACE: quem o abre está perdido, e
+ * descrever uma tela que não existe mais é pior do que não explicar
+ * nada. Mudou a fase, mude aqui.
  */
 const STEPS: readonly { icon: IconName; title: string; text: string }[] = [
   {
     icon: 'swords',
-    title: 'Enfrente um oponente',
-    text: 'Encontramos um adversário para você. Confirme o duelo para abrir a mesa de negociação.',
-  },
-  {
-    icon: 'coins',
-    title: 'Negocie a aposta',
-    // Sem ✓/✗ no texto: a fonte da casa não tem esses glifos e o
-    // navegador cai num fallback que desenha o certo como radical.
-    text: `A mesa abre com uma aposta padrão de ${DEFAULT_STAKE} fichas e ${NEGOTIATION_SECONDS} segundos no relógio. Quer outro valor? Envie uma proposta: ela vira um balão na mesa, e o rival cobre ou recusa — cobrir fecha o duelo naquele valor, recusar mantém o que já estava. Se o relógio zerar, vale o que estiver na mesa.`,
+    title: 'Texas Hold’em 1v1',
+    text: `Encontramos um adversário para você. Confirme o duelo e os dois compram fichas pelo mesmo valor — até ${TABLE_MAX_STACK} créditos, ou o que o seu saldo permitir. A mesa não é UMA mão: as mãos correm uma atrás da outra, e a entrada de ${TABLE_ANTE} créditos de cada um vai ao pote antes da primeira carta de TODA mão.`,
   },
   {
     icon: 'club',
-    title: 'Chegue mais perto de 21',
-    text: 'É você contra o rival, sem casa no meio. A cada vez os dois têm 20 segundos para escolher em segredo — pedir carta, parar ou propor dobrar a aposta —, e os dois lances são revelados juntos. Quem estourar perde na hora, e a última carta de cada um só vira no showdown — nem um blackjack na sua mão muda o seu jeito de jogar, para não entregar nada. A vitória leva 90% do que o rival pôs na mesa.',
+    title: 'Duas suas, cinco de todos',
+    text: 'Você recebe duas cartas fechadas — só suas, e o rival não vê nenhuma delas. No meio do feltro abrem cinco cartas comunitárias, três de uma vez (o flop) e depois uma a uma (turn e river). A sua mão é a melhor combinação de cinco entre as suas duas e as cinco da mesa; a placa embaixo das suas cartas diz o que você tem a cada carta que vira.',
+  },
+  {
+    icon: 'chip',
+    title: 'Aposte a cada rua',
+    text: `Antes de cada carta comunitária abre uma rodada de apostas, e você tem ${ACTION_SECONDS} segundos para decidir: PASSAR (seguir de graça), PAGAR o que o rival apostou, AUMENTAR — digitando quanto quer pôr a mais, com atalhos de +10 e +100 — ou CORRER, largando a mão. Correr custa só o que você já tinha posto, e por isso está sempre à mão: numa mesa que continua, guardar fichas é jogada. Aumentar até o fim do stack é o all-in.`,
+  },
+  {
+    icon: 'crown',
+    title: 'O showdown decide',
+    text: 'Chegando ao river, as duas mãos viram e se comparam: a mais forte leva o pote, e o empate divide. As fichas ficam na mesa e passam para o lado de quem ganhou — o seu montante, ao lado da sua mão, sobe e desce a cada pote. Elas têm quatro valores: marfim vale 25, vinho 100, ardósia 500 e ouro 1.000. Se o rival correr, a mesa te pergunta se você quer abrir a sua mão para ele: mostrar um blefe é jogada, e não custa ficha nenhuma.',
+  },
+  {
+    icon: 'chip',
+    title: 'Até alguém quebrar',
+    text: 'A mesa segue enquanto os dois tiverem fichas para a entrada, e entre uma mão e outra correm 10 segundos antes de a próxima ser distribuída. O botão de LEVANTAR fica no canto da fileira, apagado na primeira mão — ela é o compromisso de quem sentou. Levantar no meio de uma mão corre a mão junto. No caixa você vê o balanço: com quanto sentou, com quanto levantou e o que entra no seu saldo. A comissão da casa (10%) incide uma vez só ali, e só sobre o lucro.',
   },
   {
     icon: 'trophy',
@@ -51,25 +56,29 @@ const STEPS: readonly { icon: IconName; title: string; text: string }[] = [
   },
 ];
 
-/** Tutorial em 3 passos exibido na primeira jogada (e sob demanda). */
-export function TutorialSheet({ open, onClose, continueToGame = false }: TutorialSheetProps) {
+/**
+ * A folha do COMO JOGAR, aberta sob demanda.
+ *
+ * Ela já foi um tutorial de primeira jogada, disparado por quem tocava
+ * em JOGAR. Deixou de ser: o botão de jogar leva à mesa, e quem quer
+ * aprender pede por isto — que é exatamente o que o botão abaixo dele
+ * promete. Fechar devolve o jogador para onde ele estava.
+ */
+export function TutorialSheet({ open, onClose }: TutorialSheetProps) {
   const [step, setStep] = useState(0);
   const markTutorialSeen = useGameStore((state) => state.markTutorialSeen);
-  const startSearch = useGameStore((state) => state.startSearch);
 
   const isLastStep = step === STEPS.length - 1;
   const current = STEPS[step] ?? STEPS[0];
 
-  const finish = () => {
-    markTutorialSeen();
-    onClose();
-    setStep(0);
-    if (continueToGame) void startSearch();
-  };
-
   const close = () => {
     onClose();
     setStep(0);
+  };
+
+  const finish = () => {
+    markTutorialSeen();
+    close();
   };
 
   if (!current) return null;
@@ -79,16 +88,12 @@ export function TutorialSheet({ open, onClose, continueToGame = false }: Tutoria
       <div className="flex flex-col items-center gap-4 text-center">
         <Icon name={current.icon} size={52} className="text-gold" />
         <h3 className="text-xl font-extrabold">{current.title}</h3>
-        <p className="min-h-16 text-sm text-lavender">{current.text}</p>
+        <p className="min-h-32 text-sm text-lavender">{current.text}</p>
 
         {/* role="img": as bolinhas são decorativas (aria-hidden), então o
             passo só chega ao leitor de tela por este rótulo — e rótulo em
             <div> sem papel é descartado pela especificação ARIA. */}
-        <div
-          className="flex gap-2"
-          role="img"
-          aria-label={`Passo ${step + 1} de ${STEPS.length}`}
-        >
+        <div className="flex gap-2" role="img" aria-label={`Passo ${step + 1} de ${STEPS.length}`}>
           {STEPS.map((_, index) => (
             <span
               key={index}
@@ -103,7 +108,7 @@ export function TutorialSheet({ open, onClose, continueToGame = false }: Tutoria
           onClick={isLastStep ? finish : () => setStep((value) => value + 1)}
           data-testid="tutorial-next"
         >
-          {isLastStep ? (continueToGame ? 'COMEÇAR' : 'ENTENDI') : 'PRÓXIMO'}
+          {isLastStep ? 'ENTENDI' : 'PRÓXIMO'}
         </Button>
       </div>
     </Sheet>

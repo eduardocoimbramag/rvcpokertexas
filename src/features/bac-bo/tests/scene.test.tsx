@@ -26,11 +26,12 @@ describe('resolveDealerReaction', () => {
       search: 'idle',
       found: 'greet',
       confirm: 'present',
-      negotiate: 'present',
       countdown: 'anticipate',
       dealing: 'shake',
-      turn: 'present',
+      betting: 'present',
       settle: 'reveal',
+      // Entre as mãos ela recolhe o pote e prepara o baralho seguinte.
+      handover: 'shake',
       completed: 'idle',
       error: 'apologize',
     };
@@ -52,9 +53,8 @@ describe('resolveDealerReaction', () => {
   });
 
   it('fora do veredito, o resultado residual é ignorado', () => {
-    expect(resolveDealerReaction('negotiate', 'win')).toBe('present');
     expect(resolveDealerReaction('dealing', 'tie')).toBe('shake');
-    expect(resolveDealerReaction('turn', 'win')).toBe('present');
+    expect(resolveDealerReaction('betting', 'win')).toBe('present');
   });
 });
 

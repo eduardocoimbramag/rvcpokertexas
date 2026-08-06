@@ -18,7 +18,7 @@ import { expect, test } from '@playwright/test';
 test.describe.configure({ timeout: 180_000 });
 
 const SEEDED_STATE = {
-  version: 2,
+  version: 3,
   state: {
     balance: 5000,
     history: [],
@@ -26,6 +26,7 @@ const SEEDED_STATE = {
       audio: { muted: true, musicVolume: 0.4, sfxVolume: 0.8 },
       vibrationEnabled: false,
       tutorialSeen: true,
+      scenery: 'high',
     },
   },
 };
@@ -111,7 +112,12 @@ test('alvo de toque: o × de expulsar responde além do próprio selo', async ({
     /** Quem recebe o toque em (x, y): o próprio × ou outra coisa? */
     const hits = (x: number, y: number) => {
       const target = document.elementFromPoint(x, y);
-      return target != null && (target === el || el.contains(target) || target.closest('[data-testid^="seat-kick-"]') === el);
+      return (
+        target != null &&
+        (target === el ||
+          el.contains(target) ||
+          target.closest('[data-testid^="seat-kick-"]') === el)
+      );
     };
     return {
       selo: { w: Math.round(r.width), h: Math.round(r.height) },
@@ -225,7 +231,11 @@ test('mesa única: 3 a 6 assentos, todos no mesmo feltro, melhor de 3', async ({
   await expect(page.getByTestId('table-hand-you')).toBeVisible();
 
   // As SUAS cartas são maiores que as dos rivais — é a assimetria pedida.
-  const yours = await page.getByTestId('table-hand-you').locator('.card-scene').first().boundingBox();
+  const yours = await page
+    .getByTestId('table-hand-you')
+    .locator('.card-scene')
+    .first()
+    .boundingBox();
   const rival = await page.getByTestId('table-rivals').locator('.card-scene').first().boundingBox();
   expect(yours?.width ?? 0).toBeGreaterThan((rival?.width ?? 0) * 1.5);
 

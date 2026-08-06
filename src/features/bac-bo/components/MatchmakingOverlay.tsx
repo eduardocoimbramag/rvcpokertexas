@@ -80,14 +80,7 @@ function SonarLens() {
         fill="none"
       />
       {/* Aro. */}
-      <circle
-        cx="26"
-        cy="26"
-        r="16.5"
-        stroke="url(#sonar-metal)"
-        strokeWidth="6"
-        fill="none"
-      />
+      <circle cx="26" cy="26" r="16.5" stroke="url(#sonar-metal)" strokeWidth="6" fill="none" />
     </svg>
   );
 }

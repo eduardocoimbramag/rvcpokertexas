@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { historyEntrySchema } from '../engine/types';
+import { pokerHistoryEntrySchema } from '../engine/poker/types';
 
 /**
  * Persistência do jogo em localStorage, com envelope versionado.
@@ -9,7 +9,7 @@ import { historyEntrySchema } from '../engine/types';
  */
 
 const STORAGE_KEY = 'bacbo-arena:state';
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 
 export const audioSettingsSchema = z.object({
   muted: z.boolean(),
@@ -34,7 +34,7 @@ export type GameSettings = z.infer<typeof gameSettingsSchema>;
 
 export const persistedStateSchema = z.object({
   balance: z.number().int().nonnegative(),
-  history: z.array(historyEntrySchema),
+  history: z.array(pokerHistoryEntrySchema),
   settings: gameSettingsSchema,
 });
 export type PersistedState = z.infer<typeof persistedStateSchema>;
@@ -59,13 +59,22 @@ const MIGRATIONS: Record<number, (state: unknown) => unknown> = {
   // v1 (Bac Bo) → v2 (Blackjack): o histórico guardava rodadas de dados,
   // incompatíveis com o schema de cartas — as entradas são descartadas,
   // mas saldo e preferências do jogador atravessam a mudança de jogo.
-  1: (state) => {
-    if (typeof state === 'object' && state !== null) {
-      return { ...(state as Record<string, unknown>), history: [] };
-    }
-    return state;
-  },
+  1: dropHistory,
+  // v2 (Blackjack) → v3 (Texas Hold'em): o histórico guardava totais de
+  // 21, que não descrevem uma mão de poker. Mesma regra da migração
+  // anterior, e pela mesma razão: o EXTRATO do jogo velho não tem
+  // tradução no jogo novo, mas o SALDO e as preferências têm — e são
+  // eles que pertencem à pessoa, não à modalidade.
+  2: dropHistory,
 };
+
+/** Atravessa saldo e preferências, descarta um histórico de outro jogo. */
+function dropHistory(state: unknown): unknown {
+  if (typeof state === 'object' && state !== null) {
+    return { ...(state as Record<string, unknown>), history: [] };
+  }
+  return state;
+}
 
 export class GameStorageService {
   private readonly storage: Storage;

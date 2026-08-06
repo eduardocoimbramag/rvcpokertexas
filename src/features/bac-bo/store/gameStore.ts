@@ -3,34 +3,24 @@ import { create } from 'zustand';
 import { appEnv } from '@/shared/config/env';
 import { createId } from '@/shared/lib/ids';
 
-import {
-  COUNTDOWN_START,
-  HISTORY_LIMIT,
-  NEGOTIATION_SECONDS,
-  TIMINGS,
-} from '../animations/timings';
-import type { GameEngine } from '../engine/GameEngine';
+import { COUNTDOWN_START, HISTORY_LIMIT, TIMINGS } from '../animations/timings';
 import { GameEngineError } from '../engine/GameEngine';
-import { createGameEngine } from '../engine/createGameEngine';
-import {
-  DEFAULT_STAKE,
-  MIN_STAKE,
-  creditPayout,
-  debitStake,
-  isBroke,
-  validateStake,
-} from '../engine/credits';
-import { DOUBLE_ACCEPT_CHANCE } from '../engine/rules';
+import { cashOutValue, creditPayout, debitStake, isBroke, tableStackFor } from '../engine/credits';
+import type { PokerEngine } from '../engine/poker/PokerEngine';
+import { createPokerEngine } from '../engine/poker/createPokerEngine';
+import { timeoutAction } from '../engine/poker/rules';
 import type {
-  BlackjackRoundState,
-  HistoryEntry,
-  Match,
-  PlayerAction,
-  ForcedDeal,
-  RoundOutcome,
-  RoundResult,
-  TableTurn,
-} from '../engine/types';
+  ForcedPokerDeal,
+  PokerAction,
+  PokerHistoryEntry,
+  PokerMove,
+  PokerOutcome,
+  PokerResult,
+  PokerRoundState,
+  PokerSession,
+  Street,
+} from '../engine/poker/types';
+import type { Match } from '../engine/types';
 import { audioManager } from '../services/AudioManager';
 import type {
   AudioSettings,
@@ -38,70 +28,77 @@ import type {
   SceneQualitySetting,
 } from '../services/GameStorageService';
 import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageService';
-import type { Negotiator, NegotiatorReply, ProposalAuthor, ProposalStatus } from './negotiation';
-import { BOT_BEATS, createBotNegotiator } from './negotiation';
 
 /**
- * Máquina de estados do fluxo de jogo (seção 12 da especificação).
- * Toda mudança de fase passa por `canTransition` — transições fora do
- * mapa são ignoradas, o que torna impossível a UI "pular" etapas.
+ * Máquina de estados do fluxo de jogo. Toda mudança de fase passa por
+ * `canTransition` — transições fora do mapa são ignoradas, o que torna
+ * impossível a UI "pular" etapas.
  *
- * O 1v1 não tem seleção prévia de aposta: a busca começa direto da Home
- * e o valor nasce na mesa de negociação (fase `negotiate`), entre a
- * confirmação do duelo e o countdown.
+ * O 1v1 não tem seleção de aposta nem conversa sobre valor: a busca
+ * começa direto da Home e a entrada da mesa é fixa (ver `TABLE_ANTE`).
  *
- * O duelo é uma RODADA ÚNICA de 21 contra o adversário — sem casa para
- * bater e sem série: countdown → dealing (as cartas saem do baralho) →
- * turn (os dois escolhem AO MESMO TEMPO, com 20 s no relógio, e os dois
- * lances são revelados juntos quando a vez fecha) → settle (showdown:
- * as ocultas viram e as mãos se comparam) → completed. A fase `turn` se
- * repete enquanto houver mão viva; quem fecha a dele fica de fora das
- * vezes seguintes. Empate devolve a aposta e encerra a partida do mesmo
- * jeito.
+ * O DUELO É UMA SESSÃO DE TEXAS HOLD'EM heads-up, e o valor debitado do
+ * saldo é o BUY-IN com que os dois compram fichas: countdown → dealing
+ * (duas cartas fechadas para cada um, entrada na mesa) → betting (as
+ * apostas correm, rua por rua) → settle (showdown, ou o pote levado por
+ * desistência) → handover.
+ *
+ * `handover` é o BEAT ENTRE AS MÃOS, e é ele que faz da mesa uma sessão:
+ * o pote volta para os stacks, a placa do vencedor entra, e dali a mesa
+ * DISTRIBUI DE NOVO — a menos que alguém tenha ficado sem fichas para a
+ * entrada ou que o jogador tenha se levantado. Só então vem `completed`,
+ * que deixou de ser a tela de vitória de uma mão para ser o CAIXA da
+ * sessão inteira.
+ *
+ * A fase `betting` se REPETE do começo ao fim da mão: o que muda a cada
+ * volta é a rua e de quem é a vez, não a fase. Quem conduz a mesa entre
+ * um lance e outro é o `handOff` — a mesa anda sozinha (o rival joga, o
+ * flop abre) e para quando a palavra é sua.
  */
 export type GamePhase =
   | 'idle'
   | 'search'
   | 'confirm'
-  | 'negotiate'
   /** Apresentação de duelo — depois do acordo, com o rival revelado. */
   | 'found'
   | 'countdown'
   | 'dealing'
-  | 'turn'
+  | 'betting'
   | 'settle'
+  /** Entre as mãos: o pote assenta nos stacks e a mesa se prepara. */
+  | 'handover'
+  /** O caixa da sessão: o balanço do que se levou da mesa. */
   | 'completed'
   | 'error';
 
 /**
  * A ORDEM DAS CENAS de abertura, e por que ela é esta:
  *
- *   busca → confirmação → negociação → APRESENTAÇÃO → countdown
+ *   busca → confirmação → APRESENTAÇÃO → countdown
  *
- * A apresentação (`found`, o "VOCÊ vs FULANO" de tela de matchup) já
- * morou logo depois da busca, antes da confirmação. Ela desceu para
- * DEPOIS do acordo por causa do sigilo do adversário (ver
- * opponentIdentity.ts): enquanto o valor se negocia, o rival não tem
- * nome nem cara, e uma apresentação anônima não apresenta ninguém.
- * Fechada a aposta, não há mais o que combinar — e aí a placa dele
- * entra por extenso, que é o único lugar do fluxo onde a revelação vale
- * como momento. É também o beat que separa a mesa de dinheiro da mesa
- * de cartas: fecha-se o valor, conhece-se o rival, começa o duelo.
+ * A apresentação (`found`, o "VOCÊ vs FULANO" de tela de matchup) vem
+ * DEPOIS da confirmação por causa do sigilo do adversário (ver
+ * opponentIdentity.ts): enquanto o duelo não está travado, o rival não
+ * tem nome nem cara, e uma apresentação anônima não apresenta ninguém.
+ * Dada a palavra pelos dois lados, a placa dele entra por extenso — o
+ * único lugar do fluxo onde a revelação vale como momento.
  */
 export const PHASE_TRANSITIONS: Record<GamePhase, readonly GamePhase[]> = {
   idle: ['search'],
   search: ['confirm', 'idle', 'error'],
-  confirm: ['negotiate', 'idle'],
-  negotiate: ['found', 'idle', 'error'],
+  confirm: ['found', 'idle'],
   found: ['countdown', 'error'],
   countdown: ['dealing', 'error'],
-  // Com os dois naturais na distribuição não há vez nenhuma a abrir: a
-  // mesa vai direto ao showdown.
-  dealing: ['turn', 'settle', 'error'],
-  // A fase `turn` se repete (uma vez após a outra) sem sair dela: o que
-  // muda a cada volta é o estado da rodada, não a fase.
-  turn: ['settle', 'error'],
-  settle: ['completed'],
+  // Distribuídas as fechadas, o pré-flop abre: no Hold'em sempre há uma
+  // rua de aposta antes de qualquer carta comunitária.
+  dealing: ['betting', 'error'],
+  // A fase `betting` se repete (rua após rua, lance após lance) sem sair
+  // dela: o que muda a cada volta é o estado da mão, não a fase.
+  betting: ['settle', 'error'],
+  settle: ['handover'],
+  // A mesa continua: do beat entre as mãos sai OUTRA distribuição, ou o
+  // caixa quando a sessão acabou.
+  handover: ['dealing', 'completed', 'error'],
   completed: ['search', 'idle'],
   error: ['search', 'idle'],
 };
@@ -119,96 +116,66 @@ export interface MatchConfirmations {
 const NO_CONFIRMATIONS: MatchConfirmations = { player: false, opponent: false };
 
 /**
- * Um lance na mesa de negociação: o balão de proposta em cena. `open`
- * governa apenas a presença do balão — a resposta (o ✓ ou o ✗ aceso)
- * fica um beat em cena antes de ele sair, como a nuvem da dobra.
+ * O último lance da mesa, posto no alto-falante por um beat. O `id` é o
+ * que faz dois lances idênticos entrarem em cena duas vezes: sem ele a
+ * animação não teria como saber que houve um anúncio novo.
  */
-export interface NegotiationProposal {
+export interface MoveAnnounce extends PokerMove {
   id: string;
-  from: ProposalAuthor;
-  amount: number;
-  status: ProposalStatus;
-  /** O balão do lance está em cena. */
-  open: boolean;
 }
 
+/** Segundos que o jogador tem para decidir o lance dele. */
+export const ACTION_SECONDS = 20;
+
 /**
- * Mesa de negociação (fase `negotiate`) — fichas na mesa, sem chat.
- *
- * A aposta padrão já está no feltro quando a rodada abre; os lados
- * empurram lances (balões de proposta) e o outro cobre ou recusa. Um
- * aceite fecha a mesa no valor coberto; o relógio da rodada zerando
- * fecha no que estiver na mesa. O débito do stake continua acontecendo
- * apenas na virada para o countdown.
+ * O relógio da vez. No poker a vez é de UM por vez — não há escolha
+ * simultânea a esconder —, então o relógio só corre quando a palavra é
+ * sua. Zerado, a mesa joga por você o lance seguro (ver `timeoutAction`):
+ * passar se for de graça, desistir se houver aposta na frente.
  */
-export interface NegotiationState {
-  /** Valor vivo na mesa (nasce na aposta padrão de 100). */
-  tableStake: number;
+export interface ActionClock {
   /**
-   * O título de abertura está em cena. Enquanto ele estiver, o relógio
-   * da rodada NÃO corre: a contagem começa quando o letreiro sai.
+   * A JANELA DE DECISÃO está aberta. Não é o mesmo que `seconds > 0`, e a
+   * diferença importa: entre a engine devolver a mesa com a palavra sua e
+   * o beat do anúncio vencer, `toAct` já é 'player' e o relógio ainda não
+   * começou. Sem esta flag a barra de lances entrava em cena com o
+   * relógio marcando 0s — que se lê como "seu tempo acabou" no exato
+   * instante em que ele ia começar.
    */
-  announcing: boolean;
-  /** Segundos restantes da rodada de negociação (20 → 0). */
-  secondsLeft: number;
-  /** Último lance (vivo ou recém-respondido, enquanto o balão fica). */
-  proposal: NegotiationProposal | null;
-  /** Valor selado quando a mesa fecha; `null` enquanto se negocia. */
-  agreedStake: number | null;
-  /** Beat "HORA DO DUELO" em andamento — trava as ações da mesa. */
-  starting: boolean;
-}
-
-/**
- * Pedido de dobra da aposta no meio da mão (só o 1v1 tem).
- *
- * O jogador propõe dobrar o valor que está na mesa; o rival aceita ou
- * recusa — a dobra só existe com os DOIS de acordo, como o stake que
- * nasceu na negociação. Aceita, o novo valor vira a verdade da engine
- * (payout e histórico derivam dele) e a diferença sai do saldo na hora.
- *
- * `status` é o estado do pedido NA RODADA: 'idle' é ninguém tendo
- * pedido ainda — é ele que libera o botão, e por isso a resposta (aceita
- * ou recusada) não volta para 'idle': cada mão admite um pedido só.
- * `open` governa apenas a nuvem em cena, que sai um beat depois.
- */
-export type DoubleBetStatus = 'idle' | 'pending' | 'accepted' | 'declined';
-
-export interface DoubleBetState {
-  status: DoubleBetStatus;
-  /** Valor que a mesa passa a valer se o rival topar (o dobro do stake). */
-  amount: number;
-  /** A nuvem do pedido está em cena. */
   open: boolean;
-}
-
-const NO_DOUBLE_BET: DoubleBetState = { status: 'idle', amount: 0, open: false };
-
-/**
- * Os dois lances de uma vez, revelados JUNTOS pela mesa. O `id` é o que
- * faz duas vezes idênticas entrarem em cena duas vezes: sem ele a
- * animação não teria como saber que houve uma revelação nova.
- */
-export interface TurnReveal extends TableTurn {
-  id: string;
-}
-
-/** Segundos que cada duelista tem para escolher o lance da vez. */
-export const TURN_SECONDS = 20;
-
-/**
- * O relógio da vez corrente. Os dois escolhem AO MESMO TEMPO: o que a
- * mesa mostra do outro lado é só se ele já bateu o martelo — nunca o
- * que ele escolheu.
- */
-export interface TurnClock {
-  /** Segundos restantes (TURN_SECONDS → 0); 0 fora de uma vez sua. */
+  /** Segundos restantes (ACTION_SECONDS → 0); 0 fora de uma vez sua. */
   seconds: number;
-  /** O rival já travou a escolha dele. */
-  opponentReady: boolean;
 }
 
-const NO_TURN_CLOCK: TurnClock = { seconds: 0, opponentReady: false };
+const NO_ACTION_CLOCK: ActionClock = { open: false, seconds: 0 };
+
+/** Segundos para decidir se mostra as cartas a quem correu. */
+export const SHOW_CARDS_SECONDS = 5;
+
+/**
+ * O INTERVALO ENTRE AS MÃOS, em segundos.
+ *
+ * É o tempo de ler quem levou o pote e de decidir se ainda se quer
+ * jogar. Zerado, a mesa distribui sozinha: uma sessão que exigisse um
+ * toque a cada mão para continuar seria uma sessão que se joga com o
+ * dedo, não com a cabeça. O relógio é o que transforma a porta de saída
+ * numa escolha de verdade — sem ele, sair dependeria de acertar um beat.
+ */
+export const HANDOVER_SECONDS = 10;
+
+/**
+ * O CONVITE PARA MOSTRAR AS CARTAS, com o relógio dele.
+ *
+ * Ele traz a leitura da mão que se tinha no instante em que o rival
+ * correu (`handLabel`), porque é ela que informa a decisão: mostrar um
+ * par de Ases diz uma coisa ao rival, mostrar carta alta diz outra bem
+ * diferente — e é essa segunda que faz o blefe render na mão seguinte.
+ */
+export interface ShowPrompt {
+  seconds: number;
+  /** A leitura da sua mão quando o pote foi levado ("Par de Ases"). */
+  handLabel: string;
+}
 
 /** Contagem falada da mesa, no inglês clássico de cassino. */
 const COUNTDOWN_WORDS: Record<number, string> = {
@@ -223,22 +190,55 @@ export interface GameStoreState {
   phase: GamePhase;
   balance: number;
   match: Match | null;
-  /** Rodada interativa corrente (mãos visíveis); `null` fora da rodada. */
-  round: BlackjackRoundState | null;
-  /** Ação do jogador em trânsito na engine — trava os botões da vez. */
+  /** Mão de poker corrente (a mesa como você a vê); `null` fora dela. */
+  round: PokerRoundState | null;
+  /**
+   * A MESA ENTRE AS MÃOS: stacks que sobrevivem, botão da próxima, quantas
+   * já correram. É o que faz a sessão existir para a tela — o botão de
+   * sair só aparece a partir da segunda mão, e o caixa precisa saber com
+   * quanto se sentou.
+   */
+  session: PokerSession | null;
+  /**
+   * O convite para MOSTRAR AS CARTAS depois de um pote levado sem
+   * showdown. `null` fora do beat; enquanto está aqui, o relógio corre.
+   *
+   * Existe porque no poker mostrar um blefe é jogada, não vaidade: quem
+   * levou o pote sem ser pago escolhe se abre a mão, e essa escolha vale
+   * dinheiro nas mãos seguintes.
+   */
+  showPrompt: ShowPrompt | null;
+  /**
+   * Você ABRIU a mão para o rival depois de levar o pote sem showdown.
+   * Vale pela mão corrente e some na distribuição seguinte — mostrar é um
+   * gesto daquele pote, não um estado da mesa.
+   */
+  cardsShown: boolean;
+  /**
+   * Segundos que faltam para a mesa distribuir a próxima mão. Só corre na
+   * fase `handover`; 0 fora dela.
+   */
+  handoverSeconds: number;
+  /** Lance do jogador em trânsito na engine — trava a barra de ações. */
   actionPending: boolean;
-  result: RoundResult | null;
+  result: PokerResult | null;
   /** Estado da confirmação dupla — a negociação só nasce com os dois `true`. */
   confirmations: MatchConfirmations;
-  /** Mesa de negociação da partida; `null` fora da fase negotiate. */
-  negotiation: NegotiationState | null;
-  /** Pedido de dobra da rodada corrente (um por mão). */
-  doubleBet: DoubleBetState;
-  /** Relógio e martelo do rival na vez corrente. */
-  turn: TurnClock;
-  /** Os dois lances que a mesa está revelando; `null` entre as vezes. */
-  reveal: TurnReveal | null;
-  history: HistoryEntry[];
+  /** Relógio da sua vez; zerado quando a palavra não é sua. */
+  actionClock: ActionClock;
+  /** O lance que a mesa está anunciando; `null` entre um lance e outro. */
+  announce: MoveAnnounce | null;
+  /**
+   * A RUA que a mesa está anunciando em letreiro — o mesmo carimbo de
+   * ouro da HORA DO DUELO. `null` fora do beat de abertura.
+   *
+   * Ele existe no store, e não num efeito da tela, porque quem sabe que
+   * uma rua abriu é quem conduz a mesa: derivar isso de uma mudança de
+   * prop faria a tela adivinhar um acontecimento que o store já tem na
+   * mão.
+   */
+  streetAnnounce: Street | null;
+  history: PokerHistoryEntry[];
   /**
    * Segundo beat da fase `found`: a apresentação já passou e o letreiro
    * HORA DO DUELO está no feltro. É o que separa as duas cenas de uma
@@ -250,10 +250,8 @@ export interface GameStoreState {
   /** Mensagem de erro amigável quando phase === 'error'. */
   error: string | null;
   settings: GameSettings;
-  /** Distribuição empilhada para a rodada (apenas DevTools). */
-  devForcedDeal: ForcedDeal | null;
-  /** Oponente aceita qualquer proposta (apenas DevTools; e2e). */
-  devNegotiationAutoAccept: boolean;
+  /** Mão empilhada para o showdown (apenas DevTools). */
+  devForcedDeal: ForcedPokerDeal | null;
 
   /** Busca direta do 1v1 (Home, jogar de novo e tentar de novo). */
   startSearch: () => Promise<void>;
@@ -261,22 +259,20 @@ export interface GameStoreState {
   cancelSearch: () => void;
   confirmMatch: () => void;
   declineMatch: () => void;
-  /** Empurra um lance de créditos ao centro da mesa de negociação. */
-  sendProposal: (amount: number) => void;
-  /** Cobre o lance vivo do oponente (fecha a mesa no valor dele). */
-  acceptProposal: () => void;
-  /** Recusa o lance vivo do oponente (a mesa segue valendo o mesmo). */
-  declineProposal: () => void;
-  /** Abandona a mesa de negociação e volta ao menu. */
-  abandonNegotiation: () => void;
-  /** Trava "pedir carta" como a sua escolha da vez. */
-  hit: () => void;
-  /** Trava "parar" como a sua escolha da vez. */
-  stand: () => void;
-  /** Propõe ao rival dobrar a aposta que está na mesa (antes de escolher). */
-  requestDouble: () => void;
+  /** Joga a mão fora e entrega o pote ao rival. */
+  fold: () => void;
+  /** Passa a vez sem pôr ficha nenhuma (só quando não há o que pagar). */
+  check: () => void;
+  /** Cobre a aposta do rival e segue na mão. */
+  call: () => void;
+  /** Aumenta até `to` — o TOTAL comprometido nesta rua, não o incremento. */
+  raise: (to: number) => void;
   playAgain: () => void;
   dismissError: () => void;
+  /** Levanta da mesa e abre o caixa da sessão (a partir da 2ª mão). */
+  leaveTable: () => void;
+  /** Responde ao convite de mostrar as cartas ao rival que correu. */
+  answerShowCards: (show: boolean) => void;
   /** Recarrega créditos quando o saldo não cobre o menor stake. */
   refillCredits: () => void;
   /** Ajusta o saldo por um delta (débito/crédito) e persiste — usado pelo
@@ -286,19 +282,16 @@ export interface GameStoreState {
   updateAudioSettings: (patch: Partial<AudioSettings>) => void;
   setVibrationEnabled: (enabled: boolean) => void;
   setSceneryQuality: (scenery: SceneQualitySetting) => void;
-  devSetForcedDeal: (deal: ForcedDeal | null) => void;
-  devSetNegotiationAutoAccept: (enabled: boolean) => void;
+  devSetForcedDeal: (deal: ForcedPokerDeal | null) => void;
   devAddCredits: (amount: number) => void;
   devResetAll: () => void;
 }
 
 export interface GameStoreDeps {
-  engine?: GameEngine;
+  engine?: PokerEngine;
   storage?: GameStorageService;
   initialBalance?: number;
-  /** Fábrica da cabeça do oponente na negociação (stub nos testes). */
-  createNegotiator?: () => Negotiator;
-  /** Fonte de aleatoriedade da negociação (determinística nos testes). */
+  /** Fonte de aleatoriedade dos ritmos da mesa (determinística nos testes). */
   rng?: () => number;
 }
 
@@ -310,7 +303,7 @@ export interface GameStoreDeps {
 export function createGameStore(deps: GameStoreDeps = {}) {
   const engine =
     deps.engine ??
-    createGameEngine({ mode: 'local', local: { allowForcedDeals: appEnv.devToolsEnabled } });
+    createPokerEngine({ mode: 'local', local: { allowForcedDeals: appEnv.devToolsEnabled } });
   const storage = deps.storage ?? new GameStorageService();
   const initialBalance = deps.initialBalance ?? appEnv.initialBalance;
 
@@ -318,31 +311,17 @@ export function createGameStore(deps: GameStoreDeps = {}) {
   const timers = new Set<ReturnType<typeof setTimeout>>();
   let searchAbort: AbortController | null = null;
   const rng = deps.rng ?? Math.random;
-  const createNegotiator = deps.createNegotiator ?? (() => createBotNegotiator(rng));
-
-  /** Cabeça do oponente na mesa corrente (uma por partida). */
-  let negotiator: Negotiator | null = null;
   /**
-   * Geração da vez corrente: o relógio, o martelo do rival e o
-   * fechamento carregam o número da vez em que foram agendados. Uma vez
-   * que fecha incrementa a sequência, e tudo o que sobrou dela morre no
-   * guard sem efeito — é o que impede um relógio velho de fechar a vez
-   * nova.
+   * Geração do PASSO corrente da mão. Cada estado novo que a engine
+   * devolve incrementa a sequência, e tudo o que ficou agendado pelo
+   * passo anterior — o relógio da vez, a próxima jogada da mesa — morre
+   * no guard sem efeito.
+   *
+   * É o que impede o acidente clássico desta mesa: um relógio de 20 s
+   * que continua correndo depois de o jogador já ter apostado e fecha a
+   * vez seguinte por ele.
    */
-  let turnSeq = 0;
-  /**
-   * Geração das jogadas agendadas do bot: cada nova ação do jogador
-   * (lance, aceite, recusa, desistência) incrementa a sequência e as
-   * jogadas antigas — abertura espontânea, contraproposta a um lance já
-   * superado — morrem no guard sem efeito.
-   */
-  let botSeq = 0;
-  /**
-   * O relógio da rodada de negociação já está correndo. Uma mesa tem UM
-   * relógio: o beat do letreiro e um lance do jogador podem abrir a mesa
-   * (o que vier primeiro), mas só o primeiro liga a contagem.
-   */
-  let negotiationClockOn = false;
+  let stepSeq = 0;
 
   const store = create<GameStoreState>()((set, get) => {
     const schedule = (fn: () => void, ms: number): void => {
@@ -405,302 +384,75 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     /**
-     * Com os dois lados prontos, trava o duelo: um beat para a animação
-     * de "duelo confirmado" respirar, então abre a mesa de negociação.
-     * Nada é debitado aqui — o valor ainda vai nascer da conversa.
+     * Com os dois lados prontos, o duelo abre. É a cena mais curta do
+     * fluxo e a mais direta: um beat para a animação de "duelo
+     * confirmado" respirar, a apresentação do rival e a HORA DO DUELO.
+     *
+     * AQUI MORAVA A RODADA DE NEGOCIAÇÃO, e a ausência dela é a decisão:
+     * o valor da mesa era combinado numa conversa de propostas antes das
+     * cartas, e isso fazia do duelo duas partidas — uma de dinheiro e
+     * uma de poker. A entrada agora é FIXA (ver `TABLE_ANTE`): toda mão
+     * começa igual, e o que varia é o que se aposta dentro dela, que é
+     * onde o poker mora.
+     *
      * Chamado após CADA confirmação; só age na segunda.
      */
     const startWhenBothConfirmed = (): void => {
-      const { confirmations } = get();
-      if (!confirmations.player || !confirmations.opponent) return;
+      const { confirmations, match } = get();
+      if (!confirmations.player || !confirmations.opponent || !match) return;
 
       audioManager.playSfx('locked');
       vibrate([30, 40, 60]);
       schedule(() => {
-        const { match, phase } = get();
-        if (phase !== 'confirm' || !match) return;
-        if (!transitionTo('negotiate')) return;
-        beginNegotiation(match.id);
+        if (get().phase !== 'confirm') return;
+        presentDuel();
       }, TIMINGS.confirmLockInMs);
     };
 
-    /* ---------- Mesa de negociação (fichas na mesa) ---------- */
-
-    /** Ajusta a negociação corrente preservando o resto da mesa. */
-    const patchNegotiation = (patch: Partial<NegotiationState>): void => {
-      const { negotiation } = get();
-      if (!negotiation) return;
-      set({ negotiation: { ...negotiation, ...patch } });
-    };
-
-    /** A mesa ainda está aberta para esta partida (sem fechar/começar). */
-    const negotiationAlive = (matchId: string): boolean => {
-      const { phase, match, negotiation } = get();
-      return (
-        phase === 'negotiate' &&
-        match?.id === matchId &&
-        negotiation !== null &&
-        !negotiation.starting
-      );
-    };
-
     /**
-     * O ÚLTIMO ATO ANTES DAS CARTAS, em três beats encadeados:
+     * OS DOIS ÚLTIMOS BEATS ANTES DAS CARTAS:
      *
-     * 1. o acordo SELA a mesa — o composer sai e o pote fica só com as
-     *    fichas do valor fechado (`negotiationSealMs`);
-     * 2. a APRESENTAÇÃO entra: "VOCÊ vs FULANO", agora com o nome e o
-     *    medalhão do rival por extenso — é aqui que ele deixa de ser
-     *    "Oponente" (`foundSplashMs`);
-     * 3. a HORA DO DUELO carimba o feltro e o countdown assume
-     *    (`duelAnnounceMs`).
+     * 1. a APRESENTAÇÃO entra — "VOCÊ vs FULANO", agora com o nome e o
+     *    medalhão do rival por extenso: é aqui que ele deixa de ser
+     *    "Oponente" (ver opponentIdentity.ts);
+     * 2. a HORA DO DUELO carimba o feltro, o stack é debitado e o
+     *    countdown assume.
      *
-     * O valor acordado vira a verdade da engine ANTES do débito (payout e
-     * histórico derivam do stake gravado na partida), e o débito só
-     * acontece na virada para o countdown — como sempre foi. Cada beat
-     * revalida a fase: uma partida abandonada no meio não arrasta timer
-     * nenhum para a próxima.
+     * Cada beat revalida a fase: uma partida abandonada no meio não
+     * arrasta timer nenhum para a próxima.
      */
-    const finishNegotiation = (matchId: string): void => {
-      if (!negotiationAlive(matchId)) return;
-      const { negotiation, match } = get();
-      if (!negotiation || !match) return;
-      const stake = negotiation.tableStake;
-      botSeq += 1; // nenhuma jogada pendente do bot sobrevive ao fim da mesa
-      set({ negotiation: { ...negotiation, starting: true, agreedStake: stake } });
-      audioManager.playSfx('locked');
-      vibrate([30, 40, 60]);
-
-      /** Beat 3: o letreiro sai, a aposta é debitada e o duelo começa. */
-      const startDuel = (): void => {
-        const { phase, balance: currentBalance } = get();
-        if (phase !== 'found') return;
-        let nextBalance: number;
-        try {
-          nextBalance = debitStake(currentBalance, stake);
-        } catch {
-          failWith('Saldo insuficiente para esta aposta.');
-          return;
-        }
-        if (!transitionTo('countdown')) return;
-        set({ balance: nextBalance, duelAnnounce: false });
-        persist();
-        runCountdown(COUNTDOWN_START);
-      };
-
-      /** Beat 2: a apresentação do rival, já com o nome dele em cena. */
-      const presentDuel = (): void => {
-        if (get().phase !== 'negotiate') return;
-        if (!transitionTo('found')) return;
-        audioManager.playSfx('found');
-        vibrate(60);
-        schedule(() => {
-          if (get().phase !== 'found') return;
-          set({ duelAnnounce: true });
-          schedule(startDuel, TIMINGS.duelAnnounceMs);
-        }, TIMINGS.foundSplashMs);
-      };
-
-      void (async () => {
-        try {
-          const updated = await engine.setStake({ matchId: match.id, stake });
-          if (get().phase !== 'negotiate' || get().match?.id !== match.id) return;
-          set({ match: updated });
-          schedule(presentDuel, TIMINGS.negotiationSealMs);
-        } catch {
-          failWith('Não foi possível iniciar a partida. Tente novamente.');
-        }
-      })();
-    };
-
-    /** O balão respondido fica um beat em cena e sai sozinho. */
-    const closeProposalLater = (matchId: string, proposalId: string): void => {
+    const presentDuel = (): void => {
+      if (!transitionTo('found')) return;
+      audioManager.playSfx('found');
+      vibrate(60);
       schedule(() => {
-        if (!negotiationAlive(matchId)) return;
-        const { negotiation } = get();
-        const proposal = negotiation?.proposal;
-        if (!proposal || proposal.id !== proposalId) return;
-        patchNegotiation({ proposal: { ...proposal, open: false } });
-      }, TIMINGS.negoAnswerHoldMs);
-    };
-
-    /** Um lance novo entra na mesa — o balão abre com as fichas. */
-    const openProposal = (from: ProposalAuthor, amount: number): void => {
-      const { negotiation } = get();
-      if (!negotiation) return;
-      set({
-        negotiation: {
-          ...negotiation,
-          proposal: { id: createId(), from, amount, status: 'pending', open: true },
-        },
-      });
-      audioManager.playSfx('stake');
-      vibrate(20);
+        if (get().phase !== 'found') return;
+        set({ duelAnnounce: true });
+        schedule(startDuel, TIMINGS.duelAnnounceMs);
+      }, TIMINGS.foundSplashMs);
     };
 
     /**
-     * Aperto de mãos: o lance vivo é coberto e vira o valor da mesa —
-     * as fichas novas deslizam ao centro. Vale para os dois sentidos (o
-     * bot cobrindo o seu lance e você cobrindo o dele). Depois do beat
-     * do balão, a mesa fecha sozinha: cobrir É o acordo.
+     * O letreiro sai, o STACK é debitado e o duelo começa.
+     *
+     * O débito é do stack inteiro, e o que não for apostado volta no fim
+     * da mão (ver `completeHand`): é o mesmo contrato de qualquer mesa,
+     * onde se compra fichas para sentar e se troca de volta o que sobra.
      */
-    const settleProposal = (matchId: string): void => {
-      const { negotiation } = get();
-      const proposal = negotiation?.proposal;
-      if (!negotiation || !proposal || proposal.status !== 'pending') return;
-      botSeq += 1; // nenhuma jogada pendente do bot sobrevive ao aceite
-      set({
-        negotiation: {
-          ...negotiation,
-          tableStake: proposal.amount,
-          proposal: { ...proposal, status: 'accepted' },
-        },
-      });
-      audioManager.playSfx('stake');
-      vibrate([30, 40, 60]);
-      schedule(() => finishNegotiation(matchId), TIMINGS.negoAnswerHoldMs);
-    };
-
-    /** Recusa do lance vivo: a mesa segue valendo o que valia. */
-    const declineCurrentProposal = (matchId: string): void => {
-      const { negotiation } = get();
-      const proposal = negotiation?.proposal;
-      if (!negotiation || !proposal || proposal.status !== 'pending') return;
-      patchNegotiation({ proposal: { ...proposal, status: 'declined' } });
-      audioManager.playSfx('tap');
-      closeProposalLater(matchId, proposal.id);
-    };
-
-    /** Resposta do bot a um lance do jogador (olhar a mesa → decidir). */
-    const scheduleBotReply = (matchId: string, amount: number, seq: number): void => {
-      // Com o auto-aceite do DevTools o bot cobre na hora — só o beat
-      // mínimo para o balão entrar em cena antes do ✓.
-      const delay = get().devNegotiationAutoAccept
-        ? 350
-        : within(BOT_BEATS.replyDelayMinMs, BOT_BEATS.replyDelayMaxMs);
-      schedule(() => {
-        if (seq !== botSeq || !negotiationAlive(matchId)) return;
-        const { negotiation, balance } = get();
-        const proposal = negotiation?.proposal;
-        if (!proposal || proposal.from !== 'player' || proposal.status !== 'pending') return;
-
-        const reply: NegotiatorReply = get().devNegotiationAutoAccept
-          ? { action: 'accept' }
-          : (negotiator?.respond(amount, { balance, tableStake: negotiation.tableStake }) ?? {
-              action: 'accept',
-            });
-        if (reply.action === 'accept') {
-          settleProposal(matchId);
-          return;
-        }
-
-        declineCurrentProposal(matchId);
-        // A recusa pode vir com uma contraproposta: o lance DELE entra
-        // na mesa um beat depois do ✗, virado para você decidir. Vale
-        // até uma contraproposta NO VALOR da mesa — é o bot dizendo
-        // "fecho no que está aí", e cobri-la sela a mesa na hora.
-        const counter = reply.counter;
-        if (counter === null) return;
-        schedule(
-          () => {
-            if (seq !== botSeq || !negotiationAlive(matchId)) return;
-            if (get().negotiation?.proposal?.status === 'pending') return;
-            openProposal('opponent', counter);
-          },
-          within(BOT_BEATS.counterDelayMinMs, BOT_BEATS.counterDelayMaxMs),
-        );
-      }, delay);
-    };
-
-    /**
-     * Relógio da rodada de negociação, um segundo por vez. Ele PARA
-     * enquanto um lance SEU espera a resposta do rival (o martelo está
-     * do outro lado — seria injusto o seu tempo correr). Um lance do
-     * RIVAL não pausa nada: decidir sob o relógio é pressão de mesa.
-     * Zerou: um lance sem resposta morre recusado e o duelo abre
-     * valendo o que estiver na mesa — a garantia de término da fase.
-     */
-    const runNegotiationClock = (matchId: string, value: number): void => {
-      if (!negotiationAlive(matchId)) return;
-      const { negotiation } = get();
-      const proposal = negotiation?.proposal;
-      // Lance coberto = mesa selada: o relógio MORRE aqui. O fim da fase
-      // já está agendado pelo settleProposal — deixá-lo correr zeraria
-      // no meio do beat do ✓ e atropelaria a HORA DO DUELO.
-      if (proposal?.status === 'accepted') return;
-      if (proposal?.from === 'player' && proposal.status === 'pending') {
-        schedule(() => runNegotiationClock(matchId, value), 250);
+    const startDuel = (): void => {
+      const { phase, match, balance: currentBalance } = get();
+      if (phase !== 'found' || !match) return;
+      let nextBalance: number;
+      try {
+        nextBalance = debitStake(currentBalance, match.stake);
+      } catch {
+        failWith('Saldo insuficiente para sentar nesta mesa.');
         return;
       }
-      patchNegotiation({ secondsLeft: value });
-      if (value > 0) {
-        schedule(() => runNegotiationClock(matchId, value - 1), 1000);
-        return;
-      }
-      const dying = get().negotiation?.proposal;
-      if (dying?.status === 'pending') {
-        patchNegotiation({ proposal: { ...dying, status: 'declined', open: false } });
-      }
-      finishNegotiation(matchId);
-    };
-
-    /**
-     * O letreiro de abertura sai e a MESA ABRE: é aqui que o relógio da
-     * rodada começa a correr — nunca antes, para o título não comer
-     * segundos de negociação. Chamado pelo beat do anúncio e, mais cedo,
-     * por um lance do jogador (propor dispensa o letreiro).
-     */
-    const openTable = (matchId: string): void => {
-      if (!negotiationAlive(matchId)) return;
-      if (get().negotiation?.announcing) patchNegotiation({ announcing: false });
-      if (negotiationClockOn) return;
-      negotiationClockOn = true;
-      runNegotiationClock(matchId, NEGOTIATION_SECONDS);
-    };
-
-    /**
-     * Abre a mesa: a aposta padrão já está no feltro (nunca acima do
-     * saldo do jogador), o relógio da rodada corre e o bot pode empurrar
-     * um lance espontâneo se o alvo dele estiver longe da mesa. Se o
-     * jogador propuser antes, a abertura do bot morre no guard.
-     */
-    const beginNegotiation = (matchId: string): void => {
-      negotiator = createNegotiator();
-      const seq = ++botSeq;
-      negotiationClockOn = false;
-      const affordable = Math.floor(get().balance / 10) * 10;
-      const tableStake = Math.max(MIN_STAKE, Math.min(DEFAULT_STAKE, affordable));
-      set({
-        negotiation: {
-          tableStake,
-          announcing: true,
-          secondsLeft: NEGOTIATION_SECONDS,
-          proposal: null,
-          agreedStake: null,
-          starting: false,
-        },
-      });
-      audioManager.playSfx('stake'); // as fichas da aposta padrão assentam
-      // O letreiro abre a fase; o relógio só começa quando ele sai.
-      schedule(() => openTable(matchId), TIMINGS.negoAnnounceMs);
-
-      // Com o auto-aceite (DevTools/e2e) o bot não abre lance nenhum:
-      // a fase atravessa com um único toque do jogador.
-      if (get().devNegotiationAutoAccept) return;
-      schedule(
-        () => {
-          if (seq !== botSeq || !negotiationAlive(matchId)) return;
-          const current = get().negotiation;
-          if (!current || current.proposal !== null) return; // a mesa já tem conversa
-          const amount = negotiator?.opening({
-            balance: get().balance,
-            tableStake: current.tableStake,
-          });
-          if (amount == null || amount === current.tableStake) return;
-          openProposal('opponent', amount);
-        },
-        within(BOT_BEATS.openDelayMinMs, BOT_BEATS.openDelayMaxMs),
-      );
+      if (!transitionTo('countdown')) return;
+      set({ balance: nextBalance, duelAnnounce: false });
+      persist();
+      runCountdown(COUNTDOWN_START);
     };
 
     /* ---------- Busca e rodada ---------- */
@@ -716,21 +468,31 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       set({
         match: null,
         round: null,
+        session: null,
+        showPrompt: null,
+        cardsShown: false,
         actionPending: false,
         result: null,
         error: null,
         confirmations: NO_CONFIRMATIONS,
-        negotiation: null,
-        doubleBet: NO_DOUBLE_BET,
-        turn: NO_TURN_CLOCK,
-        reveal: null,
+        actionClock: NO_ACTION_CLOCK,
+        announce: null,
+        streetAnnounce: null,
         duelAnnounce: false,
       });
       audioManager.playSfx('tap');
       audioManager.startMusic();
       searchAbort = new AbortController();
       try {
-        const match = await engine.findMatch({ signal: searchAbort.signal });
+        /* O STACK com que se senta sai daqui, e não de uma conversa: o
+           teto da mesa ou o que o saldo permitir (ver `tableStackFor`).
+           Ele vai à engine no ato da busca, então a partida já nasce
+           sabendo quanto vale — não há mais um segundo momento em que o
+           valor mude. */
+        const match = await engine.findMatch({
+          stake: tableStackFor(get().balance),
+          signal: searchAbort.signal,
+        });
         if (get().phase !== 'search') return;
         set({ match, confirmations: NO_CONFIRMATIONS, duelAnnounce: false });
         // A busca entrega direto na confirmação: a apresentação do rival
@@ -755,19 +517,19 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       if (!transitionTo('idle')) return;
       clearTimers();
       searchAbort?.abort();
-      botSeq += 1;
-      negotiator = null;
       set({
         match: null,
         round: null,
+        session: null,
+        showPrompt: null,
+        cardsShown: false,
         actionPending: false,
         result: null,
         error: null,
         confirmations: NO_CONFIRMATIONS,
-        negotiation: null,
-        doubleBet: NO_DOUBLE_BET,
-        turn: NO_TURN_CLOCK,
-        reveal: null,
+        actionClock: NO_ACTION_CLOCK,
+        announce: null,
+        streetAnnounce: null,
         duelAnnounce: false,
       });
     };
@@ -776,7 +538,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     const runCountdown = (value: number): void => {
       if (value <= 0) {
         audioManager.playSfx('countdownGo');
-        if (transitionTo('dealing')) void dealRound();
+        if (transitionTo('dealing')) void dealHand();
         return;
       }
       set({ countdown: value });
@@ -796,123 +558,169 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       failWith('Não foi possível concluir a rodada. Seu stake foi devolvido.');
     };
 
-    /** Põe os dois lances da vez no alto-falante da mesa por um beat. */
-    const revealTurn = (turn: TableTurn | undefined): void => {
-      if (!turn || (!turn.player && !turn.opponent)) return;
+    /**
+     * Põe o último lance no alto-falante da mesa por um beat. É o que
+     * transforma um número que mudou no stack numa AÇÃO que aconteceu:
+     * "Luna AUMENTOU PARA 240".
+     */
+    const announceMove = (move: PokerMove | undefined): void => {
+      if (!move) return;
       const id = createId();
-      set({ reveal: { ...turn, id } });
-      audioManager.playSfx(turn.player?.action === 'hit' ? 'tap' : 'ready');
+      set({ announce: { ...move, id } });
+      audioManager.playSfx(move.amount > 0 ? 'stake' : 'tap');
+      if (move.by === 'opponent') vibrate(move.allIn ? [30, 40, 60] : 20);
       schedule(() => {
-        if (get().reveal?.id !== id) return;
-        set({ reveal: null });
-      }, TIMINGS.revealHoldMs);
+        if (get().announce?.id !== id) return;
+        set({ announce: null });
+      }, TIMINGS.moveHoldMs);
     };
 
     /**
-     * Recebe o estado que a engine devolveu e conduz a mesa a partir
-     * dele: revela os dois lances da vez que fechou e, passado o beat,
-     * abre a vez seguinte (ou o showdown).
+     * A última rua que o letreiro CARIMBOU — que não é a mesma coisa que
+     * a rua do estado anterior da mesa.
+     *
+     * A distinção existe por causa do PRÉ-FLOP: na distribuição a mesa já
+     * é publicada em `round` antes do primeiro `handOff` (as quatro
+     * fechadas precisam de um estado para voar), e comparar a rua nova
+     * com a do estado anterior comparava o pré-flop consigo mesmo —
+     * engolindo justamente o primeiro letreiro da mão. Guardar o que foi
+     * ANUNCIADO responde à pergunta certa: "o jogador já viu esta rua ser
+     * chamada?".
      */
-    const handOff = (next: BlackjackRoundState): void => {
-      set({ round: next, result: next.result ?? null });
-      revealTurn(next.lastTurn);
-      // A vez seguinte só abre DEPOIS da revelação: os dois precisam ler
-      // o que acabou de acontecer. Na distribuição não há o que revelar —
-      // a primeira vez abre sem espera.
-      const beat = next.lastTurn ? TIMINGS.turnRevealMs : 0;
+    let announcedStreet: Street | null = null;
 
-      const open = (): void => {
-        if (next.phase === 'settled') {
-          if (!transitionTo('settle')) return;
-          // Showdown: as duas ocultas viram juntas, o quadro respira e o
-          // veredito entra.
-          schedule(completeRound, TIMINGS.revealMs + TIMINGS.settleMs);
-          return;
-        }
-        if (get().phase !== 'turn' && !transitionTo('turn')) return;
-        openChoiceWindow(next);
+    /**
+     * O jogador tocou em LEVANTAR no meio de uma mão. A mesa não pode
+     * sair dali — há fichas no meio —, então ela CORRE a mão e cumpre o
+     * pedido quando o pote fecha (ver `closeHand`).
+     */
+    let leaveRequested = false;
+
+    /**
+     * Quanto a mesa respira depois de um LANCE. Cada um tem o seu tempo,
+     * e é a diferença entre uma mão que se acompanha e uma que passa por
+     * cima do jogador:
+     *
+     * - o lance do RIVAL é uma notícia — dá para ler o que ele fez;
+     * - o seu PRÓPRIO lance quase não espera: você já sabe o que fez, e
+     *   um atraso aqui só faria a mesa parecer travada.
+     *
+     * Uma RUA que abre não passa por aqui: ela tem o beat mais longo de
+     * todos (`pokerStreetMs`), porque o letreiro carimba o feltro, três
+     * cartas voam e o jogador precisa lê-las antes de decidir.
+     */
+    const moveBeat = (next: PokerRoundState): number => {
+      if (!next.lastMove) return 0;
+      return next.lastMove.by === 'player' ? TIMINGS.pokerOwnMoveMs : TIMINGS.pokerMoveMs;
+    };
+
+    /**
+     * Põe o letreiro da rua no feltro por um beat. É o mesmo carimbo de
+     * ouro da HORA DO DUELO, e é ele que dá a cada rua o peso de um
+     * acontecimento — antes, o que anunciava a virada era uma etiqueta
+     * miúda em cima das fichas, que ninguém via mudar.
+     */
+    const announceStreet = (street: Street): void => {
+      announcedStreet = street;
+      set({ streetAnnounce: street });
+      schedule(() => {
+        if (get().streetAnnounce !== street) return;
+        set({ streetAnnounce: null });
+      }, TIMINGS.streetAnnounceMs);
+    };
+
+    /**
+     * O CONDUTOR DA MESA. Recebe o estado que a engine devolveu, anuncia
+     * o que acabou de acontecer e, passado o beat, dá o passo seguinte —
+     * que é sempre um destes três:
+     *
+     * - a mão acabou → showdown e veredito;
+     * - a palavra é sua → o relógio abre e a mesa espera;
+     * - a palavra não é sua → a mesa anda sozinha (`advanceTable`): o
+     *   rival joga a vez dele, ou uma rua nova se abre.
+     *
+     * É este vaivém que faz uma mão inteira de Hold'em correr sem que a
+     * UI precise saber uma única regra do jogo.
+     */
+    const handOff = (next: PokerRoundState): void => {
+      const seq = ++stepSeq;
+      const opened = next.street !== announcedStreet;
+
+      /** Publica a mesa nova e põe no ar o que ela trouxe. */
+      const showTable = (): void => {
+        set({ round: next, session: next.session, result: next.result ?? null });
+        announceMove(next.lastMove);
       };
 
+      set({ actionClock: NO_ACTION_CLOCK });
+
+      if (opened) {
+        /* A MESA NÃO MUDA ENQUANTO O LETREIRO ESTÁ NO AR.
+           O anúncio de uma rua e as cartas dela são dois acontecimentos,
+           e publicar o estado novo junto com o letreiro fazia os dois
+           correrem em cima um do outro: o flop virava por trás do
+           desfoque, e quando o foco voltava as cartas já estavam lá — a
+           virada, que é o acontecimento, acontecia escondida.
+           Aqui a ordem é a de uma mesa de verdade: o crupiê anuncia, o
+           quadro volta ao foco e SÓ ENTÃO as cartas caem. */
+        announceStreet(next.street);
+        schedule(() => {
+          if (seq !== stepSeq) return;
+          showTable();
+        }, TIMINGS.streetAnnounceMs + TIMINGS.streetRevealMs);
+      } else {
+        showTable();
+      }
+
+      const open = (): void => {
+        if (seq !== stepSeq) return;
+        if (next.phase === 'settled') {
+          if (!transitionTo('settle')) return;
+          /* As duas fechadas viram, o quadro respira e o EMBATE roda —
+             o mesmo beat para toda mão que acaba, tenha ela ido ao
+             showdown ou morrido numa desistência. A desistência já teve
+             um beat curto e próprio, de quando as cartas dela não
+             abriam; agora que abrem, cortar o tempo ali seria mostrar o
+             que o rival tinha e tirar da tela antes de dar para ler. */
+          schedule(closeHand, TIMINGS.revealMs + TIMINGS.settleMs);
+          return;
+        }
+        if (get().phase !== 'betting' && !transitionTo('betting')) return;
+        if (next.toAct === 'player') {
+          openActionWindow(seq);
+          return;
+        }
+        scheduleTableStep(seq, next);
+      };
+
+      const beat = opened ? TIMINGS.pokerStreetMs : moveBeat(next);
       if (beat === 0) open();
       else schedule(open, beat);
     };
 
     /**
-     * Abre a janela de escolha: os dois decidem AO MESMO TEMPO, com o
-     * relógio de 20 s correndo. A vez fecha assim que os dois baterem o
-     * martelo — ou quando o relógio zera, e aí a mesa PARA a mão de quem
-     * não escolheu (parar nunca estoura: é o desfecho seguro).
+     * A mesa anda sozinha depois de um tempo natural: o rival "pensa"
+     * antes de bater o martelo (janela sorteada — um rival que responde
+     * sempre no mesmo tempo denuncia que é máquina), e uma rua nova sai
+     * do baralho no tempo de um crupiê virar as cartas.
      */
-    const openChoiceWindow = (state: BlackjackRoundState): void => {
-      const seq = ++turnSeq;
-      const waitingPlayer = !state.playerClosed;
-      const waitingOpponent = !state.opponentClosed;
-
-      set({
-        turn: {
-          seconds: waitingPlayer ? TURN_SECONDS : 0,
-          opponentReady: !waitingOpponent,
-        },
-      });
-
-      // O rival bate o martelo em algum instante da janela — nunca no
-      // mesmo tempo, e nunca revelando O QUE escolheu.
-      if (waitingOpponent) {
-        schedule(
-          () => {
-            if (seq !== turnSeq) return;
-            set({ turn: { ...get().turn, opponentReady: true } });
-            audioManager.playSfx('tap');
-            maybeCloseTurn(seq);
-          },
-          Math.min(
-            within(TIMINGS.opponentChoiceMinMs, TIMINGS.opponentChoiceMaxMs),
-            TURN_SECONDS * 1000 - 1500,
-          ),
-        );
-      }
-
-      if (waitingPlayer) runTurnClock(seq, TURN_SECONDS);
-      else maybeCloseTurn(seq);
+    const scheduleTableStep = (seq: number, state: PokerRoundState): void => {
+      const wait =
+        state.toAct === 'opponent'
+          ? within(TIMINGS.pokerThinkMinMs, TIMINGS.pokerThinkMaxMs)
+          : TIMINGS.pokerDealStreetMs;
+      schedule(() => {
+        void advanceTable(seq);
+      }, wait);
     };
 
-    /**
-     * Relógio da vez, um segundo por vez. Ele PARA enquanto um pedido de
-     * dobra estiver no ar: o jogador não pode escolher nesse intervalo, e
-     * seria injusto o tempo dele correr por uma pergunta que ele fez.
-     */
-    const runTurnClock = (seq: number, value: number): void => {
-      if (seq !== turnSeq || get().phase !== 'turn') return;
-      if (get().doubleBet.status === 'pending') {
-        schedule(() => runTurnClock(seq, value), 250);
-        return;
-      }
-      set({ turn: { ...get().turn, seconds: value } });
-      if (value <= 0) {
-        void closeTurn(seq);
-        return;
-      }
-      schedule(() => runTurnClock(seq, value - 1), 1000);
-    };
-
-    /** Fecha a vez assim que os DOIS lados tiverem batido o martelo. */
-    const maybeCloseTurn = (seq: number): void => {
-      const { round, turn } = get();
-      if (seq !== turnSeq || !round) return;
-      const playerIn = round.playerClosed || round.playerChoice !== undefined;
-      if (!playerIn || !turn.opponentReady) return;
-      void closeTurn(seq);
-    };
-
-    /** Executa os dois lances da vez e devolve a mesa ao `handOff`. */
-    const closeTurn = async (seq: number): Promise<void> => {
+    /** Pede à engine o próximo passo da mesa e devolve tudo ao condutor. */
+    const advanceTable = async (seq: number): Promise<void> => {
       const { phase, match } = get();
-      if (seq !== turnSeq || phase !== 'turn' || !match) return;
-      turnSeq += 1; // o relógio e o martelo desta vez morrem aqui
-      set({ turn: NO_TURN_CLOCK });
+      if (seq !== stepSeq || phase !== 'betting' || !match) return;
       try {
-        const next = await engine.resolveTurn({ matchId: match.id });
-        if (get().phase !== 'turn' || get().match?.id !== match.id) return;
+        const next = await engine.advance({ matchId: match.id });
+        if (seq !== stepSeq || get().phase !== 'betting' || get().match?.id !== match.id) return;
         handOff(next);
       } catch {
         refundAndFail();
@@ -920,13 +728,73 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     /**
-     * Distribuição da rodada: a engine tira as cartas do baralho e a mesa
-     * as apresenta em beats (o som de cada carta é do próprio Card3D, no
-     * instante em que ela assenta — não daqui). A primeira vez sai do
-     * estado que a engine devolve, e ninguém entra nela fechado: nem
-     * quem tirou um blackjack natural.
+     * Abre a janela de decisão: os 20 s que o jogador tem para escolher o
+     * lance. Zerado o relógio, a mesa joga por ele o lance SEGURO — passa
+     * se for de graça, desiste se houver aposta na frente. É o que
+     * qualquer sala faz, e é o único desfecho que não gasta ficha de quem
+     * não pediu para gastar.
      */
-    const dealRound = async (): Promise<void> => {
+    const openActionWindow = (seq: number): void => {
+      set({ actionClock: { open: true, seconds: ACTION_SECONDS } });
+      runActionClock(seq, ACTION_SECONDS);
+    };
+
+    /** Relógio da vez, um segundo por vez. */
+    const runActionClock = (seq: number, value: number): void => {
+      if (seq !== stepSeq || get().phase !== 'betting') return;
+      set({ actionClock: { open: true, seconds: value } });
+      if (value <= 0) {
+        const round = get().round;
+        if (round) void commitAction(timeoutAction(round.toCall), undefined, true);
+        return;
+      }
+      schedule(() => runActionClock(seq, value - 1), 1000);
+    };
+
+    /**
+     * O LANCE DO JOGADOR. Sai daqui para a engine e volta como uma mesa
+     * nova, que o condutor assume.
+     *
+     * Os guards não são zelo: a janela pode ter fechado no beat entre o
+     * toque e o handler (o relógio zerou, a mesa já andou). Mandar um
+     * lance à engine ali seria `illegal-action` — tratada como falha de
+     * engine, com estorno e tela de erro no meio de uma mão que está
+     * indo bem.
+     */
+    const commitAction = async (
+      action: PokerAction,
+      to?: number,
+      timedOut = false,
+    ): Promise<void> => {
+      const { phase, match, round, actionPending } = get();
+      if (phase !== 'betting' || !match || !round || actionPending) return;
+      if (round.toAct !== 'player' || !round.legalActions.includes(action)) return;
+
+      const seq = stepSeq;
+      set({ actionPending: true, actionClock: NO_ACTION_CLOCK });
+      audioManager.playSfx(action === 'fold' ? 'tap' : 'stake');
+      vibrate(action === 'fold' ? 20 : [20, 30, 40]);
+      try {
+        const next = await engine.act({ matchId: match.id, action, to, timedOut });
+        // A trava sai SEMPRE que a chamada volta — inclusive quando a
+        // fase já mudou no meio do caminho. Deixá-la de pé num caminho de
+        // saída congelaria a barra de ações sem nada para destravá-la.
+        set({ actionPending: false });
+        if (seq !== stepSeq || get().phase !== 'betting') return;
+        handOff(next);
+      } catch {
+        set({ actionPending: false });
+        refundAndFail();
+      }
+    };
+
+    /**
+     * Distribuição da mão: a engine embaralha, sorteia o botão, dá duas
+     * fechadas a cada lado e cobra os blinds. A mesa apresenta as cartas
+     * em beats (o som de cada uma é do próprio Card3D, no instante em que
+     * ela assenta — não daqui) e só então o pré-flop abre.
+     */
+    const dealHand = async (): Promise<void> => {
       const { match, devForcedDeal } = get();
       if (!match) {
         // Sem partida não há stake conhecido para devolver — a mensagem
@@ -935,13 +803,20 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         return;
       }
       audioManager.playSfx('shuffle');
+      // Mão nova, letreiros zerados: o pré-flop desta mão ainda não foi
+      // chamado, por mais que o da anterior tenha sido. E as cartas que
+      // se mostrou no pote anterior voltam a ser segredo.
+      announcedStreet = null;
+      set({ cardsShown: false, showPrompt: null });
       try {
-        const round = await engine.beginRound({
+        const round = await engine.beginHand({
           matchId: match.id,
           forcedDeal: devForcedDeal ?? undefined,
         });
         if (get().phase !== 'dealing') return;
-        set({ round, result: round.result ?? null });
+        // A mesa chega JUNTO com a mão: é ela que a pílula de saldo segue
+        // e é o número de mãos que decide se a porta de saída existe.
+        set({ round, session: round.session, result: null });
         schedule(() => {
           if (get().phase !== 'dealing') return;
           handOff(round);
@@ -952,144 +827,140 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     /**
-     * TRAVA a escolha do jogador para a vez corrente. Nada acontece na
-     * mesa aqui: a carta só sai quando a vez fechar, com o lance do rival
-     * junto — é o que faz a escolha ser simultânea de verdade.
+     * FIM DA MÃO, não da mesa. O pote já voltou para os stacks dentro da
+     * engine; aqui a mão vira histórico e a sessão decide o que vem: outra
+     * distribuição, ou o caixa.
+     *
+     * O SALDO NÃO SE MEXE AQUI, e essa é a diferença que faz a sessão.
+     * Numa mesa de mão única o payout era creditado no ato; agora as
+     * fichas ficam no feltro entre as mãos, como em qualquer sala — e o
+     * caixa só abre quando a pessoa se levanta (ver `cashOut`).
      */
-    const commitChoice = async (action: PlayerAction): Promise<void> => {
-      const { phase, match, round, actionPending, doubleBet } = get();
-      if (phase !== 'turn' || !match || !round || actionPending) return;
-      // Com uma dobra no ar a mesa espera: escolher agora fecharia a vez
-      // por um valor que ainda está sendo decidido.
-      if (doubleBet.status === 'pending') return;
-      // A janela pode ter fechado no beat entre o toque e o handler (o
-      // relógio zerou, ou a escolha já foi travada). Mandar outra à
-      // engine ali seria `illegal-action` — tratada como falha de engine,
-      // com estorno e tela de erro numa rodada que está indo bem.
-      if (round.phase !== 'choosing' || round.legalActions.length === 0) return;
-      const seq = turnSeq;
-      set({ actionPending: true });
-      audioManager.playSfx('tap');
-      vibrate(20);
-      try {
-        const next = await engine.commit({ matchId: match.id, action });
-        // A trava sai SEMPRE que a chamada volta — inclusive quando a
-        // fase já mudou no meio do caminho. Deixá-la de pé num caminho de
-        // saída congelaria os botões da vez sem nada para destravá-los.
-        set({ actionPending: false });
-        if (get().phase !== 'turn' || seq !== turnSeq) return;
-        set({ round: next });
-        maybeCloseTurn(seq);
-      } catch {
-        set({ actionPending: false });
-        refundAndFail();
-      }
-    };
+    const closeHand = (): void => {
+      const { result, match, history } = get();
+      if (!result || !match || !transitionTo('handover')) return;
 
-    /* ---------- Dobra da aposta ---------- */
-
-    /**
-     * Fecha o pedido de dobra: a resposta acende na nuvem (o ✓ ou o ✗) e
-     * ela sai de cena um beat depois. O `status` NÃO volta para 'idle' —
-     * cada mão admite um pedido só.
-     */
-    const closeDouble = (status: 'accepted' | 'declined', amount: number): void => {
-      set({ doubleBet: { status, amount, open: true } });
-      schedule(() => {
-        const current = get().doubleBet;
-        if (current.status !== status) return;
-        set({ doubleBet: { ...current, open: false } });
-      }, TIMINGS.doubleAnswerHoldMs);
-    };
-
-    /**
-     * Rival topou: o novo valor vira a verdade da engine ANTES do débito
-     * (payout e histórico derivam do stake gravado na partida) e só
-     * então a diferença sai do saldo — a mesma ordem do início do duelo.
-     */
-    const acceptDouble = async (matchId: string): Promise<void> => {
-      const { match, balance, doubleBet } = get();
-      if (!match || match.id !== matchId || doubleBet.status !== 'pending') return;
-      // Dobrar custa outro tanto do que já está na mesa. O saldo é
-      // reconferido aqui: recusar é o desfecho seguro de um pedido que
-      // não tem como ser pago.
-      const extra = match.stake;
-      if (!validateStake(balance, extra).ok) {
-        closeDouble('declined', doubleBet.amount);
-        return;
-      }
-      try {
-        const updated = await engine.setStake({ matchId, stake: doubleBet.amount });
-        if (get().match?.id !== matchId || get().doubleBet.status !== 'pending') return;
-        set({ match: updated, balance: debitStake(get().balance, extra) });
-        persist();
-        closeDouble('accepted', doubleBet.amount);
-        audioManager.playSfx('stake');
-        vibrate([30, 40, 60]);
-      } catch {
-        // A engine não gravou o valor novo: nada foi debitado e a mesa
-        // segue valendo o que valia.
-        closeDouble('declined', doubleBet.amount);
-      }
-    };
-
-    /**
-     * Resposta do rival ao pedido de dobra. A mesa é CEGA: ele não vê
-     * carta nenhuma sua, e a resposta também não pode sair da mão dele
-     * — senão o aceite viraria um leitor de força. Por isso é uma chance
-     * fixa (ver DOUBLE_ACCEPT_CHANCE).
-     */
-    const answerDouble = (matchId: string): void => {
-      const { phase, match, round, doubleBet } = get();
-      if (match?.id !== matchId || doubleBet.status !== 'pending') return;
-
-      // A mão pode ter fechado enquanto ele pensava. Sem mão viva não há
-      // aposta para dobrar: o pedido morre recusado, sem debitar nada.
-      if (phase !== 'turn' || !round || round.phase !== 'choosing') {
-        closeDouble('declined', doubleBet.amount);
-        return;
-      }
-
-      if (rng() < DOUBLE_ACCEPT_CHANCE) {
-        void acceptDouble(matchId);
-        return;
-      }
-      closeDouble('declined', doubleBet.amount);
-      audioManager.playSfx('tap');
-    };
-
-    /**
-     * Fim do showdown: credita o payout, grava o histórico e celebra. O
-     * payout/netChange vêm calculados pela engine sobre o stake gravado
-     * na partida (dobra inclusa) — nada é recalculado aqui.
-     */
-    const completeRound = (): void => {
-      const { result, match, balance, history } = get();
-      if (!result || !match || !transitionTo('completed')) return;
-
-      const entry: HistoryEntry = { ...result, opponentName: match.opponent.name };
+      const entry: PokerHistoryEntry = { ...result, opponentName: match.opponent.name };
       set({
-        balance: creditPayout(balance, result.payout),
+        session: result.session,
         history: [entry, ...history].slice(0, HISTORY_LIMIT),
-        // A distribuição forçada do DevTools vale a rodada — e morre com ela.
+        // A mão empilhada do DevTools vale uma mão — e morre com ela.
         devForcedDeal: null,
       });
       persist();
 
-      if (result.outcome === 'win') {
-        // Fanfarra + a plateia de pé: o aplauso é um efeito próprio e
-        // acompanha toda vitória.
-        audioManager.playSfx('win');
-        audioManager.playSfx('applause');
-      } else {
-        audioManager.playSfx(result.outcome);
-      }
-      const vibrations: Record<RoundOutcome, number | number[]> = {
+      audioManager.playSfx(result.outcome === 'win' ? 'win' : result.outcome);
+      const vibrations: Record<PokerOutcome, number | number[]> = {
         win: [40, 60, 40, 60, 120],
         lose: 220,
         tie: [60, 80, 60],
       };
       vibrate(vibrations[result.outcome]);
+
+      /* O CONVITE DE MOSTRAR AS CARTAS vem antes de qualquer outra coisa,
+         e só quando o pote foi levado SEM showdown pelo jogador: mostrar
+         só é jogada quando ninguém pagou para ver. Com o convite no ar a
+         mesa espera; sem ele, ela já se prepara para a próxima. */
+      /* Quem pediu para levantar no meio da mão corre e sai: a mão foi
+         dada por perdida, e o caixa abre assim que o pote fecha. */
+      if (leaveRequested) {
+        leaveRequested = false;
+        stepSeq += 1;
+        closeTable();
+        return;
+      }
+
+      if (result.foldedBy === 'opponent' && !result.showdown) {
+        openShowPrompt(result);
+        return;
+      }
+      scheduleNextHand();
+    };
+
+    /**
+     * O beat entre as mãos: o pote assenta, a placa do vencedor entra e a
+     * mesa distribui de novo — ou abre o caixa, se acabou.
+     */
+    const scheduleNextHand = (): void => {
+      const seq = ++stepSeq;
+      const session = get().session;
+      // Mesa fechada não tem próxima mão: o beat aqui é o do caixa.
+      if (!session || session.over) {
+        set({ handoverSeconds: 0 });
+        schedule(() => {
+          if (seq !== stepSeq || get().phase !== 'handover') return;
+          cashOut();
+        }, TIMINGS.handoverCloseMs);
+        return;
+      }
+
+      const tick = (left: number): void => {
+        if (seq !== stepSeq || get().phase !== 'handover') return;
+        set({ handoverSeconds: left });
+        if (left <= 0) {
+          if (transitionTo('dealing')) void dealHand();
+          return;
+        }
+        schedule(() => tick(left - 1), 1000);
+      };
+      tick(HANDOVER_SECONDS);
+    };
+
+    /**
+     * O CAIXA DA SESSÃO. As fichas que sobraram viram crédito, e é aqui —
+     * e só aqui — que a comissão da casa incide, sobre o lucro (ver
+     * `cashOutValue`).
+     */
+    /** Fecha a mesa na engine e abre o caixa. */
+    const closeTable = (): void => {
+      const match = get().match;
+      if (!match) return;
+      void engine
+        .leaveTable({ matchId: match.id })
+        .then((closed) => {
+          set({ session: closed, showPrompt: null, handoverSeconds: 0 });
+          cashOut();
+        })
+        .catch(() => failWith('Não foi possível deixar a mesa.'));
+    };
+
+    const cashOut = (): void => {
+      const { session, balance } = get();
+      if (!session || !transitionTo('completed')) return;
+      set({
+        balance: creditPayout(balance, cashOutValue(session.buyIn, session.stacks.player)),
+        showPrompt: null,
+      });
+      persist();
+
+      const profited = session.stacks.player > session.buyIn;
+      if (profited) {
+        // Fanfarra + a plateia de pé: quem saiu no lucro levou a noite.
+        audioManager.playSfx('win');
+        audioManager.playSfx('applause');
+      }
+      vibrate(profited ? [40, 60, 40, 60, 120] : 220);
+    };
+
+    /**
+     * O convite para abrir a mão que ninguém pagou para ver. Cinco
+     * segundos — e o silêncio vale por "não mostro", que é o que uma sala
+     * de verdade faz com quem não diz nada.
+     */
+    const openShowPrompt = (result: PokerResult): void => {
+      const seq = ++stepSeq;
+      set({ showPrompt: { seconds: SHOW_CARDS_SECONDS, handLabel: result.playerRank.label } });
+      const tick = (left: number): void => {
+        if (seq !== stepSeq || get().phase !== 'handover') return;
+        if (left <= 0) {
+          set({ showPrompt: null });
+          scheduleNextHand();
+          return;
+        }
+        set({ showPrompt: { seconds: left, handLabel: result.playerRank.label } });
+        schedule(() => tick(left - 1), 1000);
+      };
+      schedule(() => tick(SHOW_CARDS_SECONDS - 1), 1000);
     };
 
     return {
@@ -1097,20 +968,22 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       balance: persisted?.balance ?? initialBalance,
       match: null,
       round: null,
+      session: null,
+      showPrompt: null,
+      cardsShown: false,
+      handoverSeconds: 0,
       actionPending: false,
       result: null,
       confirmations: NO_CONFIRMATIONS,
-      negotiation: null,
-      doubleBet: NO_DOUBLE_BET,
-      turn: NO_TURN_CLOCK,
-      reveal: null,
+      actionClock: NO_ACTION_CLOCK,
+      announce: null,
+      streetAnnounce: null,
       history: persisted?.history ?? [],
       duelAnnounce: false,
       countdown: COUNTDOWN_START,
       error: null,
       settings: persisted?.settings ?? DEFAULT_SETTINGS,
       devForcedDeal: null,
-      devNegotiationAutoAccept: false,
 
       startSearch: () => beginSearch(),
 
@@ -1140,106 +1013,20 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         resetToIdle();
       },
 
-      sendProposal: (amount) => {
-        const { phase, negotiation, match, balance } = get();
-        if (phase !== 'negotiate' || !negotiation || !match || negotiation.starting) return;
-        if (!validateStake(balance, amount).ok) return;
-
-        const proposal = negotiation.proposal;
-        // Lance coberto = mesa SELADA: o aperto de mãos vale desde o ✓,
-        // não só quando a HORA DO DUELO entra — nada de lance por cima
-        // de um acordo fechado.
-        if (proposal?.status === 'accepted') return;
-        // O seu lance no ar tem o martelo do rival: espere a resposta.
-        if (proposal?.status === 'pending' && proposal.from === 'player') return;
-
-        // Propor dispensa o letreiro: a mesa abre na hora (e o relógio
-        // com ela) em vez de esperar o beat inteiro do título.
-        openTable(match.id);
-
-        // Cobrir o lance vivo do rival propondo o MESMO valor é um
-        // aperto de mãos, não um lance novo.
-        if (
-          proposal?.status === 'pending' &&
-          proposal.from === 'opponent' &&
-          proposal.amount === amount
-        ) {
-          get().acceptProposal();
-          return;
-        }
-
-        const seq = ++botSeq; // há lance novo: jogadas antigas do bot caducam
-
-        // Propor o valor que JÁ está na mesa é confirmá-la: o balão
-        // entra coberto e a mesa fecha nesse valor.
-        if (amount === negotiation.tableStake) {
-          openProposal('player', amount);
-          settleProposal(match.id);
-          return;
-        }
-
-        // Um lance seu por cima do lance vivo do rival é a contraproposta:
-        // o dele sai da mesa e o balão passa a ser o seu.
-        openProposal('player', amount);
-        scheduleBotReply(match.id, amount, seq);
+      fold: () => {
+        void commitAction('fold');
       },
 
-      acceptProposal: () => {
-        const { phase, negotiation, match, balance } = get();
-        if (phase !== 'negotiate' || !negotiation || !match || negotiation.starting) return;
-        const proposal = negotiation.proposal;
-        if (!proposal || proposal.from !== 'opponent' || proposal.status !== 'pending') return;
-        if (!validateStake(balance, proposal.amount).ok) return;
-        botSeq += 1;
-        settleProposal(match.id);
+      check: () => {
+        void commitAction('check');
       },
 
-      declineProposal: () => {
-        const { phase, negotiation, match } = get();
-        if (phase !== 'negotiate' || !negotiation || !match || negotiation.starting) return;
-        const proposal = negotiation.proposal;
-        if (!proposal || proposal.from !== 'opponent' || proposal.status !== 'pending') return;
-        botSeq += 1;
-        declineCurrentProposal(match.id);
+      call: () => {
+        void commitAction('call');
       },
 
-      abandonNegotiation: () => {
-        const { phase, negotiation } = get();
-        if (phase !== 'negotiate' || negotiation?.starting) return;
-        // O aperto de mãos vale desde o ✓: com um lance coberto na mesa
-        // não há mais o que abandonar — o duelo vai abrir.
-        if (negotiation?.proposal?.status === 'accepted') return;
-        audioManager.playSfx('tap');
-        resetToIdle();
-      },
-
-      hit: () => {
-        void commitChoice('hit');
-      },
-
-      stand: () => {
-        void commitChoice('stand');
-      },
-
-      requestDouble: () => {
-        const { phase, match, round, balance, doubleBet, actionPending } = get();
-        if (phase !== 'turn' || !match || !round || actionPending) return;
-        // Só antes de travar a escolha: o valor da mesa se decide antes
-        // do lance, não depois de ele já estar no martelo.
-        if (round.phase !== 'choosing' || round.legalActions.length === 0) return;
-        // Uma dobra por mão: pedida (e respondida), o botão não volta.
-        if (doubleBet.status !== 'idle') return;
-        // Dobrar custa outro tanto do que já está na mesa — sem saldo
-        // para cobrir a diferença, o pedido nem sai.
-        if (!validateStake(balance, match.stake).ok) return;
-
-        set({ doubleBet: { status: 'pending', amount: match.stake * 2, open: true } });
-        audioManager.playSfx('stake');
-        vibrate(20);
-        schedule(
-          () => answerDouble(match.id),
-          within(TIMINGS.doubleAnswerMinMs, TIMINGS.doubleAnswerMaxMs),
-        );
+      raise: (to) => {
+        void commitAction('raise', to);
       },
 
       playAgain: () => {
@@ -1253,13 +1040,15 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           error: null,
           match: null,
           round: null,
+          session: null,
+          showPrompt: null,
+          cardsShown: false,
           actionPending: false,
           result: null,
           confirmations: NO_CONFIRMATIONS,
-          negotiation: null,
-          doubleBet: NO_DOUBLE_BET,
-          turn: NO_TURN_CLOCK,
-          reveal: null,
+          actionClock: NO_ACTION_CLOCK,
+          announce: null,
+          streetAnnounce: null,
           duelAnnounce: false,
         });
         // Sem saldo mínimo a nova busca seria inútil: volta ao menu,
@@ -1269,6 +1058,44 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           return;
         }
         void beginSearch();
+      },
+
+      /**
+       * LEVANTAR DA MESA — a porta da sessão.
+       *
+       * Ela abre a partir da SEGUNDA mão: a primeira é o compromisso de
+       * quem sentou, e comprar fichas para sair antes de ela fechar não é
+       * jogar, é olhar as cartas.
+       *
+       * NO MEIO DE UMA MÃO ela CORRE A MÃO junto, e é o que uma sala de
+       * verdade faz com quem se levanta: a mão é dada por perdida, não
+       * desfeita — as fichas que já estão no meio ficaram no meio. O
+       * levantar fica marcado e a mesa o cumpre assim que o pote fecha,
+       * porque a engine não deixa (com razão) abandonar uma mão viva.
+       */
+      leaveTable: () => {
+        const { phase, match, session } = get();
+        if (!match || !session || session.over) return;
+        if (session.handsPlayed < 1) return;
+
+        if (phase === 'betting') {
+          leaveRequested = true;
+          void commitAction('fold');
+          return;
+        }
+        if (phase !== 'handover') return;
+        // Mata o beat que já ia distribuir a próxima: a mesa acabou aqui.
+        stepSeq += 1;
+        closeTable();
+      },
+
+      answerShowCards: (show) => {
+        const { phase, showPrompt, result } = get();
+        if (phase !== 'handover' || !showPrompt || !result) return;
+        stepSeq += 1;
+        set({ showPrompt: null, cardsShown: show });
+        if (show) audioManager.playSfx('cardFlip');
+        scheduleNextHand();
       },
 
       refillCredits: () => {
@@ -1310,11 +1137,6 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         set({ devForcedDeal: deal });
       },
 
-      devSetNegotiationAutoAccept: (enabled) => {
-        if (!appEnv.devToolsEnabled) return;
-        set({ devNegotiationAutoAccept: enabled });
-      },
-
       devAddCredits: (amount) => {
         if (!appEnv.devToolsEnabled) return;
         set({ balance: Math.max(0, get().balance + amount) });
@@ -1325,28 +1147,27 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         if (!appEnv.devToolsEnabled) return;
         clearTimers();
         searchAbort?.abort();
-        botSeq += 1;
-        negotiator = null;
         storage.clear();
         set({
           phase: 'idle',
           balance: initialBalance,
           match: null,
           round: null,
+          session: null,
+          showPrompt: null,
+          cardsShown: false,
           actionPending: false,
           result: null,
           confirmations: NO_CONFIRMATIONS,
-          negotiation: null,
-          doubleBet: NO_DOUBLE_BET,
-          turn: NO_TURN_CLOCK,
-          reveal: null,
+          actionClock: NO_ACTION_CLOCK,
+          announce: null,
+          streetAnnounce: null,
           duelAnnounce: false,
           history: [],
           countdown: COUNTDOWN_START,
           error: null,
           settings: DEFAULT_SETTINGS,
           devForcedDeal: null,
-          devNegotiationAutoAccept: false,
         });
       },
     };

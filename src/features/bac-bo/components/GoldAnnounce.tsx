@@ -4,6 +4,15 @@ import { Fragment } from 'react';
 export interface GoldAnnounceProps {
   /** Texto do anúncio ("Rodada de negociação", "Hora do duelo"). */
   text: string;
+  /**
+   * Atraso, em segundos, antes de a coreografia começar.
+   *
+   * Serve a quem prepara a CENA antes do letreiro: o anúncio das ruas
+   * desfoca a mesa primeiro e só então carimba a palavra, e sem este
+   * atraso as duas coisas aconteceriam juntas — o desfoque deixaria de
+   * ser a respirada que antecede e viraria ruído simultâneo.
+   */
+  delay?: number;
   'data-testid'?: string;
 }
 
@@ -25,7 +34,7 @@ const WORD_SPRING = { type: 'spring', stiffness: 260, damping: 24 } as const;
  * milímetro no layout da fase que o exibe. Com reduced motion tudo
  * aparece de uma vez.
  */
-export function GoldAnnounce({ text, 'data-testid': testId }: GoldAnnounceProps) {
+export function GoldAnnounce({ text, delay = 0, 'data-testid': testId }: GoldAnnounceProps) {
   const instant = useReducedMotion() ?? false;
   const words = text.split(' ');
 
@@ -48,7 +57,7 @@ export function GoldAnnounce({ text, 'data-testid': testId }: GoldAnnounceProps)
         aria-hidden="true"
         initial={instant ? false : { scale: 0.35, opacity: 0 }}
         animate={instant ? { opacity: 0 } : { scale: 2.4, opacity: [0, 0.65, 0] }}
-        transition={instant ? { duration: 0 } : { duration: 0.9, ease: 'easeOut' }}
+        transition={instant ? { duration: 0 } : { delay, duration: 0.9, ease: 'easeOut' }}
       />
 
       <motion.span
@@ -56,7 +65,9 @@ export function GoldAnnounce({ text, 'data-testid': testId }: GoldAnnounceProps)
         aria-hidden="true"
         initial={instant ? false : { scaleX: 0, opacity: 0 }}
         animate={{ scaleX: 1, opacity: 1 }}
-        transition={instant ? { duration: 0 } : { delay: 0.08, duration: 0.55, ease: 'easeOut' }}
+        transition={
+          instant ? { duration: 0 } : { delay: delay + 0.08, duration: 0.55, ease: 'easeOut' }
+        }
       />
 
       {/* O espaço entre os spans é um nó de texto que o flex NÃO vira
@@ -69,12 +80,10 @@ export function GoldAnnounce({ text, 'data-testid': testId }: GoldAnnounceProps)
             {index > 0 && ' '}
             <motion.span
               className="gold-announce__word"
-              initial={
-                instant ? false : { opacity: 0, y: 30, scale: 0.82, filter: 'blur(8px)' }
-              }
+              initial={instant ? false : { opacity: 0, y: 30, scale: 0.82, filter: 'blur(8px)' }}
               animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
               transition={
-                instant ? { duration: 0 } : { ...WORD_SPRING, delay: 0.14 + index * 0.13 }
+                instant ? { duration: 0 } : { ...WORD_SPRING, delay: delay + 0.14 + index * 0.13 }
               }
             >
               {word}
@@ -88,7 +97,9 @@ export function GoldAnnounce({ text, 'data-testid': testId }: GoldAnnounceProps)
         aria-hidden="true"
         initial={instant ? false : { scaleX: 0, opacity: 0 }}
         animate={{ scaleX: 1, opacity: 1 }}
-        transition={instant ? { duration: 0 } : { delay: 0.24, duration: 0.55, ease: 'easeOut' }}
+        transition={
+          instant ? { duration: 0 } : { delay: delay + 0.24, duration: 0.55, ease: 'easeOut' }
+        }
       />
     </motion.div>
   );

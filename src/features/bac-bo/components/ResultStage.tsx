@@ -19,6 +19,16 @@ export type ResultTone = 'win' | 'lose' | 'tie';
 
 export interface ResultStageProps {
   surface: ResultSurface;
+  /**
+   * Que placa pende sobre o palco — e, portanto, quanta altura ele
+   * desconta em respiro para centrar o veredito abaixo dela.
+   *
+   * `score` são as duas do TORNEIO, flanqueando a crupiê; `winner` é a
+   * única do DUELO, mais alta porque leva as cinco cartas da mão
+   * vencedora deitadas ao lado. Só vale sobre o feltro: na cortina não
+   * há placa a descontar.
+   */
+  plate?: 'score' | 'winner';
   tone: ResultTone;
   /** O veredito, em caixa alta: VITÓRIA!, DERROTA, EMPATE. */
   title: string;
@@ -45,6 +55,18 @@ export interface ResultStageProps {
   children: ReactNode;
   /** Gap menor entre os botões, para quando são dois empilhados. */
   tightActions?: boolean;
+  /**
+   * Espelhar o que vem abaixo do título em cópias invisíveis acima dele,
+   * para centrar o TÍTULO na faixa livre (ver o comentário do
+   * componente). Ligado por padrão.
+   *
+   * Desligue quando o conteúdo abaixo do título for o assunto, e não um
+   * aposto dele: um extrato de cinco linhas espelhado custa DUAS vezes a
+   * própria altura, e não há tela de celular que pague isso. Sem
+   * espelho, o grupo inteiro é que se centra — que é o enquadramento
+   * certo quando o título é só o cabeçalho do que vem abaixo.
+   */
+  mirror?: boolean;
   /** Movimento reduzido: o palco aparece montado. */
   instant?: boolean;
   'data-testid'?: string;
@@ -78,6 +100,7 @@ export interface ResultStageProps {
  */
 export function ResultStage({
   surface,
+  plate = 'score',
   tone,
   title,
   titleTestId,
@@ -91,6 +114,7 @@ export function ResultStage({
   decoration,
   children,
   tightActions = false,
+  mirror = true,
   instant = false,
   'data-testid': testId,
 }: ResultStageProps) {
@@ -118,7 +142,9 @@ export function ResultStage({
 
   return (
     <motion.div
-      className={`result-stage result-stage--${surface}`}
+      className={`result-stage result-stage--${surface}${
+        surface === 'felt' && plate === 'winner' ? ' result-stage--plate-winner' : ''
+      }`}
       data-testid={testId}
       initial={instant ? false : { opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
@@ -130,13 +156,13 @@ export function ResultStage({
       <div aria-hidden className="w-full grow" />
 
       {/* Compensa, do lado de cima, a linha de contagem que mora embaixo. */}
-      {footer != null && ghost('result-stage__footer', footer)}
+      {mirror && footer != null && ghost('result-stage__footer', footer)}
 
       <div className="result-stage__group">
         {/* As cópias entram em ordem ESPELHADA (débito, subtítulo) para
             que a distância do título a cada extremo do grupo seja igual. */}
-        {note != null && ghost('result-stage__note', note)}
-        {subtitle != null && ghost('result-stage__subtitle', subtitle)}
+        {mirror && note != null && ghost('result-stage__note', note)}
+        {mirror && subtitle != null && ghost('result-stage__subtitle', subtitle)}
 
         {/* O efeito envolve a palavra em vez de flutuar solto no palco:
             é o que ancora halo, feixe e partículas no centro EXATO do

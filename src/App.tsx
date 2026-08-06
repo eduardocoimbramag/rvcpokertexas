@@ -26,8 +26,6 @@ export default function App() {
   const openBrowse = useTournamentStore((state) => state.openBrowse);
   const leaveTournament = useTournamentStore((state) => state.leaveTournament);
   const [openSheet, setOpenSheet] = useState<OpenSheet>('none');
-  // O tutorial aberto pelo botão 1v1 continua para a mesa ao terminar.
-  const [tutorialContinues, setTutorialContinues] = useState(false);
 
   const closeSheet = () => setOpenSheet('none');
   // O 1v1 tem prioridade: se uma rodada casual está em andamento, ela manda.
@@ -43,21 +41,19 @@ export default function App() {
           <TournamentApp onExit={leaveTournament} />
         ) : (
           <HomeScreen
-            onOpenTutorial={() => {
-              setTutorialContinues(!useGameStore.getState().settings.tutorialSeen);
-              setOpenSheet('tutorial');
-            }}
+            onOpenTutorial={() => setOpenSheet('tutorial')}
             onOpenHistory={() => setOpenSheet('history')}
             onOpenSettings={() => setOpenSheet('settings')}
             onOpenTournament={openBrowse}
           />
         )}
 
-        <TutorialSheet
-          open={openSheet === 'tutorial'}
-          onClose={closeSheet}
-          continueToGame={tutorialContinues}
-        />
+        {/* O tutorial é uma FOLHA DE CONSULTA e nada mais: quem o abriu
+            pediu por ele, e ao fechar volta para onde estava. Ele já
+            oferecia "continuar para a mesa" porque era interceptado no
+            caminho de quem só queria jogar — o desvio acabou, e a oferta
+            de consertar o desvio acabou com ele. */}
+        <TutorialSheet open={openSheet === 'tutorial'} onClose={closeSheet} />
         <HistorySheet open={openSheet === 'history'} onClose={closeSheet} />
         <SettingsSheet open={openSheet === 'settings'} onClose={closeSheet} />
         {appEnv.devToolsEnabled && <DevToolsPanel />}
@@ -66,10 +62,9 @@ export default function App() {
         <div aria-live="polite" className="sr-only">
           {phase === 'search' && 'Procurando oponente.'}
           {phase === 'found' && 'Oponente encontrado.'}
-          {phase === 'negotiate' && 'Mesa de negociação aberta. Proponham o valor da aposta.'}
-          {phase === 'dealing' && 'Distribuindo as cartas.'}
-          {phase === 'turn' && 'Vez aberta: escolha pedir carta ou parar antes do tempo acabar.'}
-          {phase === 'settle' && 'Showdown: as cartas ocultas viram.'}
+          {phase === 'dealing' && 'Distribuindo as cartas fechadas.'}
+          {phase === 'betting' && 'Rodada de apostas em andamento.'}
+          {phase === 'settle' && 'Showdown: as cartas fechadas viram.'}
           {phase === 'completed' &&
             result &&
             (result.outcome === 'win'

@@ -1,9 +1,9 @@
 import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
-import { formatDelta, formatTime } from '@/shared/lib/format';
+import { formatCredits, formatDelta, formatTime } from '@/shared/lib/format';
 
-import type { HistoryEntry, RoundOutcome } from '../engine/types';
+import type { PokerHistoryEntry, PokerOutcome } from '../engine/poker/types';
 import { useGameStore } from '../store/gameStore';
 import { EmptyState } from './EmptyState';
 
@@ -12,7 +12,7 @@ export interface HistorySheetProps {
   onClose: () => void;
 }
 
-const OUTCOME_BADGE: Record<RoundOutcome, { label: string; className: string }> = {
+const OUTCOME_BADGE: Record<PokerOutcome, { label: string; className: string }> = {
   win: { label: 'V', className: 'bg-gold/20 text-gold' },
   lose: { label: 'D', className: 'bg-opponent/20 text-opponent-soft' },
   tie: { label: 'E', className: 'bg-lavender/20 text-lavender' },
@@ -58,7 +58,21 @@ export function HistorySheet({ open, onClose }: HistorySheetProps) {
   );
 }
 
-function HistoryRow({ entry }: { entry: HistoryEntry }) {
+/**
+ * O que a linha do extrato conta de uma mão: a SUA mão, que no poker é
+ * um nome e não um número ("Dois pares, Reis e 9"), e como ela terminou.
+ *
+ * A mão aparece mesmo quando alguém desistiu — é a mesma razão pela qual
+ * a mesa a mostra no fim: rever que se largou uma mão boa (ou que o
+ * rival largou) é o que este extrato tem de útil.
+ */
+function summaryOf(entry: PokerHistoryEntry): string {
+  const label = entry.playerRank.label;
+  if (entry.showdown) return label;
+  return entry.foldedBy === 'player' ? `${label} · você desistiu` : `${label} · rival desistiu`;
+}
+
+function HistoryRow({ entry }: { entry: PokerHistoryEntry }) {
   const badge = OUTCOME_BADGE[entry.outcome];
   return (
     <li className="flex items-center gap-3 rounded-2xl border border-arena-line bg-arena-800 px-4 py-3">
@@ -75,14 +89,12 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold">
-          {entry.playerTotal} × {entry.opponentTotal}
+          {summaryOf(entry)}
           <span className="font-normal text-lavender"> vs {entry.opponentName}</span>
         </p>
         <p className="text-xs text-lavender/70">
           {formatTime(entry.completedAt)}
-          {entry.playerBust ? ' · você estourou' : ''}
-          {entry.opponentBust ? ' · o rival estourou' : ''}
-          {entry.playerNatural ? ' · blackjack!' : ''}
+          {entry.pot > 0 ? ` · pote ${formatCredits(entry.pot)}` : ''}
         </p>
       </div>
       <span
