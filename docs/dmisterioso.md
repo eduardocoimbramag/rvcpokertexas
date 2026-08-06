@@ -1,7 +1,7 @@
 # O "D" misterioso — o botão do dealer
 
-> Aquele disco branco com um **D** preto que fica ao lado da mão de um dos dois
-> jogadores, na mesa de Texas Hold'em. Este documento responde três coisas: **o
+> Aquele disco branco com um **D** preto que fica no vão entre a mão de um dos
+> dois jogadores e a borda da mesa, no Texas Hold'em. Este documento responde três coisas: **o
 > que ele é**, **o que ele faz neste jogo** (que não é tudo o que ele faz no poker
 > de verdade) e **onde ele mora no código**.
 
@@ -101,7 +101,7 @@ importa depois dele.**
 | **A regra** | [`rules.ts`](../src/features/bac-bo/engine/poker/rules.ts) | `firstToAct(street, button)`: devolve o botão no pré-flop e o outro lado nas demais ruas. É a função inteira — três linhas. |
 | **O estado** | [`types.ts`](../src/features/bac-bo/engine/poker/types.ts) | `button` atravessa a fronteira da engine dentro do `PokerRoundState`: a tela precisa saber de quem é, e não tem como deduzir. |
 | **O disco** | [`PokerSeat.tsx`](../src/features/bac-bo/components/poker/PokerSeat.tsx) | Renderiza o disco ao lado da mão do assento marcado (`data-testid="dealer-button-{side}"`). |
-| **A roupa** | [`index.css`](../src/index.css) | `.dealer-puck` — a matéria das fichas (relevo, borda tracejada, miolo rebaixado) em marfim, com o `D` em tinta preta. |
+| **A roupa** | [`index.css`](../src/index.css) | `.dealer-puck` — a matéria das fichas (relevo, borda tracejada, miolo rebaixado) em marfim, com o `D` em tinta preta. Ele vive num dos dois vãos `1fr` da linha da mão (`.poker-seat__line`), o que o centra no espaço livre sem número mágico nenhum. |
 
 E o teste que garante que ele nunca marca os dois lados ao mesmo tempo está em
 [`pokerArena.test.tsx`](../src/features/bac-bo/tests/pokerArena.test.tsx):

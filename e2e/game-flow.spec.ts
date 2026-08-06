@@ -64,6 +64,18 @@ async function forceOutcome(page: Page, outcome: string) {
  * números num só — "1.000" com "+48" vira 100048, que passa em
  * `toBeGreaterThan` e reprova em `toBeLessThan` sem dizer por quê.
  */
+/**
+ * O STACK do jogador, lido da plaquinha do assento.
+ *
+ * Não há pílula de saldo na mesa: o buy-in já saiu do saldo quando ele
+ * sentou, e o que está em jogo está desenhado no feltro. Quem responde
+ * por quanto ele tem AGORA é o assento.
+ */
+async function stack(page: Page): Promise<number> {
+  const texto = (await page.getByTestId('stack-player').textContent()) ?? '';
+  return Number(texto.replace(/\D/g, ''));
+}
+
 async function saldo(page: Page): Promise<number> {
   const rotulo = (await page.getByTestId('balance').getAttribute('aria-label')) ?? '';
   return Number(rotulo.replace(/\D/g, ''));
@@ -204,7 +216,7 @@ test('da Home à mesa: o duelo abre sem nada a combinar', async ({ page }) => {
      alguma coisa. */
   await expect(page.getByTestId('winner-cards').locator('> *')).toHaveCount(2);
   // O stack subiu: o pote virou ficha na frente do jogador.
-  expect(await saldo(page), 'ganhar a mão engorda o stack').toBeGreaterThan(1000);
+  expect(await stack(page), 'ganhar a mão engorda o stack').toBeGreaterThan(1000);
 
   // A MESA fecha no CAIXA, e é lá que o saldo se mexe.
   await cashOut(page);
