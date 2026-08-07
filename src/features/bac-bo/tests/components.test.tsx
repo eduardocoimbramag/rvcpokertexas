@@ -912,67 +912,84 @@ describe('SessionBanner — o caixa da sessão', () => {
   });
 
   it('quem sai no LUCRO leva a festa inteira da casa', () => {
-    render(<SessionBanner session={session()} opponentName="Luna" />);
+    render(<SessionBanner session={session()} />);
 
-    expect(screen.getByTestId('result-title')).toHaveTextContent('VOCÊ LUCROU!');
+    expect(screen.getByTestId('result-title')).toHaveTextContent('BOA PARTIDA!');
     expect(screen.getByTestId('result-blaze')).toHaveAttribute('data-outcome', 'victory');
     // As duas escalas da festa convivem: o ouro é o acabamento da
     // palavra, o confete é a sala inteira comemorando.
     expect(screen.getByTestId('confetti')).toBeInTheDocument();
   });
 
-  it('quem sai no PREJUÍZO recebe um agradecimento, e nada mais', () => {
-    /* Perder fichas já é a notícia ruim: carimbá-la com "DERROTA" em
-       caixa alta e rubi quebrado cobraria duas vezes pela mesma coisa. */
+  it('a faixa traz o LÍQUIDO, e a comissão não aparece em lugar nenhum', () => {
+    /* Sentou com 1.000, levantou com 1.500: o lucro de 500 entra no saldo
+       como 450. A conta some da tela — e a palavra também. A tela não
+       omite nada: ela deixou de ser uma tabela. */
+    render(<SessionBanner session={session()} />);
+
+    expect(visible('payout-value')).toHaveTextContent('450');
+    expect(screen.getByTestId('session-payout')).toHaveTextContent('Você terminou no positivo');
+    /* A asserção que guarda a restrição do dono. Sem ela a palavra volta
+       na primeira manutenção que "só quis dar mais transparência". */
+    expect(screen.queryByText(/comiss/i)).toBeNull();
+    // E o bruto não vaza junto com o líquido.
+    expect(screen.queryByText(/1\.500/)).toBeNull();
+    expect(screen.queryByTestId('payout-closed')).not.toBeInTheDocument();
+  });
+
+  it('quem NÃO lucra recebe o MESMO ouro, e um fecho no lugar do número', () => {
+    /* Perder fichas já é a notícia ruim: carimbá-la com rubi quebrado
+       cobraria duas vezes pela mesma coisa. Mas negar o ouro seria
+       mesquinhez — a diferença entre ganhar e não ganhar deixou de ser
+       TER ou NÃO TER metal e passou a ser o que o metal faz. */
     render(
-      <SessionBanner
-        session={session({ stacks: { player: 300, opponent: 1700 } })}
-        opponentName="Luna"
-      />,
+      <SessionBanner session={session({ stacks: { player: 300, opponent: 1700 } })} />,
     );
 
-    expect(screen.getByTestId('result-title')).toHaveTextContent('OBRIGADO POR JOGAR');
-    expect(screen.queryByTestId('result-blaze')).not.toBeInTheDocument();
+    expect(screen.getByTestId('result-title')).toHaveTextContent('VALEU PELA PARTIDA!');
+    expect(screen.getByTestId('result-blaze')).toHaveAttribute('data-outcome', 'close');
+    expect(visible('payout-closed')).toHaveTextContent('Mesa encerrada');
+    expect(screen.queryByTestId('payout-value')).not.toBeInTheDocument();
+  });
+
+  it('e nada da DERROTA vaza para o fecho', () => {
+    /* `!victory` deixou de significar "derrota" quando entrou o terceiro
+       desfecho. Sem as guardas por extenso, quem levanta sem lucro leva
+       um feixe vinho no título e uma vinheta escura no body. */
+    render(
+      <SessionBanner session={session({ stacks: { player: 300, opponent: 1700 } })} />,
+    );
+
     expect(screen.queryByTestId('ember-vignette')).not.toBeInTheDocument();
     expect(screen.queryByTestId('confetti')).not.toBeInTheDocument();
+    // A festa do fecho não é desligada: ela nunca chega a ser montada.
+    expect(document.querySelectorAll('.blaze-particle')).toHaveLength(0);
+    expect(document.querySelector('.result-blaze__beam')).toBeNull();
   });
 
-  it('o extrato mostra com quanto sentou, com quanto levantou e a diferença', () => {
-    render(<SessionBanner session={session()} opponentName="Luna" />);
-
-    expect(visible('ledger-buyin')).toHaveTextContent('1.000');
-    expect(visible('ledger-final')).toHaveTextContent('1.500');
-    expect(visible('ledger-profit')).toHaveTextContent('+500');
-    // A comissão da casa incide UMA vez, no caixa, e só sobre o lucro.
-    expect(visible('ledger-commission')).toHaveTextContent('50');
-    expect(visible('ledger-cashed')).toHaveTextContent('1.450');
-  });
-
-  it('no prejuízo não há comissão: a casa não cobra de quem já pagou', () => {
+  it('lucro que a comissão zera cai no fecho — nada de "+0" com festa', () => {
+    /* `afterHouseEdge` arredonda para baixo: um lucro de 1 ficha vira 0.
+       Carimbar "BOA PARTIDA! +0 créditos" seria a tela mentindo. */
     render(
-      <SessionBanner
-        session={session({ stacks: { player: 300, opponent: 1700 } })}
-        opponentName="Luna"
-      />,
+      <SessionBanner session={session({ stacks: { player: 1001, opponent: 999 } })} />,
     );
 
-    expect(screen.queryByTestId('ledger-commission')).not.toBeInTheDocument();
-    expect(visible('ledger-profit')).toHaveTextContent('-700');
-    expect(visible('ledger-cashed')).toHaveTextContent('300');
+    expect(visible('payout-closed')).toBeInTheDocument();
+    expect(screen.queryByTestId('payout-value')).not.toBeInTheDocument();
   });
 
-  it('diz POR QUE a mesa fechou — a frase muda o sentido do resto', () => {
-    const { rerender } = render(
-      <SessionBanner session={session({ leftBy: 'player' })} opponentName="Luna" />,
-    );
-    expect(visible('session-reason')).toHaveTextContent('Você levantou da mesa');
-    expect(visible('session-reason')).toHaveTextContent('7 mãos jogadas');
+  it('a tela não olha para trás: nem contagem de mãos, nem por que fechou', () => {
+    /* A nota contava quantas mãos correram e por que a mesa fechou — duas
+       informações sobre o PASSADO, em corpo miúdo e tinta apagada,
+       embaixo da única coisa que a tela existe para dizer. Quem quer o
+       retrospecto tem o histórico. */
+    render(<SessionBanner session={session({ leftBy: 'player' })} />);
 
-    rerender(<SessionBanner session={session({ bustedBy: 'opponent' })} opponentName="Luna" />);
-    expect(visible('session-reason')).toHaveTextContent('Luna ficou sem fichas');
-
-    rerender(<SessionBanner session={session({ bustedBy: 'player' })} opponentName="Luna" />);
-    expect(visible('session-reason')).toHaveTextContent('Suas fichas acabaram');
+    expect(screen.queryByTestId('session-reason')).not.toBeInTheDocument();
+    expect(screen.queryByText(/mãos jogadas|mão jogada/)).toBeNull();
+    expect(screen.queryByText(/levantou da mesa/)).toBeNull();
+    // E a unidade também: a ficha da faixa já diz que são créditos.
+    expect(screen.queryByText(/créditos nesta mesa/i)).toBeNull();
   });
 });
 

@@ -525,6 +525,25 @@ h2 {
   /* O realce branco de um filete acima da tinta — é o que faz o texto
      escuro parecer GRAVADO no couro claro em vez de impresso nele. */
   --engraved-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+
+  /* A LIGA DE OURO DA CASA, na ordem em que a luz bate: champagne no alto
+     à esquerda, âmbar, bronze na sombra de baixo e a segunda luz na volta.
+     É o que faz uma moldura ler como METAL — luz de verdade vem de um
+     lugar só, e ouro que tem o mesmo tom em toda a volta lê como tinta.
+
+     Ela nasceu dentro da `.seat-plate`, com um comentário dizendo que
+     duas cópias sairiam de sincronia. A faixa do caixa seria a segunda
+     cópia, então a liga subiu para cá antes de o problema existir. */
+  --gold-liga: linear-gradient(
+    152deg,
+    #fff3dc 0%,
+    #f5b76f 17%,
+    #c78a3f 33%,
+    #7d4a1b 49%,
+    #cb7349 61%,
+    #fcd9a0 78%,
+    #b8813c 100%
+  );
 }
 
 /* Recorte do pano de fundo da cena (dealer + mesa): estende o clip até
@@ -1122,7 +1141,11 @@ h2 {
   text-shadow: none;
 }
 
-.result-blaze--victory .result-blaze__word {
+/* O MESMO METAL nos dois desfechos de fecho da mesa. Foi pedido: quem
+   levanta sem lucro merece o bom ouro da casa — o que ele não merece é a
+   festa, e a festa mora no MOVIMENTO, não na liga (ver --close abaixo). */
+.result-blaze--victory .result-blaze__word,
+.result-blaze--close .result-blaze__word {
   background-image: linear-gradient(180deg, #fff4e8 0%, #fcd9a0 34%, #f5b76f 63%, #cb7349 100%);
   filter: drop-shadow(0 2px 0 rgba(42, 18, 6, 0.6)) drop-shadow(0 5px 10px rgba(20, 4, 4, 0.55))
     drop-shadow(0 0 12px rgba(245, 183, 111, 0.5));
@@ -1155,7 +1178,8 @@ h2 {
   background-position: 210% 0;
 }
 
-.result-blaze--victory .result-blaze__word::after {
+.result-blaze--victory .result-blaze__word::after,
+.result-blaze--close .result-blaze__word::after {
   background-image: linear-gradient(
     100deg,
     transparent 42%,
@@ -1194,6 +1218,91 @@ h2 {
   100% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* ---- `close`: o MESMO ouro, outra chegada ----------------------------
+
+   O terceiro desfecho não é uma vitória com o volume baixo — é outra
+   coisa, e por isso tem entrada, halo e compasso próprios. Ele empresta
+   de `victory` o METAL (o gradiente de quatro paradas e o relevo triplo
+   em drop-shadow, nas duas listas de seletores acima) e não empresta
+   NADA do movimento. É o que separa "o mesmo ouro" de "o mesmo gesto":
+   o agradecimento merece o primeiro e seria deboche com o segundo.
+
+   As camadas de festa não são DESLIGADAS aqui — elas nunca chegam a ser
+   montadas. A poça de luz e a varredura têm geometria na base e cor só
+   no modificador; partículas, feixe e vinheta são JSX condicional. */
+
+/* Baixa e larga: uma faixa de luz deitada sob as palavras, e não a bola
+   da vitória achatada. Respira num compasso 40% mais longo. */
+.result-blaze--close::before {
+  width: 152%;
+  height: 124%;
+  background: radial-gradient(
+    closest-side,
+    rgba(245, 183, 111, 0.34) 0%,
+    rgba(245, 183, 111, 0.12) 54%,
+    rgba(245, 183, 111, 0) 82%
+  );
+  animation: blaze-glow 3.4s 0.9s ease-in-out infinite;
+}
+
+/* A vitória FLORESCE (0,75 → 1,08 → 1, para cima); o fecho ASSENTA: desce
+   seis pixels e para em 1, sem passar. Um repique aqui soaria como
+   comemoração de quem não ganhou. */
+.result-blaze--close .result-blaze__word {
+  animation: blaze-word-settle 0.86s cubic-bezier(0.2, 0.72, 0.24, 1) both;
+}
+
+@keyframes blaze-word-settle {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) scale(1.035);
+  }
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Mais rara que a da vitória: o ouro está lá, só não insiste. */
+.result-blaze--close .result-blaze__word::after {
+  animation: blaze-sweep 9.5s 1.4s ease-out infinite;
+}
+
+/* O halo do fecho se abre PARA OS LADOS sob as palavras, em vez de
+   estourar em círculo. O seletor traz o pai de propósito: um modificador
+   `--wide` empataria em especificidade com `.result-blaze__halo` e
+   passaria a depender da ordem do arquivo. */
+.result-blaze--close .result-blaze__halo {
+  width: min(190%, 26rem);
+  height: 46%;
+  aspect-ratio: auto;
+  border-radius: 9999px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(252, 217, 160, 0.4) 0%,
+    rgba(245, 183, 111, 0.16) 46%,
+    rgba(245, 183, 111, 0) 74%
+  );
+  animation: blaze-halo-wide 1.15s 0.12s cubic-bezier(0.16, 0.8, 0.3, 1) both;
+}
+
+@keyframes blaze-halo-wide {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.18, 0.7);
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.25, 1.1);
   }
 }
 
@@ -1562,6 +1671,12 @@ h2 {
     opacity: 0.85;
   }
 
+  /* A poça do FECHO é mais baixa que a da vitória: os 0,85 de todo mundo
+     acenderiam o agradecimento mais do que a comemoração. */
+  .result-blaze--close::before {
+    opacity: 0.55;
+  }
+
   .result-blaze__word::after {
     opacity: 0;
   }
@@ -1576,6 +1691,10 @@ h2 {
 
 .result-blaze--still::before {
   opacity: 0.85;
+}
+
+.result-blaze--close.result-blaze--still::before {
+  opacity: 0.55;
 }
 
 .result-blaze--still .result-blaze__word::after {
@@ -3022,20 +3141,11 @@ h2 {
      virar faixa num tablet. */
   --plate-fs: clamp(0.58rem, 3.05vw, 0.74rem);
   --plate-crest: calc(var(--plate-fs) * 2.55);
-  /* O ouro do salão, na ordem em que a luz bate: champagne no alto à
-     esquerda, âmbar, bronze na sombra de baixo e a segunda luz na volta.
-     Vive num token porque a placa usa a MESMA liga em dois lugares — a
-     moldura e o aro do retrato — e duas cópias sairiam de sincronia. */
-  --plate-gold: linear-gradient(
-    152deg,
-    #fff3dc 0%,
-    #f5b76f 17%,
-    #c78a3f 33%,
-    #7d4a1b 49%,
-    #cb7349 61%,
-    #fcd9a0 78%,
-    #b8813c 100%
-  );
+  /* A liga da casa (ver --gold-liga no :root). A placa a usa em DOIS
+     lugares — a moldura e o aro do retrato —, e o caixa a usa na faixa do
+     fecho: três cópias sairiam de sincronia na primeira vez que alguém
+     mexesse numa parada. */
+  --plate-gold: var(--gold-liga);
 
   position: relative;
   z-index: 2;
@@ -3512,98 +3622,319 @@ h2 {
   color: var(--color-gold-bright);
 }
 
-/* ==================== O balanço da sessão (caixa) ==================== */
+/* ==================== O fecho da mesa (payout) ====================
 
-/* O PALCO DO CAIXA é mais compacto que o de um veredito, e tem de ser: o
-   assunto aqui é o EXTRATO, não a palavra. Um título do tamanho de
-   "VITÓRIA!" empurraria as linhas do balanço para fora da tela num
-   aparelho de 640px — e um extrato que não cabe não é extrato.
-   O gancho é a presença do próprio extrato, sem prop nova: quem tem
-   `.ledger` dentro é esta tela e nenhuma outra. */
-.result-stage:has(.ledger) .result-stage__title {
-  font-size: clamp(1.35rem, 7vw, 2.2rem);
-  line-height: 1.05;
+   Aqui morava o EXTRATO de cinco linhas — sentou com, levantou com,
+   lucro, comissão da casa, para o saldo. Era a estrutura de um
+   demonstrativo bancário servida a quem só quer saber uma coisa, e essa
+   coisa estava enterrada no meio das outras quatro, no mesmo corpo de
+   0,72rem. A linha da comissão era o caso extremo: a casa se explicando
+   no exato instante em que a pessoa deveria estar comemorando.
+
+   O que substitui não é um extrato menor: é UMA FAIXA. Três vozes, e o
+   número dentro de uma peça de metal. Os dois desfechos usam a MESMA
+   faixa, na mesma largura, com a mesma moldura — o que muda é o que ela
+   carrega e o gesto com que chega. Estrutura simétrica, tom assimétrico:
+   é o que impede o agradecimento de parecer prêmio de consolação e, ao
+   mesmo tempo, de parecer outra casa.
+
+   SOBRE O COURO CLARO o ouro só funciona de dois jeitos: tinta escura
+   GRAVADA, ou metal claro sobre fundo ESCURO. Por isso a legenda e a
+   unidade ficam FORA da peça, gravadas no feltro, e o valor fica DENTRO,
+   em champagne sobre vinho. Sólido, e não recortado por
+   `background-clip`: sobre este fundo o recorte não acrescentaria nada e
+   custaria três guardas (tinta de segurança, alto contraste, e relevo por
+   `filter` em vez de `text-shadow`). O recorte fica onde é
+   insubstituível — no título, sobre o feltro. */
+
+/* O gancho de layout do palco. Sem ele o título salta para
+   clamp(2.75rem, 12vw, 3.75rem) e "VALEU PELA PARTIDA!" vira três linhas
+   num aparelho de 320px.
+   O gancho é a presença da própria faixa, sem prop nova: quem tem
+   `.payout` dentro é esta tela e nenhuma outra. */
+.result-stage:has(.payout) .result-stage__title {
+  font-size: clamp(1.72rem, 8.8vw, 2.6rem);
+  line-height: 0.98;
+  text-align: center;
+  text-wrap: balance;
 }
 
-/* A linha do "por que a mesa fechou" é CONTEXTO, não débito: ela herdava
-   a tinta de aviso do palco, e um "obrigado por jogar" em vermelho lê
-   como bronca. */
-.result-stage:has(.ledger) .result-stage__note {
-  margin-top: 0.5rem;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: rgba(18, 51, 36, 0.6);
+/* Os dois títulos desta tela são de OURO. Quando o recorte cai (alto
+   contraste), o fecho não pode voltar ao pardo do empate. */
+.result-stage:has(.payout) .result-stage__title--tie {
+  color: #7a4503;
 }
 
-/* O EXTRATO da mesa: sentou com, levantou com, e a diferença. Ele
-   substituiu o "VITÓRIA/DERROTA" da mesa de mão única — numa sessão de
-   quinze mãos a última não é o assunto, e perder a última depois de
-   subir 2.000 fichas não é uma derrota. */
-.ledger {
+.payout {
+  /* A escala da peça inteira, à maneira da `.seat-plate`: um número manda
+     em respiro, raio e rótulos, e é o único que muda de um 320px para um
+     430px. Nenhuma media query. */
+  --payout-fs: clamp(0.6rem, 3.2vw, 0.74rem);
+  /* O corpo do VALOR — e do sinal, que é a mesma tipografia (ver
+     `.payout__sign, .payout__value`). O PISO é o primeiro lugar a ceder
+     quando a tela é curta: a ordem de corte é piso do número, respiro da
+     faixa, e nunca os botões. */
+  --payout-num: clamp(1.2rem, 5.6vw, 1.55rem);
+
   display: flex;
-  width: min(19rem, 90%);
+  /* Medida do VIEWPORT, e não percentual do pai. O palco inteiro é uma
+     coluna com `align-items: center`, então todo filho encolhe até o
+     próprio conteúdo — e uma porcentagem ali resolve contra uma caixa que
+     por sua vez foi medida por este bloco. A faixa nascia com metade da
+     largura e a legenda quebrava em duas linhas tortas. */
+  width: min(19rem, 84vw);
   flex-direction: column;
-  margin-inline: auto;
-  text-align: left;
-}
-
-.ledger__row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.1rem 0;
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-/* Os rótulos não quebram: "Para o saldo" em duas linhas desalinharia a
-   coluna dos valores, e uma coluna torta num extrato é ilegível. */
-.ledger__label {
-  white-space: nowrap;
-  color: rgba(18, 51, 36, 0.74);
-}
-
-.ledger__value {
-  font-variant-numeric: tabular-nums;
-  color: #123324;
-}
-
-/* O lucro em verde-mesa, o prejuízo em vinho: a cor faz a leitura antes
-   do número, que é como se lê um extrato. */
-.ledger__row--up .ledger__value {
-  color: #1c6b45;
-}
-
-.ledger__row--down .ledger__value {
-  color: #7a1f28;
-}
-
-/* A ÚLTIMA LINHA é a que importa — o que entra no saldo. Filete em cima
-   e corpo maior: é a soma, e uma soma que lê igual às parcelas não é
-   soma nenhuma. */
-.ledger__row--total {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-top: 0.28rem;
-  padding-top: 0.4rem;
-  border-top: 1px solid rgba(18, 51, 36, 0.22);
-  font-size: 0.86rem;
-  font-weight: 900;
-}
-
-.ledger__row--total .ledger__label {
-  color: rgba(18, 51, 36, 0.78);
-}
-
-.ledger__row--total .ledger__value {
-  display: inline-flex;
   align-items: center;
-  gap: 0.28rem;
-  color: #123324;
+  margin-inline: auto;
+  text-align: center;
+}
+
+/* A LEGENDA — O MESMO OURO DO TÍTULO, e parada.
+   Ela já foi tinta escura gravada no couro, e sumia: atrás dela passa o
+   brasão do feltro, e verde-escuro sobre verde-claro texturizado a 10px
+   é contraste que não existe. No metal ela lê, e lê como parte da mesma
+   peça — é a manchete falando mais baixo, não outra voz.
+
+   O gradiente é o de `victory` com uma parada a menos: a quarta (o
+   terracota da base) é o que escurece a barriga das letras, e num corpo
+   de 10px isso vira borrão. Aqui o metal para no âmbar.
+
+   NADA de `text-shadow` — a mesma armadilha do título: numa caixa com
+   `background-clip: text` o fundo é pintado ANTES da sombra, e ela
+   cobriria o metal. O relevo sai de `drop-shadow`, que age sobre o que
+   já foi renderizado. Sem ele o ouro encosta no feltro claro e perde o
+   gume, que era metade do problema de legibilidade.
+
+   PARADA de propósito: nem varredura nem halo. A animação é do título, e
+   duas peças brilhando na mesma tela disputariam o olho em vez de o
+   conduzir. */
+.payout__lede {
+  margin-top: 0.34rem;
+  margin-right: -0.14em;
+  font-family: var(--font-display);
+  font-size: calc(var(--payout-fs) * 1.05);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: transparent;
+  background-image: linear-gradient(180deg, #fff4e8 0%, #fcd9a0 40%, #f5b76f 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 1px 0 rgba(42, 18, 6, 0.72)) drop-shadow(0 2px 5px rgba(20, 4, 4, 0.5));
+}
+
+/* A FAIXA — a mesma matéria da moldura do assento: o `border-box` recebe
+   a liga de sete paradas (--gold-liga) e o `padding-box` recebe o vinho.
+   O ouro fica no anel e o vinho no miolo, sem um pintar por cima do
+   outro.
+   `text-shadow: none` é indispensável: a tinta GRAVADA do palco herda
+   para cá dentro e deixaria um filete branco por baixo de cada letra
+   sobre o vinho. */
+.payout__bar {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  /* A faixa ABRAÇA o conteúdo, com piso e teto. Ela já foi 100% da
+     largura do bloco, e com a linha de unidade removida o que sobrava era
+     uma banda longa com uma pastilha de conteúdo boiando no meio — vazio
+     não lê como respiro, lê como peça inacabada.
+     O PISO impede que um lucro de dois dígitos vire uma pastilha ínfima; o
+     TETO é o próprio bloco, então nada vaza. */
+  width: fit-content;
+  min-width: min(11rem, 100%);
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--payout-fs) * 0.42);
+  margin-top: 0.34rem;
+  padding: calc(var(--payout-fs) * 0.46) calc(var(--payout-fs) * 1.5);
+  border: 2px solid transparent;
+  border-radius: calc(var(--payout-fs) * 1.1);
+  background:
+    linear-gradient(180deg, #63151f 0%, #3d0a13 48%, #1c0509 100%) padding-box,
+    var(--gold-liga) border-box;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 232, 0.18),
+    inset 0 -8px 16px rgba(0, 0, 0, 0.42),
+    /* o fio escuro POR FORA do ouro: sem ele a moldura encosta no feltro
+       claro e perde o gume */ 0 0 0 1px rgba(18, 5, 8, 0.5),
+    0 6px 16px rgba(10, 3, 6, 0.45);
+  font-size: var(--payout-fs);
+  color: var(--color-ivory);
+  text-shadow: none;
+}
+
+/* O segundo fio, rebaixado: o ouro de fora e este de dentro cercam uma
+   faixa de vinho, e é essa faixa que faz a peça ler como metal fundido
+   em vez de retângulo pintado. */
+.payout__bar::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--payout-fs) * 0.3);
+  border: 1px solid rgba(245, 183, 111, 0.3);
+  border-radius: calc(var(--payout-fs) * 0.74);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+/* A FICHA e o SINAL medem-se pelo NÚMERO, e não pelo corpo do bloco. Era
+   isso que os deixava fora de escala: presos a `--payout-fs`, eles ficavam
+   do tamanho de um rótulo ao lado de um algarismo três vezes maior — a
+   faixa lia como um número com duas sujeirinhas do lado, e não como uma
+   peça com três partes. */
+.payout__chip {
+  flex: none;
+  width: calc(var(--payout-num) * 0.76);
+  height: calc(var(--payout-num) * 0.76);
+  color: var(--color-gold);
+  filter: drop-shadow(0 1px 0 rgba(42, 18, 6, 0.6));
+}
+
+/* O sinal é a NOTÍCIA, mas não é o número: menor, um passo atrás no
+   metal. Grande demais, compete; ausente, a faixa deixa de dizer "para
+   cima". */
+/* O SINAL E O VALOR SÃO A MESMA TIPOGRAFIA — mesmo corpo, mesmo peso,
+   mesma tinta, mesmo relevo. Uma regra só para os dois, e é de propósito:
+   eles já viveram em declarações separadas, com o sinal a 0,78 do número,
+   e o resultado era "+" de rótulo colado num algarismo de manchete. Duas
+   declarações também são duas chances de sair de sincronia na próxima vez
+   que alguém mexer no metal.
+
+   `+90` lê como UMA palavra em ouro, que é o que ela é: a quantia que
+   entrou. A voz é a de "valor em ouro" da casa (`.seat-plate__stack`) —
+   display condensado, tabular, champagne. */
+.payout__sign,
+.payout__value {
+  font-family: var(--font-display);
+  font-size: var(--payout-num);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--color-gold-bright);
+  filter: drop-shadow(0 1px 0 rgba(42, 18, 6, 0.75)) drop-shadow(0 3px 10px rgba(20, 4, 4, 0.5));
+}
+
+/* `tabular-nums` não é refino: sem ele a largura da faixa dança entre
+   1.111 e 4.500 no mesmo aparelho. Só o valor precisa — o sinal é uma
+   glifa fixa. */
+.payout__value {
+  position: relative;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- O fecho: a MESMA faixa, outro conteúdo ---------- */
+
+/* A MESMA faixa do lucro, com outro conteúdo dentro e um pouco mais de
+   respiro — a palavra é longa e precisa de ar nos lados que o número não
+   pede.
+
+   Ela já teve DOIS FIOS correndo para fora da palavra, e eles saíram: a
+   ideia era dar ao encerramento um gesto próprio, mas dois traços curtos
+   ladeando um texto dentro de uma moldura que já tem duas linhas de ouro
+   viraram um terceiro par de linhas no mesmo lugar. Ruído, não gesto. O
+   que separa esta tela da outra continua sendo o que tem de separar: a
+   palavra no lugar do número, e a chegada em vez do florescer. */
+.payout--closed .payout__bar {
+  margin-top: 0.5rem;
+  padding-block: calc(var(--payout-fs) * 0.72);
+  padding-inline: calc(var(--payout-fs) * 1.7);
+}
+
+/* MESA ENCERRADA em ouro MÉDIO — nunca o champagne, que é a cor de valor
+   e aqui não há valor a anunciar. Corpo de rótulo, e não de número: a
+   peça não tem cifra a dar, tem um estado a registrar. A entreletra larga
+   é o que faz o texto ler como carimbo em vez de recado. */
+.payout__mark {
+  position: relative;
+  flex: 0 0 auto;
+  /* Devolve o centro ótico que o vão fantasma da última letra rouba: numa
+     entreletra de 0,2em, o desvio se vê dentro de uma moldura centrada. */
+  margin-right: -0.2em;
+  font-family: var(--font-display);
+  font-size: calc(var(--payout-fs) * 1.34);
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  color: var(--color-gold);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+/* A VARREDURA — a mesma pseudo-cópia gráfica do título (`attr()`, sem
+   duplicar nó no DOM e sem leitor de tela lendo duas vezes) e o MESMO
+   keyframe. Os atrasos são maiores de propósito: título e faixa nunca
+   brilham no mesmo instante, e é o desencontro que faz as duas peças
+   lerem como o mesmo metal sob a mesma luz, em vez de dois efeitos
+   ligados juntos. */
+.payout__value::after,
+.payout__mark::after {
+  content: attr(data-value);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background-image: linear-gradient(
+    100deg,
+    transparent 42%,
+    rgba(255, 252, 244, 0.92) 50%,
+    transparent 58%
+  );
+  background-repeat: no-repeat;
+  background-size: 260% 100%;
+  background-position: 210% 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+.payout__value::after {
+  animation: blaze-sweep 6.8s 2.4s ease-out infinite;
+}
+
+.payout__mark::after {
+  animation: blaze-sweep 9.5s 2.9s ease-out infinite;
+}
+
+/* Movimento reduzido: o METAL fica, o movimento sai. Dois caminhos,
+   redundantes de propósito, como o blaze já faz — o do componente
+   (`--still`, via useReducedMotion) e a rede de segurança do CSS para
+   quem liga a preferência com a tela já aberta. */
+.payout--still .payout__value::after,
+.payout--still .payout__mark::after {
+  animation: none;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .payout__value::after,
+  .payout__mark::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* ALTO CONTRASTE: sem imagens de fundo, texto recortado por
+   `background-clip` vira texto INVISÍVEL. Isto conserta de quebra um
+   buraco que já existia no `.result-blaze__word` e que esta tela
+   dobraria — agora são DOIS títulos recortados, não um. */
+@media (forced-colors: active) {
+  .result-blaze .result-blaze__word,
+  .payout__lede {
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  .result-blaze__word::after,
+  .payout__value::after,
+  .payout__mark::after {
+    display: none;
+  }
+
+  .payout__bar {
+    border-color: currentColor;
+  }
 }
 
 /* ==================== A fileira de lances ==================== */
@@ -5623,6 +5954,22 @@ body.is-street-cut #root {
   color: #a08472;
   box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.22);
   filter: none;
+}
+
+/* O SELO DE "EM BREVE" de um botão apagado. Ele não substitui o rótulo:
+   fica ao lado dele, menor e mais apagado ainda, porque o botão precisa
+   continuar dizendo QUAL modo é — um botão cinza escrito só "Em breve"
+   esconde justamente a informação que ele existe para dar. */
+.btn__soon {
+  margin-left: 0.1rem;
+  padding: 0.06rem 0.4rem;
+  border-radius: 9999px;
+  box-shadow: inset 0 0 0 1px rgba(203, 169, 138, 0.28);
+  font-size: 0.62em;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(203, 169, 138, 0.78);
 }
 
 /* Dourado âmbar maciço: bisel (luz champagne em cima, quina terracota

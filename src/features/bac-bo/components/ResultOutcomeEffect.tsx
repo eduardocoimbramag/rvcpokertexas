@@ -21,6 +21,15 @@ import { createPortal } from 'react-dom';
  *   das bordas das letras — primeiro para fora, depois caindo. Fica um
  *   glow rubi mais fechado que o dourado e umas brasas esfriando. É
  *   energia se apagando.
+ * - `close` — O MESMO OURO, PARADO. O metal da vitória (mesma liga, mesmo
+ *   relevo, mesma varredura) com coreografia própria: a palavra ASSENTA
+ *   em vez de florescer, o halo se abre numa faixa deitada em vez de
+ *   estourar em círculo, e não há partícula nenhuma. Existe para o
+ *   desfecho que merece o bom metal da casa sem merecer a festa — quem
+ *   levanta da mesa sem lucro. Festejar ali seria deboche; agradecer em
+ *   tinta comum seria mesquinhez. A diferença entre ganhar e não ganhar
+ *   deixa de ser TER ou NÃO TER ouro e passa a ser o que o ouro faz
+ *   depois de aparecer.
  *
  * TUDO É CSS. Nenhum timer, nenhum `requestAnimationFrame`, nenhum
  * listener: as partículas são spans com variáveis de posição no
@@ -39,7 +48,7 @@ import { createPortal } from 'react-dom';
  * as camadas se ancoram nele com precisão, sem depender de medida.
  */
 
-export type ResultEffectOutcome = 'victory' | 'defeat';
+export type ResultEffectOutcome = 'victory' | 'defeat' | 'close';
 
 export interface ResultOutcomeEffectProps {
   outcome: ResultEffectOutcome;
@@ -200,16 +209,24 @@ export function ResultOutcomeEffect({
   children,
 }: ResultOutcomeEffectProps) {
   const victory = outcome === 'victory';
+  /* ATENÇÃO: `!victory` deixou de significar "derrota" no dia em que
+     entrou o terceiro valor. O feixe e a vinheta são da DERROTA e
+     precisam dizer isso por extenso — sem esta guarda, quem levanta da
+     mesa sem lucro leva um feixe vinho atravessando o título e uma
+     vinheta escura no `body`, que é o oposto exato do que a tela diz.
+     O TypeScript não acusa nada disso. */
+  const close = outcome === 'close';
 
-  // Sorteio único por montagem. Com `instant` as listas nem são
-  // construídas: em movimento reduzido não existe partícula nenhuma.
+  /* Sorteio único por montagem. Com `instant` — ou com `close`, que não
+     tem partícula nenhuma — as listas nem chegam a ser construídas: a
+     festa do fecho não é desligada, ela nunca é montada. */
   const burst = useMemo(
-    () => (instant ? [] : victory ? buildVictory('burst') : buildDefeat('burst')),
-    [instant, victory],
+    () => (instant || close ? [] : victory ? buildVictory('burst') : buildDefeat('burst')),
+    [instant, close, victory],
   );
   const drift = useMemo(
-    () => (instant ? [] : victory ? buildVictory('drift') : buildDefeat('drift')),
-    [instant, victory],
+    () => (instant || close ? [] : victory ? buildVictory('drift') : buildDefeat('drift')),
+    [instant, close, victory],
   );
 
   return (
@@ -220,12 +237,13 @@ export function ResultOutcomeEffect({
     >
       {!instant && (
         <>
-          {/* Vitória: o halo que se abre atrás da palavra. */}
-          {victory && <span className="result-blaze__halo" aria-hidden="true" />}
-          {/* Derrota: o feixe vinho que atravessa em diagonal. */}
-          {!victory && <span className="result-blaze__beam" aria-hidden="true" />}
-          <ParticleLayer outcome={outcome} phase="burst" particles={burst} />
-          <ParticleLayer outcome={outcome} phase="drift" particles={drift} />
+          {/* Vitória: o halo que se abre atrás da palavra. Fecho: o MESMO
+              nó, deitado em faixa (ver .result-blaze--close .result-blaze__halo). */}
+          {(victory || close) && <span className="result-blaze__halo" aria-hidden="true" />}
+          {/* Derrota, e só ela: o feixe vinho que atravessa em diagonal. */}
+          {!victory && !close && <span className="result-blaze__beam" aria-hidden="true" />}
+          {!close && <ParticleLayer outcome={outcome} phase="burst" particles={burst} />}
+          {!close && <ParticleLayer outcome={outcome} phase="drift" particles={drift} />}
         </>
       )}
 
@@ -236,8 +254,9 @@ export function ResultOutcomeEffect({
           pelo Framer carregam transforms, e um `fixed` aqui dentro
           ancoraria na caixa errada (mesmo motivo do Confetti). Ela é um
           fade único de ~0,9 s; sai de cena sozinha e some no ato se a
-          tela for embora antes. */}
-      {!victory && !instant && <DefeatVignette />}
+          tela for embora antes.
+          Nada de vinheta no FECHO: não há derrota a anunciar. */}
+      {!victory && !close && !instant && <DefeatVignette />}
     </div>
   );
 }

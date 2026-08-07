@@ -6,6 +6,7 @@ import { Icon } from '@/shared/components/Icon';
 import { isBroke } from '../engine/credits';
 import { audioManager } from '../services/AudioManager';
 import { useGameStore } from '../store/gameStore';
+import { TOURNAMENT_ENABLED, TOURNAMENT_SOON_HINT } from '../tournament/availability';
 import { BalancePill } from './BalancePill';
 import { BrandCard } from './BrandCard';
 
@@ -124,13 +125,27 @@ export function HomeScreen({
             <Icon name="club" /> 1V1
           </Button>
         )}
+        {/* O TORNEIO com a porta fechada (ver `TOURNAMENT_ENABLED`). O
+            botão CONTINUA em cena, apagado: esconder um modo que existe
+            faria a Home mudar de forma quando ele voltasse, e quem já
+            conhece o jogo procuraria um botão que sumiu. Apagado, ele
+            diz as duas coisas de uma vez — que o torneio existe e que
+            ainda não abriu. É o mesmo tratamento do LEVANTAR na primeira
+            mão da mesa. */}
         <Button
           variant="secondary"
           onClick={handleTournament}
           fullWidth
+          disabled={!TOURNAMENT_ENABLED}
+          title={TOURNAMENT_ENABLED ? undefined : TOURNAMENT_SOON_HINT}
           data-testid="tournament-button"
         >
           <Icon name="trophy" /> TORNEIO
+          {!TOURNAMENT_ENABLED && (
+            <span className="btn__soon" data-testid="tournament-soon">
+              {TOURNAMENT_SOON_HINT}
+            </span>
+          )}
         </Button>
         <div className="grid grid-cols-2 gap-3">
           <Button

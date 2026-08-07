@@ -1,6 +1,8 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
+import { TOURNAMENT_ENABLED } from '../src/features/bac-bo/tournament/availability.js';
+
 /**
  * E2E do modo Torneio, focado no desfecho da partida do jogador:
  * - a contagem regressiva de retorno ao chaveamento (espelha o início
@@ -16,6 +18,16 @@ import { expect, test } from '@playwright/test';
  * (10s) passam bem do padrão.
  */
 test.describe.configure({ timeout: 180_000 });
+
+/* A PORTA DE ENTRADA DO TORNEIO ESTÁ FECHADA (ver `TOURNAMENT_ENABLED`).
+   Sem ela, o primeiro clique de todo teste daqui cai num botão apagado e
+   a suíte inteira quebra por um motivo que não é defeito nenhum.
+
+   Os testes NÃO são apagados nem marcados com `.skip` na mão: eles leem
+   a mesma constante que a Home lê, então voltam a rodar sozinhos no
+   commit em que o botão voltar a abrir. É o que impede o modo de morrer
+   em silêncio enquanto está desligado. */
+test.skip(!TOURNAMENT_ENABLED, 'Torneio desligado na Home (TOURNAMENT_ENABLED = false).');
 
 const SEEDED_STATE = {
   version: 3,

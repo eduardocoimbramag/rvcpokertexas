@@ -146,7 +146,7 @@ export function GameScreen() {
                     mesa que corre até alguém quebrar, quem ganhou a
                     última mão não é o assunto (ver SessionBanner). */}
                 {phase === 'completed' && session && match && (
-                  <SessionBanner session={session} opponentName={match.opponent.name} />
+                  <SessionBanner session={session} />
                 )}
               </div>
             )}

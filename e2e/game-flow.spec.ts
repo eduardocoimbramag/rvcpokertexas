@@ -10,7 +10,7 @@ import { expect, test } from '@playwright/test';
  * a mesa só fecha quando alguém fica sem fichas para a entrada ou quando
  * o jogador se levanta. Por isso os testes param em dois lugares
  * diferentes: `callDownToHandover` fecha UMA MÃO (é lá que a placa do
- * vencedor entra) e `cashOut` fecha a MESA (é lá que o extrato aparece).
+ * vencedor entra) e `cashOut` fecha a MESA (é lá que o fecho aparece).
  *
  * COMO O FORÇAR FUNCIONA na mão de Texas Hold'em: a engine empilha o
  * baralho com as fechadas dos dois lados e as cinco da mesa, garantindo
@@ -226,7 +226,11 @@ test('da Home à mesa: o duelo abre sem nada a combinar', async ({ page }) => {
 
   // A MESA fecha no CAIXA, e é lá que o saldo se mexe.
   await cashOut(page);
-  await expect(page.getByTestId('result-title')).toHaveText(/LUCROU/);
+  await expect(page.getByTestId('result-title')).toHaveText(/BOA PARTIDA/);
+  // O que a tela anuncia é o LÍQUIDO, e a comissão não aparece em lugar
+  // nenhum: um valor único, e não um extrato de parcelas.
+  await expect(page.getByTestId('payout-value')).toBeVisible();
+  await expect(page.getByText(/comiss/i)).toHaveCount(0);
   await expect(page.getByTestId('table-scene')).toHaveAttribute('data-camera', 'front');
   await expect(page.getByTestId('dealer')).toHaveAttribute('data-reaction', 'celebrate');
 });
@@ -416,9 +420,32 @@ test('a barra nunca oferece um lance ilegal, rua após rua', async ({ page }) =>
       decisoes += 1;
       await passar.click({ timeout: 5_000 }).catch(() => undefined);
     } else if ((await pagar.count()) > 0) {
-      // Com aposta na frente as três saídas existem, e PASSAR não é uma.
+      // Com aposta na frente, PAGAR e CORRER existem e PASSAR não é uma
+      // das saídas.
       await expect(desistir, 'faltou CORRER com aposta na frente').toHaveCount(1);
-      await expect(page.getByTestId('action-raise')).toHaveCount(1);
+      await expect(passar, 'PASSAR apareceu com aposta na frente').toHaveCount(0);
+
+      /* AUMENTAR é a exceção, e é aqui que este teste já mentiu: ele
+         exigia o botão em TODA decisão com aposta na frente. A engine
+         nunca prometeu isso (`legalActionsFor`):
+
+             if (rivalHasChips && stack > toCall) actions.push('raise');
+
+         Não há aumento contra quem já pôs tudo — não sobrou ficha do
+         outro lado para cobrir. Com o desfecho forçado em `lose` o rival
+         aposta forte e vai de all-in com frequência, e o teste falhava
+         por cobrar uma regra que não existe. Agora ele cobra a regra de
+         verdade: com o rival SEM fichas, AUMENTAR tem de estar ausente. */
+      const rivalTem = Number(
+        ((await page.getByTestId('stack-opponent').textContent()) ?? '').replace(/\D/g, ''),
+      );
+      await expect(
+        page.getByTestId('action-raise'),
+        rivalTem > 0
+          ? 'faltou AUMENTAR com o rival ainda com fichas'
+          : 'AUMENTAR apareceu contra um rival sem fichas',
+      ).toHaveCount(rivalTem > 0 ? 1 : 0);
+
       decisoes += 1;
       await pagar.click({ timeout: 5_000 }).catch(() => undefined);
     } else {
