@@ -160,6 +160,19 @@ export const pokerResultSchema = z.object({
   /** A mão foi ao showdown (as duas mãos se compararam de verdade). */
   showdown: z.boolean(),
   /**
+   * O RIVAL ABRIU a mão dele. Só diz alguma coisa quando NÃO houve
+   * showdown: ali as duas mãos foram pagas para serem vistas e abrem
+   * sempre. Numa desistência ele escolhe, como você (ver `botShowsHand`)
+   * — e enquanto ele não escolhia, a leitura da mesa corria num sentido
+   * só: você aprendia como ele joga toda vez que ele largava uma mão, e
+   * ele nunca aprendia nada de você.
+   *
+   * `.default(true)` porque o histórico gravado antes desta escolha
+   * existir guarda mãos que de fato abriram — a compatibilidade aqui é
+   * com a verdade daquelas mãos, não com uma conveniência de schema.
+   */
+  opponentShown: z.boolean().default(true),
+  /**
    * A carta que DECIDIU, quando as duas mãos caíram na mesma categoria
    * ("os dois tinham par de Damas — ganhou no Ás"). Ausente quando as
    * categorias já diferem, porque aí o nome das mãos explica sozinho.

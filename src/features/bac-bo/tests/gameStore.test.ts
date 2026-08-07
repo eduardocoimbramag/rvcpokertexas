@@ -28,6 +28,7 @@ import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageSer
 import { TABLE_ANTE } from '../engine/credits';
 import {
   ACTION_SECONDS,
+  FOLD_HANDOVER_SECONDS,
   HANDOVER_SECONDS,
   SHOW_CARDS_SECONDS,
   canTransition,
@@ -107,6 +108,8 @@ class StubPokerEngine implements PokerEngine {
 
   /** O rival CORRE em vez de jogar a vez dele (para o convite de mostrar). */
   private readonly opponentFolds: boolean;
+  /** O rival GUARDA a mão dele numa desistência (ver `botShowsHand`). */
+  opponentHides = false;
 
   constructor(outcomes: PokerOutcome | readonly PokerOutcome[], opponentFolds = false) {
     this.queue = typeof outcomes === 'string' ? [outcomes] : [...outcomes];
@@ -293,6 +296,9 @@ class StubPokerEngine implements PokerEngine {
             cards: folded ? [...hole.opponent] : BOARD.slice(0, 5),
           },
           showdown: !folded,
+          // O rival abre a mão dele por padrão nos testes: o que se cobra
+          // aqui é o fluxo da mesa, não o sorteio do que ele mostra.
+          opponentShown: !this.opponentHides,
           ...(foldedBy ? { foldedBy } : {}),
           outcome,
           stake: this.stake,
@@ -470,6 +476,21 @@ async function runToHandover(store: TestStore) {
 }
 
 /**
+ * Corre até o CONVITE DE ABRIR A MÃO entrar.
+ *
+ * Ele não mora mais no intervalo entre as mãos: entra no instante da
+ * desistência, com a mesa congelada em `settle` — nada do desfecho
+ * aconteceu ainda. Um helper que esperasse `handover` passaria direto por
+ * ele, porque o balão sozinho vence os cinco segundos e a mão fecha.
+ */
+async function runToShowPrompt(store: TestStore) {
+  for (let step = 0; step < 400 && store.getState().showPrompt === null; step += 1) {
+    await vi.advanceTimersByTimeAsync(50);
+  }
+  expect(store.getState().showPrompt).not.toBeNull();
+}
+
+/**
  * A LINHA MAIS PASSIVA POSSÍVEL até a mão fechar: passa quando é de
  * graça, paga quando não é. Nunca desiste, nunca aumenta — o que garante
  * chegar ao showdown sem que o teste precise saber quantas palavras a
@@ -579,7 +600,12 @@ describe('máquina de estados', () => {
 
   it('sem saldo mínimo, a busca não abre', () => {
     const storage = createMemoryStorage();
-    const broke: PersistedState = { balance: 5, history: [], settings: DEFAULT_SETTINGS };
+    const broke: PersistedState = {
+      balance: 5,
+      history: [],
+      settings: DEFAULT_SETTINGS,
+      openTable: null,
+    };
     new GameStorageService(storage).save(broke);
 
     const store = createTestStore('win', storage);
@@ -672,15 +698,231 @@ describe('fluxo completo da sessão', () => {
     // Passa a palavra: o rival larga a mão em vez de responder.
     store.getState().check();
     await vi.advanceTimersByTimeAsync(0);
-    await runToHandover(store);
+    await runToShowPrompt(store);
 
     /* O pote foi levado SEM showdown: as cartas iriam para o descarte sem
        que o rival soubesse o que havia nelas. Mostrar é jogada — e é das
        poucas do poker que não custa ficha nenhuma. */
     expect(store.getState().result?.foldedBy).toBe('opponent');
     expect(store.getState().showPrompt?.seconds).toBe(SHOW_CARDS_SECONDS);
-    expect(store.getState().showPrompt?.handLabel).toBe('Par de Ases');
+    expect(store.getState().showPrompt?.foldedBy).toBe('opponent');
     expect(store.getState().cardsShown).toBe(false);
+  });
+
+  it('quando VOCÊ corre, a mesa também oferece abrir a mão', async () => {
+    /* Faltava o outro lado: a mesa só perguntava a quem ganhava, como se
+       largar a mão não fosse também uma história a contar. Abrir um par
+       de Reis largado diz "eu solto mão grande quando a mesa pede". */
+    const store = createTestStore('lose');
+    await reachCountdown(store);
+    await passDealing(store);
+
+    for (let passo = 0; passo < 200; passo += 1) {
+      const { phase, round } = store.getState();
+      if (phase === 'betting' && round?.toAct === 'player') break;
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    store.getState().fold();
+    await vi.advanceTimersByTimeAsync(0);
+    await runToShowPrompt(store);
+
+    expect(store.getState().result?.foldedBy).toBe('player');
+    expect(store.getState().showPrompt?.foldedBy).toBe('player');
+    // Mesmo tempo, mesma pausa: a mesa congela até a resposta.
+    expect(store.getState().showPrompt?.seconds).toBe(SHOW_CARDS_SECONDS);
+    expect(store.getState().phase).toBe('settle');
+  });
+
+  it('quem pediu para LEVANTAR não é convidado a mostrar nada', async () => {
+    /* Ele já disse que vai embora: uma pergunta sobre a mão que acabou de
+       abrir mão seria uma porta no caminho da saída. */
+    const store = createTestStore('tie');
+    await reachCountdown(store);
+    await passDealing(store);
+    await callDownToHandover(store);
+    await vi.advanceTimersByTimeAsync(HANDOVER_SECONDS * 1000 + TIMINGS.dealMs);
+    for (let passo = 0; passo < 200; passo += 1) {
+      const { phase, round } = store.getState();
+      if (phase === 'betting' && round?.toAct === 'player') break;
+      await vi.advanceTimersByTimeAsync(50);
+    }
+
+    store.getState().leaveTable();
+    for (let passo = 0; passo < 400 && store.getState().phase !== 'completed'; passo += 1) {
+      await vi.advanceTimersByTimeAsync(50);
+      expect(store.getState().showPrompt).toBeNull();
+    }
+    expect(store.getState().phase).toBe('completed');
+  });
+
+  it('a mesa FECHADA não recebe convite: mostrar não informa mais nada', async () => {
+    /* Mostrar a mão é jogada para as PRÓXIMAS mãos. Sem próxima mão, a
+       pergunta não decide nada — e ainda segurava o extrato por quase dez
+       segundos. */
+    const engine = new StubPokerEngine('win', true);
+    const store = createGameStore({
+      engine,
+      storage: new GameStorageService(createMemoryStorage()),
+      // Buy-in que não cobre nem duas entradas: a mão que fechar quebra a
+      // mesa, e a mesa quebrada não tem próxima mão.
+      initialBalance: 150,
+      rng: () => 0.25,
+    });
+    await reachCountdown(store);
+    await passDealing(store);
+    store.getState().check();
+    await vi.advanceTimersByTimeAsync(0);
+
+    for (let passo = 0; passo < 400 && store.getState().phase !== 'completed'; passo += 1) {
+      await vi.advanceTimersByTimeAsync(50);
+      expect(store.getState().showPrompt).toBeNull();
+    }
+    expect(store.getState().session?.over).toBe(true);
+  });
+
+  it('quem foi corrido pelo RELÓGIO não é convidado a mostrar nada', async () => {
+    /* Ele não largou a mão: o relógio largou por ele, e o motivo mais
+       provável é que ele não está olhando a tela. A pergunta afirmaria
+       uma decisão que ele não tomou. */
+    const store = createTestStore('lose');
+    await reachCountdown(store);
+    await passDealing(store);
+    /* A mesa só CORRE por quem não age quando há aposta na frente — de
+       graça ela passa (ver `timeoutAction`). Então é preciso deixar o
+       rival apostar antes: passa a palavra, ele vai de all-in, e a
+       palavra volta com um preço em cima dela. */
+    store.getState().check();
+    for (let passo = 0; passo < 200; passo += 1) {
+      const { phase, round } = store.getState();
+      if (phase === 'betting' && round?.toAct === 'player' && round.toCall > 0) break;
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    expect(store.getState().round?.toCall).toBeGreaterThan(0);
+
+    /* Ninguém toca em nada: os 20 s vencem e a mesa corre a mão. A folga
+       cobre o beat do lance do rival, que roda antes de a janela abrir. */
+    await vi.advanceTimersByTimeAsync((ACTION_SECONDS + 6) * 1000);
+    expect(store.getState().result?.foldedBy).toBe('player');
+    expect(store.getState().result?.showdown).toBe(false);
+    expect(store.getState().showPrompt).toBeNull();
+  });
+
+  it('a plaquinha do lance CALA quando o convite vai entrar em cima dela', async () => {
+    /* Os dois nasciam no mesmo instante e diziam a mesma coisa — o
+       convite (por cima) cobria a plaquinha, que ficava 1,8 s no ar para
+       ninguém. */
+    const store = createTestStore('win', createMemoryStorage(), () => 0.25, true);
+    await reachCountdown(store);
+    await passDealing(store);
+    store.getState().check();
+    await vi.advanceTimersByTimeAsync(0);
+    await runToShowPrompt(store);
+
+    expect(store.getState().announce).toBeNull();
+  });
+
+  it('a DESISTÊNCIA tem desfecho e intervalo mais curtos que o showdown', async () => {
+    /* Ela não teve comparação: quem correu perdeu por ter largado. Dar a
+       ela o mesmo cerimonial de um showdown de river fazia uma mão de UM
+       lance custar quase vinte segundos de cena. */
+    const engine = new StubPokerEngine('win', true);
+    engine.opponentHides = true;
+    const store = createGameStore({
+      engine,
+      storage: new GameStorageService(createMemoryStorage()),
+      initialBalance: 500,
+      rng: () => 0.25,
+    });
+    await reachCountdown(store);
+    await passDealing(store);
+    store.getState().check();
+    await vi.advanceTimersByTimeAsync(0);
+    await runToShowPrompt(store);
+    store.getState().answerShowCards(false);
+
+    /* Sem carta a virar (ele guardou) e sem comparação: o desfecho é só o
+       embate comprimido, sem a espera da revelação. */
+    await vi.advanceTimersByTimeAsync(TIMINGS.foldSettleMs);
+    expect(store.getState().phase).toBe('handover');
+
+    // E o intervalo é a metade: não há duas mãos de cinco cartas a ler.
+    expect(store.getState().handoverTotal).toBe(FOLD_HANDOVER_SECONDS);
+    expect(store.getState().handoverSeconds).toBe(FOLD_HANDOVER_SECONDS);
+  });
+
+  it('o SHOWDOWN mantém o cerimonial inteiro', async () => {
+    const store = createTestStore('win');
+    await reachCountdown(store);
+    await passDealing(store);
+    await callDownToHandover(store);
+
+    expect(store.getState().result?.showdown).toBe(true);
+    expect(store.getState().handoverTotal).toBe(HANDOVER_SECONDS);
+  });
+
+  it('LEVANTAR sem a palavra na mão NÃO deixa pedido pendurado', async () => {
+    /* O pedido de sair era marcado ANTES de a mão ser corrida, e correr
+       pode falhar em silêncio. Marcado sem a mão ter corrido, o bilhete
+       ficava colado — e fechava a mesa no fim de uma mão seguinte que
+       ninguém tinha pedido para deixar. */
+    // Empate na primeira: os dois seguem com fichas e há segunda mão.
+    const store = createTestStore('tie');
+    await reachCountdown(store);
+    await passDealing(store);
+    await callDownToHandover(store);
+    await vi.advanceTimersByTimeAsync(HANDOVER_SECONDS * 1000 + TIMINGS.dealMs);
+
+    for (let passo = 0; passo < 200; passo += 1) {
+      const { phase, round } = store.getState();
+      if (phase === 'betting' && round?.toAct === 'player') break;
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    /* Passa a palavra e tenta levantar com ela do lado do RIVAL: aqui
+       `leaveTable` não tem como correr a mão, e portanto não pode marcar
+       nada. */
+    store.getState().check();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().round?.toAct).toBe('opponent');
+
+    store.getState().leaveTable();
+    await vi.advanceTimersByTimeAsync(0);
+    // A mesa segue: o pedido não pegou, e é isso que se cobra.
+    expect(store.getState().phase).toBe('betting');
+
+    /* E o bilhete NÃO ficou pendurado: a mão corre até o fim e a mesa
+       continua de pé, em vez de fechar sozinha no meio do caminho. */
+    await callDownToHandover(store);
+    expect(store.getState().phase).toBe('handover');
+    expect(store.getState().session?.leftBy).toBeUndefined();
+  });
+
+  it('o convite vem ANTES do desfecho, com a mesa congelada', async () => {
+    /* A ordem é a coisa toda, e ela já esteve invertida: as cartas
+       viravam, o embate rodava, o vencedor era coroado — e só então a
+       mesa perguntava se você queria mostrar o que tinha. Perguntar
+       depois de mostrar não é perguntar. Agora a mão para em `settle`,
+       sem nada do desfecho em cena, e só anda depois da resposta. */
+    const store = createTestStore('win', createMemoryStorage(), () => 0.25, true);
+    await reachCountdown(store);
+    await passDealing(store);
+    store.getState().check();
+    await vi.advanceTimersByTimeAsync(0);
+    await runToShowPrompt(store);
+
+    // A mesa parou no desfecho e NÃO seguiu para o intervalo.
+    expect(store.getState().phase).toBe('settle');
+
+    /* E fica parada: o beat do embate (revelação + embate) passa inteiro
+       sem que a mão feche, porque ele nem começou — quem o dispara é a
+       resposta. */
+    await vi.advanceTimersByTimeAsync(TIMINGS.revealMs + TIMINGS.settleMs);
+    expect(store.getState().phase).toBe('settle');
+
+    // Respondido, o desfecho corre e só então a mão fecha.
+    store.getState().answerShowCards(false);
+    expect(store.getState().phase).toBe('settle');
+    await vi.advanceTimersByTimeAsync(TIMINGS.revealMs + TIMINGS.settleMs);
+    expect(store.getState().phase).toBe('handover');
   });
 
   it('o SILÊNCIO vale por "não mostro", e a mesa segue sozinha', async () => {
@@ -689,14 +931,17 @@ describe('fluxo completo da sessão', () => {
     await passDealing(store);
     store.getState().check();
     await vi.advanceTimersByTimeAsync(0);
-    await runToHandover(store);
-    expect(store.getState().showPrompt).not.toBeNull();
+    await runToShowPrompt(store);
 
     // Cinco segundos sem resposta: as cartas vão para o descarte de
     // bruços, que é o que uma sala de verdade faz com quem não diz nada.
     await vi.advanceTimersByTimeAsync(SHOW_CARDS_SECONDS * 1000);
     expect(store.getState().showPrompt).toBeNull();
     expect(store.getState().cardsShown).toBe(false);
+
+    // E o desfecho corre em seguida, sozinho.
+    await vi.advanceTimersByTimeAsync(TIMINGS.revealMs + TIMINGS.settleMs);
+    expect(store.getState().phase).toBe('handover');
   });
 
   it('MOSTRAR abre a mão e a mesa distribui a seguinte', async () => {
@@ -705,14 +950,16 @@ describe('fluxo completo da sessão', () => {
     await passDealing(store);
     store.getState().check();
     await vi.advanceTimersByTimeAsync(0);
-    await runToHandover(store);
+    await runToShowPrompt(store);
 
     store.getState().answerShowCards(true);
     expect(store.getState().cardsShown).toBe(true);
     expect(store.getState().showPrompt).toBeNull();
 
     // E o gesto vale AQUELE pote: a mão seguinte volta a ser segredo.
-    await vi.advanceTimersByTimeAsync(HANDOVER_SECONDS * 1000 + TIMINGS.dealMs);
+    await vi.advanceTimersByTimeAsync(
+      TIMINGS.revealMs + TIMINGS.settleMs + HANDOVER_SECONDS * 1000 + TIMINGS.dealMs,
+    );
     expect(store.getState().cardsShown).toBe(false);
   });
 
@@ -1214,6 +1461,59 @@ describe('persistência', () => {
     expect(rehydrated.getState().history).toHaveLength(1);
   });
 
+  it('a mesa ABANDONADA é liquidada no carregamento seguinte', async () => {
+    /* O buy-in sai do saldo no instante em que a pessoa senta, e a mesa
+       vivia SÓ NA MEMÓRIA: um F5, uma aba descartada pelo sistema, uma
+       ligação que bloqueia a tela — e os créditos sumiam. Tinham saído do
+       saldo e não voltavam nunca. */
+    const storage = createMemoryStorage();
+    const store = createTestStore('win', storage);
+    await reachCountdown(store);
+    await passDealing(store);
+
+    // Sentou: o saldo já foi debitado e a mesa está de pé.
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().phase).toBe('betting');
+
+    /* O aparelho descarta a aba aqui. Nasce um store novo sobre o mesmo
+       armazenamento — que é exatamente o que um F5 faz. */
+    const afterReload = createTestStore('win', storage);
+    // O dinheiro voltou: a mesa nunca foi fechada, então é liquidada.
+    expect(afterReload.getState().balance).toBe(500);
+
+    // E o canhoto foi rasgado: recarregar de novo não paga duas vezes.
+    const afterSecondReload = createTestStore('win', storage);
+    expect(afterSecondReload.getState().balance).toBe(500);
+  });
+
+  it('a liquidação paga o ÚLTIMO PLACAR, não o buy-in cheio', async () => {
+    /* Devolver o buy-in inteiro pagaria a quem estivesse perdendo para
+       recarregar a página: o F5 viraria um botão de desfazer. */
+    const storage = createMemoryStorage();
+    const store = createTestStore('lose', storage);
+    await reachCountdown(store);
+    await passDealing(store);
+    await callDownToHandover(store);
+
+    // Perdeu a mão: o montante na frente dele encolheu.
+    const stack = store.getState().session?.stacks.player ?? -1;
+    expect(stack).toBeLessThan(500);
+
+    const afterReload = createTestStore('lose', storage);
+    expect(afterReload.getState().balance).toBe(stack);
+  });
+
+  it('a mesa fechada pelo caminho normal não deixa canhoto', async () => {
+    const storage = createMemoryStorage();
+    const store = createTestStore('win', storage);
+    await playUntilCompleted(store);
+    const saldo = store.getState().balance;
+
+    // Nada a liquidar: o caixa já foi feito.
+    const afterReload = createTestStore('win', storage);
+    expect(afterReload.getState().balance).toBe(saldo);
+  });
+
   it('estado persistido corrompido cai no estado inicial', () => {
     const storage = createMemoryStorage();
     storage.setItem('bacbo-arena:state', 'lixo{');
@@ -1266,7 +1566,12 @@ describe('persistência', () => {
 describe('recarga de créditos', () => {
   it('recarrega apenas quando o saldo não cobre o menor stake', () => {
     const storage = createMemoryStorage();
-    const broke: PersistedState = { balance: 5, history: [], settings: DEFAULT_SETTINGS };
+    const broke: PersistedState = {
+      balance: 5,
+      history: [],
+      settings: DEFAULT_SETTINGS,
+      openTable: null,
+    };
     new GameStorageService(storage).save(broke);
 
     const store = createTestStore('win', storage);

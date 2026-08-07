@@ -11,6 +11,12 @@ import { Card3D } from '../Card3D';
 export interface WinnerPlateProps {
   result: PokerResult;
   opponentName: string;
+  /**
+   * Você abriu a mão que levou o pote por desistência (ver
+   * ShowCardsPrompt). Só diz alguma coisa quando NÃO houve showdown: com
+   * showdown as duas mãos são públicas e não há o que revelar.
+   */
+  cardsShown: boolean;
   /** Movimento reduzido: a placa aparece montada, sem carimbo nem voo. */
   instant: boolean;
 }
@@ -40,7 +46,7 @@ export interface WinnerPlateProps {
  * veste o neutro da casa e diz que o pote se dividiu — coroar alguém ali
  * seria mentir sobre o que a mesa fez.
  */
-export function WinnerPlate({ result, opponentName, instant }: WinnerPlateProps) {
+export function WinnerPlate({ result, opponentName, cardsShown, instant }: WinnerPlateProps) {
   const tie = result.outcome === 'tie';
   const winner: Duelist = result.outcome === 'lose' ? 'opponent' : 'player';
   const rank = winner === 'player' ? result.playerRank : result.opponentRank;
@@ -50,6 +56,18 @@ export function WinnerPlate({ result, opponentName, instant }: WinnerPlateProps)
      mão: foi entregue. A placa diz isso, porque é o que aconteceu — e é
      a informação que explica por que uma carta alta levou o dinheiro. */
   const byFold = !result.showdown;
+
+  /* A MÃO GUARDADA. Quem levou o pote sem ninguém pagar para ver
+     escolheu não abrir (ou deixou os cinco segundos passarem, que vale o
+     mesmo). A placa então NÃO abre as cartas: escancarar aqui o que a
+     mesa acabou de aceitar guardar seria desfazer a jogada — e guardar a
+     mão É jogada, com valor nas mãos seguintes.
+
+     Vale para OS DOIS LADOS. A placa mostra a mão de quem venceu, então é
+     a escolha DELE que manda: a sua quando o pote foi seu, a dele quando
+     foi dele (ver `botShowsHand`). */
+  const shownByWinner = winner === 'player' ? cardsShown : result.opponentShown;
+  const concealed = byFold && !shownByWinner;
 
   /* AS CARTAS QUE RESPONDEM "POR QUÊ": a combinação e, quando houve, o
      kicker que separou as duas mãos — nada além disso. A mão de cinco
@@ -112,16 +130,24 @@ export function WinnerPlate({ result, opponentName, instant }: WinnerPlateProps)
       <div className="winner-plate__body">
         <span className="winner-plate__who">{name}</span>
 
+        {/* Com a mão guardada a placa não escreve o nome dela: a leitura
+            ("PAR DE ASES") é exatamente o que se escolheu não contar. */}
         <span className="winner-plate__hand" data-testid="winner-hand">
-          {CATEGORY_NAME[rank.category]}
+          {concealed ? 'MÃO GUARDADA' : CATEGORY_NAME[rank.category]}
         </span>
 
-        {rank.detail && <span className="winner-plate__detail">{rank.detail}</span>}
+        {!concealed && rank.detail && (
+          <span className="winner-plate__detail">{rank.detail}</span>
+        )}
 
         {/* Uma LINHA PRÓPRIA para o desempate e para a desistência: são
             frases, não apostos de um nome de mão, e pendurá-las na mesma
             linha com um traço fazia o olho ler tudo como um rótulo só. */}
-        {byFold ? (
+        {concealed ? (
+          <span className="winner-plate__note" data-testid="winner-note">
+            decidiu não revelar
+          </span>
+        ) : byFold ? (
           <span className="winner-plate__note" data-testid="winner-note">
             {result.foldedBy === 'player' ? 'você desistiu' : `${opponentName} desistiu`}
           </span>
@@ -135,35 +161,54 @@ export function WinnerPlate({ result, opponentName, instant }: WinnerPlateProps)
       </div>
 
       {/* AS CARTAS que decidiram, deitadas à direita — abrindo uma a uma,
-          como um crupiê que vira a mão vencedora carta por carta. */}
+          como um crupiê que vira a mão vencedora carta por carta.
+
+          Guardada a mão, no lugar delas ficam DUAS INTERROGAÇÕES: o lugar
+          das cartas continua ocupado (a placa não muda de forma conforme
+          a resposta) e o que ele diz é exatamente o que a mesa sabe —
+          havia duas cartas ali, e ninguém pagou para vê-las. */}
       <div className="winner-plate__cards" data-testid="winner-cards">
-        {cards.map((card, index) => (
-          <motion.span
-            key={`${card.rank}-${card.suit}`}
-            className="winner-plate__card"
-            style={{ '--card-size': 'var(--winner-card-w)' } as CSSProperties}
-            initial={instant ? false : { opacity: 0, y: 16, rotate: -12, scale: 0.7 }}
-            animate={{ opacity: 1, y: 0, rotate: 0, scale: 1 }}
-            transition={
-              instant
-                ? { duration: 0 }
-                : {
-                    type: 'spring',
-                    stiffness: 340,
-                    damping: 22,
-                    delay: 0.32 + index * 0.09,
-                  }
-            }
-          >
-            <Card3D
-              card={card}
-              size="var(--winner-card-w)"
-              compact
-              silent
-              label={`Carta ${index + 1} da mão vencedora`}
-            />
-          </motion.span>
-        ))}
+        {concealed
+          ? [0, 1].map((index) => (
+              <motion.span
+                key={index}
+                className="winner-plate__card winner-plate__card--hidden"
+                data-testid={`winner-card-hidden-${index + 1}`}
+                style={{ '--card-size': 'var(--winner-card-w)' } as CSSProperties}
+                aria-hidden="true"
+                initial={instant ? false : { opacity: 0, y: 16, rotate: -12, scale: 0.7 }}
+                animate={{ opacity: 1, y: 0, rotate: 0, scale: 1 }}
+                transition={
+                  instant
+                    ? { duration: 0 }
+                    : { type: 'spring', stiffness: 340, damping: 22, delay: 0.32 + index * 0.09 }
+                }
+              >
+                ?
+              </motion.span>
+            ))
+          : cards.map((card, index) => (
+              <motion.span
+                key={`${card.rank}-${card.suit}`}
+                className="winner-plate__card"
+                style={{ '--card-size': 'var(--winner-card-w)' } as CSSProperties}
+                initial={instant ? false : { opacity: 0, y: 16, rotate: -12, scale: 0.7 }}
+                animate={{ opacity: 1, y: 0, rotate: 0, scale: 1 }}
+                transition={
+                  instant
+                    ? { duration: 0 }
+                    : { type: 'spring', stiffness: 340, damping: 22, delay: 0.32 + index * 0.09 }
+                }
+              >
+                <Card3D
+                  card={card}
+                  size="var(--winner-card-w)"
+                  compact
+                  silent
+                  label={`Carta ${index + 1} da mão vencedora`}
+                />
+              </motion.span>
+            ))}
       </div>
     </motion.div>
   );

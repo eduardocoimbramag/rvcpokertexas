@@ -185,6 +185,25 @@ export const TIMINGS = {
    * existir. Os 3s de agora deixam cada batida respirar.
    */
   settleMs: 3000,
+
+  /* ---------- O desfecho de uma mão morta por DESISTÊNCIA ----------
+   *
+   * Ela não teve comparação: quem correu perdeu por ter largado, não por
+   * ter carta pior. Dar a ela o mesmo cerimonial de um showdown de river
+   * fazia uma mão de UM lance custar quase vinte segundos de cena — e na
+   * quinta repetição a sessão inteira parece parada.
+   *
+   * O embate continua rodando (ver ShowdownClash: ver o que o outro
+   * largou é a única leitura que este duelo dá dele), mas comprimido:
+   * as placas entram mais rápido e o veredito respira menos, porque não
+   * há duas mãos a ler e comparar — há uma notícia a dar.
+   */
+  /** Entrada das placas numa desistência. */
+  foldClashEnterMs: 620,
+  /** Veredito numa desistência. */
+  foldClashVerdictMs: 900,
+  /** O embate inteiro numa desistência (620 + 480 + 900). */
+  foldSettleMs: 2000,
   /**
    * Beat do empate: no mata-mata do torneio ninguém pode empatar, então
    * o aviso respira em tela antes de a mesa distribuir de novo.

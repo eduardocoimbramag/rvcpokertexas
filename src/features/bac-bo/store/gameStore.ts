@@ -20,11 +20,12 @@ import type {
   PokerSession,
   Street,
 } from '../engine/poker/types';
-import type { Match } from '../engine/types';
+import type { Duelist, Match } from '../engine/types';
 import { audioManager } from '../services/AudioManager';
 import type {
   AudioSettings,
   GameSettings,
+  OpenTable,
   SceneQualitySetting,
 } from '../services/GameStorageService';
 import { DEFAULT_SETTINGS, GameStorageService } from '../services/GameStorageService';
@@ -164,6 +165,20 @@ export const SHOW_CARDS_SECONDS = 5;
 export const HANDOVER_SECONDS = 10;
 
 /**
+ * O INTERVALO depois de uma mão morta por DESISTÊNCIA.
+ *
+ * Metade, e por uma razão só: não há o que ler. Um showdown deixa duas
+ * mãos de cinco cartas na tela para comparar; uma desistência deixa uma
+ * notícia de uma linha. Os dez segundos cheios ali eram tela parada — e
+ * numa sessão em que muitas mãos morrem antes do flop, eram a maior
+ * parte do tempo de jogo.
+ *
+ * A porta de saída continua aberta o intervalo inteiro: cinco segundos
+ * seguem sendo uma janela de verdade, não um beat a acertar.
+ */
+export const FOLD_HANDOVER_SECONDS = 5;
+
+/**
  * O CONVITE PARA MOSTRAR AS CARTAS, com o relógio dele.
  *
  * Ele traz a leitura da mão que se tinha no instante em que o rival
@@ -173,8 +188,14 @@ export const HANDOVER_SECONDS = 10;
  */
 export interface ShowPrompt {
   seconds: number;
-  /** A leitura da sua mão quando o pote foi levado ("Par de Ases"). */
-  handLabel: string;
+  /**
+   * QUEM LARGOU A MÃO. O convite existe dos DOIS lados, porque mostrar é
+   * jogada dos dois lados: quem leva o pote sem mostrar escolhe se conta
+   * com o que ganhou, e QUEM CORRE escolhe se conta o que jogou fora —
+   * abrir um par de Reis largado diz "eu solto mão grande quando a mesa
+   * pede", e é informação que vale nas próximas.
+   */
+  foldedBy: Duelist;
 }
 
 /** Contagem falada da mesa, no inglês clássico de cassino. */
@@ -219,6 +240,13 @@ export interface GameStoreState {
    * fase `handover`; 0 fora dela.
    */
   handoverSeconds: number;
+  /**
+   * De quantos segundos era ESTE intervalo. Não é constante: uma mão
+   * morta por desistência tem intervalo pela metade (ver
+   * `FOLD_HANDOVER_SECONDS`). A barra do relógio se mede por ele — com
+   * um total fixo ela nasceria pela metade no intervalo curto.
+   */
+  handoverTotal: number;
   /** Lance do jogador em trânsito na engine — trava a barra de ações. */
   actionPending: boolean;
   result: PokerResult | null;
@@ -308,6 +336,30 @@ export function createGameStore(deps: GameStoreDeps = {}) {
   const initialBalance = deps.initialBalance ?? appEnv.initialBalance;
 
   const persisted = storage.load();
+
+  /**
+   * A MESA QUE FICOU ABERTA — o canhoto da compra de fichas.
+   *
+   * Fica ligado enquanto houver mesa e traz o buy-in mais o montante da
+   * última mão fechada. É ele que impede o buraco em que o dinheiro
+   * sumia: o buy-in sai do saldo ao sentar, a mesa vivia só na memória,
+   * e um F5 no meio da sessão levava os créditos junto.
+   */
+  let openTable: OpenTable | null = null;
+
+  /* LIQUIDAÇÃO DA MESA ABANDONADA. Se o jogo nasce e encontra um canhoto
+     pendurado, aquela mesa nunca foi fechada: paga-se o último placar
+     conhecido e o canhoto é rasgado. Acontece ANTES de qualquer coisa,
+     porque o saldo inicial do store já tem de nascer com o dinheiro
+     dentro. */
+  const abandoned = persisted?.openTable ?? null;
+  const openingBalance =
+    (persisted?.balance ?? initialBalance) +
+    (abandoned ? cashOutValue(abandoned.buyIn, abandoned.stack) : 0);
+  if (abandoned && persisted) {
+    storage.save({ ...persisted, balance: openingBalance, openTable: null });
+  }
+
   const timers = new Set<ReturnType<typeof setTimeout>>();
   let searchAbort: AbortController | null = null;
   const rng = deps.rng ?? Math.random;
@@ -345,7 +397,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
 
     const persist = (): void => {
       const { balance, history, settings } = get();
-      storage.save({ balance, history, settings });
+      storage.save({ balance, history, settings, openTable });
     };
 
     const vibrate = (pattern: number | number[]): void => {
@@ -450,6 +502,11 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         return;
       }
       if (!transitionTo('countdown')) return;
+      /* O CANHOTO nasce junto com o débito, e no MESMO `persist`: se as
+         duas coisas fossem gravadas em momentos diferentes existiria uma
+         janela — curta, mas real — em que o saldo já saiu e nada registra
+         para onde ele foi. */
+      openTable = { buyIn: match.stake, stack: match.stake };
       set({ balance: nextBalance, duelAnnounce: false });
       persist();
       runCountdown(COUNTDOWN_START);
@@ -552,6 +609,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     const refundAndFail = (): void => {
       const { match } = get();
       if (match) {
+        // Devolveu o stake: o canhoto morre junto, senão o próximo
+        // carregamento pagaria de novo uma mesa já reembolsada.
+        openTable = null;
         set({ balance: creditPayout(get().balance, match.stake) });
         persist();
       }
@@ -630,6 +690,39 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     /**
+     * O CONVITE DE ABRIR A MÃO vai entrar quando esta mesa assentar?
+     * Devolve QUEM largou, ou `null` se não há convite.
+     *
+     * Ele é consultado em dois lugares — para abrir o balão e para calar
+     * a plaquinha do lance que ele cobriria —, e por isso a decisão mora
+     * numa função só: duas cópias da mesma condição sairiam de sincronia
+     * no primeiro caso novo.
+     *
+     * As TRÊS exceções, e o porquê de cada uma:
+     */
+    const showPromptFor = (next: PokerRoundState): Duelist | null => {
+      const outcome = next.result;
+      // Só há o que mostrar quando o pote morreu sem ninguém pagar para ver.
+      if (!outcome || outcome.showdown || !outcome.foldedBy) return null;
+      /* 1. Quem pediu para LEVANTAR já disse que vai embora: uma pergunta
+            sobre a mão de que acabou de abrir mão seria uma porta no
+            caminho da saída. */
+      if (leaveRequested) return null;
+      /* 2. MESA FECHADA não tem próxima mão, e mostrar a mão é jogada
+            para as PRÓXIMAS: abrir Ases faz o rival pagar mais barato
+            depois. Sem depois, a pergunta não decide nada — e ainda
+            segurava o extrato por quase dez segundos. */
+      if (outcome.session.over) return null;
+      /* 3. A MESA CORREU POR QUEM NÃO AGIU. Ele não largou a mão, o
+            relógio largou por ele — e o motivo mais provável é que ele
+            não está olhando a tela. Perguntar "quer mostrar?" a quem
+            acabou de provar que não está ali é somar espera, e a frase
+            ainda afirmaria uma decisão que ele não tomou. */
+      if (next.lastMove?.timedOut) return null;
+      return outcome.foldedBy;
+    };
+
+    /**
      * O CONDUTOR DA MESA. Recebe o estado que a engine devolveu, anuncia
      * o que acabou de acontecer e, passado o beat, dá o passo seguinte —
      * que é sempre um destes três:
@@ -649,7 +742,11 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       /** Publica a mesa nova e põe no ar o que ela trouxe. */
       const showTable = (): void => {
         set({ round: next, session: next.session, result: next.result ?? null });
-        announceMove(next.lastMove);
+        /* A plaquinha do lance não é desenhada quando o CONVITE vai
+           entrar em cima dela. Os dois nasciam no mesmo instante, o
+           convite (z-index 14) cobria a plaquinha (z-index 4), e ela
+           ficava 1,8 s no ar para ninguém: os dois dizem quem correu. */
+        if (!showPromptFor(next)) announceMove(next.lastMove);
       };
 
       set({ actionClock: NO_ACTION_CLOCK });
@@ -676,13 +773,22 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         if (seq !== stepSeq) return;
         if (next.phase === 'settled') {
           if (!transitionTo('settle')) return;
-          /* As duas fechadas viram, o quadro respira e o EMBATE roda —
-             o mesmo beat para toda mão que acaba, tenha ela ido ao
-             showdown ou morrido numa desistência. A desistência já teve
-             um beat curto e próprio, de quando as cartas dela não
-             abriam; agora que abrem, cortar o tempo ali seria mostrar o
-             que o rival tinha e tirar da tela antes de dar para ler. */
-          schedule(closeHand, TIMINGS.revealMs + TIMINGS.settleMs);
+          /* O CONVITE DE ABRIR A MÃO vem ANTES do desfecho, e essa ordem
+             é a coisa toda. Ele já veio depois: as cartas viravam, o
+             embate rodava, o vencedor era coroado — e só então a mesa
+             perguntava se você queria mostrar o que tinha. Perguntar
+             depois de mostrar não é perguntar; a decisão já tinha sido
+             tomada por quem perguntou, e os cinco segundos viravam
+             formalidade em cima de uma carta que já estava na mesa.
+             Agora a mesa congela no instante da desistência, pergunta, e
+             só depois da resposta o desfecho corre. */
+          const invited = showPromptFor(next);
+          if (invited) {
+            openShowPrompt(invited);
+            return;
+          }
+          /* As duas fechadas viram, o quadro respira e o EMBATE roda. */
+          runShowdownBeat(next.result);
           return;
         }
         if (get().phase !== 'betting' && !transitionTo('betting')) return;
@@ -739,6 +845,22 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       runActionClock(seq, ACTION_SECONDS);
     };
 
+    /**
+     * OS GUARDAS DO LANCE, isolados: dizem se ele SAI da mesa agora.
+     *
+     * Eles vivem à parte do `commitAction` porque há mais de um chamador
+     * que precisa saber a resposta ANTES de agir. `leaveTable` é o caso:
+     * ele marcava o pedido de sair e só então mandava correr a mão — e
+     * quando a mão não saía (a vez já tinha passado, um lance estava em
+     * voo), o pedido ficava pendurado e fechava a mesa numa mão futura
+     * que ninguém tinha pedido para deixar.
+     */
+    const canCommit = (action: PokerAction): boolean => {
+      const { phase, match, round, actionPending } = get();
+      if (phase !== 'betting' || !match || !round || actionPending) return false;
+      return round.toAct === 'player' && round.legalActions.includes(action);
+    };
+
     /** Relógio da vez, um segundo por vez. */
     const runActionClock = (seq: number, value: number): void => {
       if (seq !== stepSeq || get().phase !== 'betting') return;
@@ -766,9 +888,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       to?: number,
       timedOut = false,
     ): Promise<void> => {
-      const { phase, match, round, actionPending } = get();
-      if (phase !== 'betting' || !match || !round || actionPending) return;
-      if (round.toAct !== 'player' || !round.legalActions.includes(action)) return;
+      const { match } = get();
+      if (!match || !canCommit(action)) return;
 
       const seq = stepSeq;
       set({ actionPending: true, actionClock: NO_ACTION_CLOCK });
@@ -841,6 +962,10 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       if (!result || !match || !transitionTo('handover')) return;
 
       const entry: PokerHistoryEntry = { ...result, opponentName: match.opponent.name };
+      /* O canhoto acompanha o placar: cada mão que fecha atualiza o
+         montante gravado. É por isso que recarregar a página devolve o
+         que a pessoa tinha na frente dela, e não o buy-in cheio. */
+      if (openTable) openTable = { ...openTable, stack: result.session.stacks.player };
       set({
         session: result.session,
         history: [entry, ...history].slice(0, HISTORY_LIMIT),
@@ -857,10 +982,6 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       };
       vibrate(vibrations[result.outcome]);
 
-      /* O CONVITE DE MOSTRAR AS CARTAS vem antes de qualquer outra coisa,
-         e só quando o pote foi levado SEM showdown pelo jogador: mostrar
-         só é jogada quando ninguém pagou para ver. Com o convite no ar a
-         mesa espera; sem ele, ela já se prepara para a próxima. */
       /* Quem pediu para levantar no meio da mão corre e sai: a mão foi
          dada por perdida, e o caixa abre assim que o pote fecha. */
       if (leaveRequested) {
@@ -870,11 +991,38 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         return;
       }
 
-      if (result.foldedBy === 'opponent' && !result.showdown) {
-        openShowPrompt(result);
-        return;
-      }
       scheduleNextHand();
+    };
+
+    /**
+     * QUANTO DURA O DESFECHO EM CENA, em ms. Duas parcelas:
+     *
+     * - a VIRADA das fechadas do rival, que só existe se houver o que
+     *   virar. Numa desistência em que ele guardou a mão não há carta
+     *   nenhuma a abrir, e esperar por ela era 1,5 s de tela parada;
+     * - o EMBATE, comprimido quando não houve comparação (ver
+     *   `foldSettleMs`).
+     */
+    const showdownBeatMs = (outcome: PokerResult | undefined): number => {
+      const showdown = outcome?.showdown ?? true;
+      const reveals = showdown || (outcome?.opponentShown ?? true);
+      return (reveals ? TIMINGS.revealMs : 0) + (showdown ? TIMINGS.settleMs : TIMINGS.foldSettleMs);
+    };
+
+    /**
+     * O DESFECHO EM CENA: as duas fechadas viram, o quadro respira e o
+     * EMBATE roda — para toda mão que acaba, tenha ela ido ao showdown ou
+     * morrido numa desistência. Numa desistência ele só começa depois de
+     * o convite de mostrar as cartas ser respondido, e é por isso que
+     * este beat é uma função e não uma linha solta: ele tem DOIS pontos
+     * de partida.
+     */
+    const runShowdownBeat = (outcome: PokerResult | undefined): void => {
+      const seq = ++stepSeq;
+      schedule(() => {
+        if (seq !== stepSeq || get().phase !== 'settle') return;
+        closeHand();
+      }, showdownBeatMs(outcome));
     };
 
     /**
@@ -894,16 +1042,23 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         return;
       }
 
+      /* O intervalo é METADE depois de uma desistência: não há o que ler.
+         Um showdown deixa duas mãos de cinco cartas para comparar; uma
+         desistência deixa uma notícia de uma linha. O TOTAL viaja junto
+         com os segundos porque a barra do relógio se mede por ele — sem
+         isso ela nasceria pela metade. */
+      const total = get().result?.showdown === false ? FOLD_HANDOVER_SECONDS : HANDOVER_SECONDS;
+
       const tick = (left: number): void => {
         if (seq !== stepSeq || get().phase !== 'handover') return;
-        set({ handoverSeconds: left });
+        set({ handoverSeconds: left, handoverTotal: total });
         if (left <= 0) {
           if (transitionTo('dealing')) void dealHand();
           return;
         }
         schedule(() => tick(left - 1), 1000);
       };
-      tick(HANDOVER_SECONDS);
+      tick(total);
     };
 
     /**
@@ -927,6 +1082,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     const cashOut = (): void => {
       const { session, balance } = get();
       if (!session || !transitionTo('completed')) return;
+      // A mesa fechou pelo caminho normal: o canhoto é rasgado ANTES de
+      // gravar, senão o próximo carregamento pagaria a mesma mesa de novo.
+      openTable = null;
       set({
         balance: creditPayout(balance, cashOutValue(session.buyIn, session.stacks.player)),
         showPrompt: null,
@@ -946,18 +1104,26 @@ export function createGameStore(deps: GameStoreDeps = {}) {
      * O convite para abrir a mão que ninguém pagou para ver. Cinco
      * segundos — e o silêncio vale por "não mostro", que é o que uma sala
      * de verdade faz com quem não diz nada.
+     *
+     * Ele roda dentro da fase `settle`, com a mesa CONGELADA: as fechadas
+     * do rival ainda não viraram e o embate ainda não entrou (ver
+     * PokerArena). É essa pausa que faz a pergunta ser uma pergunta —
+     * respondê-la depois de o desfecho já ter mostrado tudo seria escolher
+     * uma porta que já está aberta.
      */
-    const openShowPrompt = (result: PokerResult): void => {
+    const openShowPrompt = (foldedBy: Duelist): void => {
       const seq = ++stepSeq;
-      set({ showPrompt: { seconds: SHOW_CARDS_SECONDS, handLabel: result.playerRank.label } });
+      set({ showPrompt: { seconds: SHOW_CARDS_SECONDS, foldedBy } });
       const tick = (left: number): void => {
-        if (seq !== stepSeq || get().phase !== 'handover') return;
+        if (seq !== stepSeq || get().phase !== 'settle') return;
         if (left <= 0) {
+          // Silêncio vale por NÃO MOSTRO: as cartas vão para o descarte
+          // de bruços e o desfecho corre com elas fechadas.
           set({ showPrompt: null });
-          scheduleNextHand();
+          runShowdownBeat(get().result ?? undefined);
           return;
         }
-        set({ showPrompt: { seconds: left, handLabel: result.playerRank.label } });
+        set({ showPrompt: { seconds: left, foldedBy } });
         schedule(() => tick(left - 1), 1000);
       };
       schedule(() => tick(SHOW_CARDS_SECONDS - 1), 1000);
@@ -965,13 +1131,14 @@ export function createGameStore(deps: GameStoreDeps = {}) {
 
     return {
       phase: 'idle',
-      balance: persisted?.balance ?? initialBalance,
+      balance: openingBalance,
       match: null,
       round: null,
       session: null,
       showPrompt: null,
       cardsShown: false,
       handoverSeconds: 0,
+      handoverTotal: HANDOVER_SECONDS,
       actionPending: false,
       result: null,
       confirmations: NO_CONFIRMATIONS,
@@ -1079,6 +1246,11 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         if (session.handsPlayed < 1) return;
 
         if (phase === 'betting') {
+          /* O pedido só é MARCADO se a mão vai mesmo ser corrida. Ele já
+             foi marcado antes, e correr podia falhar em silêncio — aí o
+             bilhete ficava colado e a mesa fechava sozinha no fim de uma
+             mão seguinte, sem ninguém ter pedido. */
+          if (!canCommit('fold')) return;
           leaveRequested = true;
           void commitAction('fold');
           return;
@@ -1091,11 +1263,13 @@ export function createGameStore(deps: GameStoreDeps = {}) {
 
       answerShowCards: (show) => {
         const { phase, showPrompt, result } = get();
-        if (phase !== 'handover' || !showPrompt || !result) return;
+        if (phase !== 'settle' || !showPrompt || !result) return;
         stepSeq += 1;
         set({ showPrompt: null, cardsShown: show });
         if (show) audioManager.playSfx('cardFlip');
-        scheduleNextHand();
+        // Respondida a pergunta, o desfecho corre normalmente — com a sua
+        // mão aberta ou fechada, conforme a resposta.
+        runShowdownBeat(result);
       },
 
       refillCredits: () => {

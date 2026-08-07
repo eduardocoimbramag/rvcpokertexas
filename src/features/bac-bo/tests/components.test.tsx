@@ -108,6 +108,7 @@ const samplePokerResult: PokerResult = {
     ],
   },
   showdown: true,
+  opponentShown: true,
   outcome: 'win',
   stake: 100,
   committed: { player: 50, opponent: 50 },

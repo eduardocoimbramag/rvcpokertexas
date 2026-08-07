@@ -113,6 +113,13 @@ export function Card3D({
   const shownLabel =
     faceDown || !card ? 'carta oculta' : `${card.rank} de ${SUIT_LABEL[card.suit]}`;
 
+  /* O VERSO DA CASA, o mesmo dos dois lados do baralho. */
+  const houseFace = (
+    <span className="card3d__monogram">
+      <span className="card3d__crest" style={{ '--crest-src': `url("${CREST_SRC}")` } as CSSProperties} />
+    </span>
+  );
+
   return (
     <motion.div
       className={`card-scene ${ablaze ? 'card-scene--ablaze' : ''}`}
@@ -140,12 +147,24 @@ export function Card3D({
             : { duration: CARD_FLIP_S, ease: CARD_SETTLE_EASE, delay: delayMs / 1000 + 0.25 }
         }
       >
+        {/* A FRENTE. Sem carta ela não é uma frente vazia: é o verso de
+            novo. Uma carta cuja identidade a interface não conhece — a do
+            rival antes do showdown — não TEM frente, e desenhar ali um
+            papel-marfim em branco criava uma face que nunca deveria
+            existir. Bastava um quadro em que o navegador pintasse a face
+            errada (o plano 3D mora dentro de um `filter`, que é onde
+            esses soluços acontecem) para a mão do rival virar dois
+            retângulos brancos no feltro. */}
         <div
-          className={`card3d__face card3d__face--front ${red ? 'card3d--red' : 'card3d--black'}`}
+          className={
+            card
+              ? `card3d__face card3d__face--front ${red ? 'card3d--red' : 'card3d--black'}`
+              : 'card3d__face card3d__face--front card3d__face--house'
+          }
           aria-hidden="true"
         >
-          {card &&
-            (compact ? (
+          {card ? (
+            compact ? (
               <span className="card3d__compact">
                 <span className="card3d__compact-rank">{card.rank}</span>
                 {/* A largura do naipe vem INLINE: o SuitGlyph aplica o
@@ -159,15 +178,13 @@ export function Card3D({
                 <CornerIndex card={card} bottom />
                 <CardField rank={card.rank} suit={card.suit} />
               </>
-            ))}
+            )
+          ) : (
+            houseFace
+          )}
         </div>
-        <div className="card3d__face card3d__face--back" aria-hidden="true">
-          <span className="card3d__monogram">
-            <span
-              className="card3d__crest"
-              style={{ '--crest-src': `url("${CREST_SRC}")` } as CSSProperties}
-            />
-          </span>
+        <div className="card3d__face card3d__face--back card3d__face--house" aria-hidden="true">
+          {houseFace}
         </div>
       </motion.div>
     </motion.div>

@@ -142,9 +142,15 @@ async function cashOut(page: Page) {
     if ((await page.getByTestId('result-title').count()) > 0) break;
     /* A porta fica em cena o tempo todo e APAGADA na primeira mão: só
        clicar quando ela abriu. No meio de uma mão levantar corre a mão
-       junto, e é um caminho legítimo para o caixa. */
+       junto, e é um caminho legítimo para o caixa — mas ali a mesa
+       PERGUNTA antes (ver LeaveTablePrompt), e quem quer sair confirma.
+       Entre as mãos não há o que confirmar e o botão age direto. */
     if ((await sair.count()) > 0 && (await sair.isEnabled())) {
       await sair.click({ timeout: 3_000 }).catch(() => undefined);
+      const confirmar = page.getByTestId('leave-confirm');
+      if ((await confirmar.count()) > 0) {
+        await confirmar.click({ timeout: 3_000 }).catch(() => undefined);
+      }
       await page.waitForTimeout(400);
       continue;
     }
@@ -303,7 +309,7 @@ test('a aposta se digita: campo, +10 e +100 no padrão da casa', async ({ page }
   await expect(campo).toHaveValue('200');
 });
 
-test('a desistência também abre as duas mãos: é onde o blefe aparece', async ({ page }) => {
+test('numa desistência, cada lado escolhe se abre a mão', async ({ page }) => {
   test.slow();
   await seedStorage(page);
   await page.goto('/');
@@ -320,22 +326,35 @@ test('a desistência também abre as duas mãos: é onde o blefe aparece', async
   await expect(desistir).toBeVisible({ timeout: 60_000 });
   await desistir.click({ timeout: 5_000 });
 
-  /* O EMBATE roda mesmo sem showdown, e é aqui que ele mais serve: ver
-     que o rival tinha Ases (ou que blefava com nada) é a única leitura
-     que este duelo dá dele. Numa sala de verdade quem desiste mucha;
-     aqui as cartas abrem, porque a mão já acabou e mostrá-las não conta
-     nada a ninguém. */
+  /* O EMBATE roda mesmo sem showdown. O que ele mostra do lado do rival
+     depende DELE: guardar a mão é jogada dos dois lados da mesa, e a
+     escolha dele sai da cabeça dele (ver `botShowsHand`). O que este
+     teste cobra é o ACOPLAMENTO — a placa e o feltro nunca podem contar
+     histórias diferentes sobre a mesma mão. */
+  const dele = page.getByTestId('clash-opponent');
   await expect(page.getByTestId('showdown-clash')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId('clash-player')).toContainText(/desistiu/i);
-  await expect(page.getByTestId('clash-opponent')).toContainText(/par/i);
-  // E as fechadas dele estão abertas na mesa.
-  await expect(page.getByRole('img', { name: /Carta de .*1: A de/ })).toBeVisible();
 
-  // O placar é do rival, e a nota diz que foi você quem largou.
+  const guardou = /guardada/i.test((await dele.textContent()) ?? '');
+  if (guardou) {
+    // Muchou: a mão dele não fica escondida na tela, ela não está lá.
+    await expect(dele).toContainText(/não revelou/i);
+    await expect(page.getByRole('img', { name: /Carta de .*1: carta oculta/ })).toBeVisible();
+  } else {
+    // Abriu: a leitura dele entra na placa e as fechadas abrem no feltro.
+    await expect(dele).toContainText(/par/i);
+    await expect(page.getByRole('img', { name: /Carta de .*1: A de/ })).toBeVisible();
+  }
+
+  // O placar é do rival — foi ele quem levou o pote.
   await expect(page.getByTestId('winner-plate')).toHaveClass(/winner-plate--opponent/, {
     timeout: 30_000,
   });
-  await expect(page.getByTestId('winner-note')).toContainText(/você desistiu/i);
+  /* A nota conta o que houve de mais recente: que ele guardou a mão, ou,
+     se ele abriu, que foi você quem largou. */
+  await expect(page.getByTestId('winner-note')).toContainText(
+    guardou ? /decidiu não revelar/i : /você desistiu/i,
+  );
 
   /* E a MESA CONTINUA: correr custou a entrada, não a sessão. É a porta
      de saída que a sessão trouxe — e ela só abre da segunda mão em
@@ -447,12 +466,14 @@ test('a mesa abre com a ENTRADA fixa, sem nada a combinar', async ({ page }) => 
   /* A rodada de negociação não existe mais, e este teste guarda a
      ausência dela: entre confirmar e sentar não há tela nenhuma pedindo
      valor. O que a mesa cobra é fixo, e o stack saiu do saldo no ato da
-     busca. */
-  await expect(page.getByTestId('ante-note')).toContainText('100', { timeout: 20_000 });
-  await expect(page.getByTestId('ante-note')).toContainText('1.000');
+     busca.
 
-  // A entrada dos DOIS já está no pote antes de qualquer decisão.
+     Quem responde por isso é o POTE, e não mais uma plaquinha de aviso no
+     rodapé: ele nasce com as DUAS entradas dentro, antes de qualquer
+     decisão. É a prova mais forte, aliás — a plaquinha dizia o que a mesa
+     cobraria, o pote mostra o que ela já cobrou. */
   await expect(page.getByTestId('pot-value')).toContainText('200', { timeout: 30_000 });
+  await expect(page.getByTestId('stack-player')).toContainText('900');
 });
 
 /**

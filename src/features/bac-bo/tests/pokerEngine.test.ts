@@ -332,10 +332,9 @@ describe('LocalPokerEngine — desistência', () => {
     expect(result.session.over).toBe(false);
   });
 
-  it('as duas mãos ABREM mesmo numa desistência', async () => {
-    /* Escolha desta mesa, e deliberada: numa sala de verdade quem corre
-       mucha, mas num duelo contra a casa ver que o rival largou a melhor
-       mão — ou que blefou com nada — é a única leitura que se tem dele. */
+  it('as duas mãos são LIDAS mesmo numa desistência', async () => {
+    /* A leitura acontece sempre — é ela que deixa a mesa contar o que
+       cada um tinha. O que MOSTRAR é outra coisa, e é escolha (abaixo). */
     const engine = engineWith(59);
     const match = await openMatch(engine, 1000);
     let state = await engine.beginHand({ matchId: match.id });
@@ -343,10 +342,65 @@ describe('LocalPokerEngine — desistência', () => {
     if (state.phase === 'settled') return;
     state = await engine.act({ matchId: match.id, action: 'fold' });
 
-    expect(state.opponentHole).toHaveLength(2);
     expect(state.result?.playerRank.label).toBeTruthy();
     expect(state.result?.opponentRank.label).toBeTruthy();
     expect(state.result?.showdown).toBe(false);
+  });
+
+  it('as fechadas do rival só atravessam a fronteira se ELE as abriu', async () => {
+    /* O sigilo da mão guardada é ESTRUTURAL, como o de durante a mão: ela
+       não fica escondida na tela, ela não chega até lá. */
+    for (let seed = 200; seed < 240; seed += 1) {
+      const engine = engineWith(seed);
+      const match = await openMatch(engine, 1000);
+      let state = await engine.beginHand({ matchId: match.id });
+      state = await advanceToPlayer(engine, match.id, state);
+      if (state.phase === 'settled') continue;
+      state = await engine.act({ matchId: match.id, action: 'fold' });
+
+      const shown = state.result?.opponentShown ?? true;
+      expect(state.opponentHole).toHaveLength(shown ? 2 : 0);
+    }
+  });
+
+  it('o rival GUARDA a mão às vezes, e mostra às vezes', async () => {
+    /* Era a via de mão única do sistema: as cartas dele abriam SEMPRE
+       numa desistência e as suas só abriam se você quisesse. Toda vez que
+       ele largava uma mão você aprendia como ele joga; ele nunca aprendia
+       nada de você — e guardar, sem risco nenhum, deixava de ser jogada e
+       virava o botão óbvio. */
+    const decisions = new Set<boolean>();
+    for (let seed = 300; seed < 360; seed += 1) {
+      const engine = engineWith(seed);
+      const match = await openMatch(engine, 1000);
+      let state = await engine.beginHand({ matchId: match.id });
+      state = await advanceToPlayer(engine, match.id, state);
+      if (state.phase === 'settled') continue;
+      state = await engine.act({ matchId: match.id, action: 'fold' });
+      if (state.result) decisions.add(state.result.opponentShown);
+    }
+    // As duas respostas aparecem: não é uma constante disfarçada de sorteio.
+    expect([...decisions].sort()).toEqual([false, true]);
+  });
+
+  it('num SHOWDOWN não há o que guardar: as duas mãos foram pagas', async () => {
+    for (let seed = 400; seed < 430; seed += 1) {
+      const engine = engineWith(seed);
+      const match = await openMatch(engine, 1000);
+      let state = await engine.beginHand({ matchId: match.id });
+      for (let passo = 0; passo < 40 && state.phase !== 'settled'; passo += 1) {
+        state =
+          state.toAct === 'player'
+            ? await engine.act({
+                matchId: match.id,
+                action: state.legalActions.includes('check') ? 'check' : 'call',
+              })
+            : await engine.advance({ matchId: match.id });
+      }
+      if (!state.result?.showdown) continue;
+      expect(state.result.opponentShown).toBe(true);
+      expect(state.opponentHole).toHaveLength(2);
+    }
   });
 });
 

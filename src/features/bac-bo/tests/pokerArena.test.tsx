@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,6 +11,7 @@ import { StreetAnnounce } from '../components/poker/StreetAnnounce';
 import { TABLE_MAX_STACK } from '../engine/credits';
 import type { PokerResult, PokerRoundState } from '../engine/poker/types';
 import type { Card, CardRank, CardSuit, Match } from '../engine/types';
+import type { ShowPrompt } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
 
 const card = (rank: CardRank, suit: CardSuit): Card => ({ rank, suit });
@@ -100,6 +101,7 @@ function result(patch: Partial<PokerResult> = {}): PokerResult {
       ],
     },
     showdown: true,
+    opponentShown: true,
     outcome: 'win',
     stake: 1000,
     committed: { player: 400, opponent: 400 },
@@ -145,6 +147,7 @@ function renderArena(patch: Partial<PokerArenaProps> = {}) {
     },
     showPrompt: null,
     handoverSeconds: 0,
+    handoverTotal: 10,
     cardsShown: false,
     onAnswerShowCards: vi.fn(),
     onLeaveTable: vi.fn(),
@@ -290,13 +293,15 @@ describe('PokerArena — a mesa', () => {
     expect(vaos[1]?.querySelector('[data-testid="chip-rack-player"]')).not.toBeNull();
   });
 
-  it('a aposta da rua só aparece quando há fichas empurradas', () => {
-    renderArena();
-    expect(screen.queryByTestId('bet-player')).not.toBeInTheDocument();
-
+  it('a aposta da rua NÃO ganha cifra própria ao lado do assento', () => {
+    /* Ela morava numa pastilha colada ao disco do dealer, dos dois lados,
+       e era um terceiro número a disputar o olho com os que decidem a
+       mão: o montante de cada lado e o pote do meio — que já soma tudo o
+       que foi empurrado. O lance continua dito por extenso pela mesa. */
     renderArena({ round: round({ committed: { player: 120, opponent: 40 } }) });
-    expect(screen.getByTestId('bet-player')).toHaveTextContent('120');
-    expect(screen.getByTestId('bet-opponent')).toHaveTextContent('40');
+    expect(screen.queryByTestId('bet-player')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bet-opponent')).not.toBeInTheDocument();
+    expect(document.querySelector('.street-bet')).toBeNull();
   });
 
   it('anuncia o último lance da mesa por extenso', () => {
@@ -380,6 +385,63 @@ describe('PokerArena — a barra de apostas', () => {
       },
     });
     expect(screen.getByTestId('leave-table')).toBeDisabled();
+  });
+
+  it('LEVANTAR com a mão viva PERGUNTA antes — não corre nada sozinho', async () => {
+    /* O botão é o quarto de quatro alvos do tamanho de um polegar, e era
+       o único da fileira sem volta: um toque fora de mira corria a mão E
+       fechava a mesa. */
+    const user = userEvent.setup();
+    const { props } = renderArena({
+      round: round({ committed: { player: 300, opponent: 300 }, pot: 800 }),
+    });
+
+    await user.click(screen.getByTestId('leave-table'));
+    expect(props.onLeaveTable).not.toHaveBeenCalled();
+    expect(screen.getByTestId('leave-prompt')).toBeInTheDocument();
+  });
+
+  it('e a pergunta traz a CONTA da saída: o que fica, para quem, e o que sobra', async () => {
+    /* "Tem certeza?" não é informação, é pedágio. Três números são. */
+    const user = userEvent.setup();
+    renderArena({
+      round: round({
+        committed: { player: 300, opponent: 300 },
+        pot: 800,
+        stacks: { player: 600, opponent: 600 },
+      }),
+    });
+
+    await user.click(screen.getByTestId('leave-table'));
+    expect(screen.getByTestId('leave-committed')).toHaveTextContent('300');
+    expect(screen.getByTestId('leave-pot')).toHaveTextContent('800');
+    expect(screen.getByTestId('leave-stack')).toHaveTextContent('600');
+    expect(screen.getByTestId('leave-prompt')).toHaveTextContent('Luna');
+  });
+
+  it('CONTINUAR NA MÃO fecha a pergunta e devolve a mesa intacta', async () => {
+    const user = userEvent.setup();
+    const { props } = renderArena();
+
+    await user.click(screen.getByTestId('leave-table'));
+    await user.click(screen.getByTestId('leave-cancel'));
+
+    expect(props.onLeaveTable).not.toHaveBeenCalled();
+    // `waitFor`: o balão sai com fade, e por um beat ainda está no DOM.
+    await waitFor(() => expect(screen.queryByTestId('leave-prompt')).not.toBeInTheDocument());
+    // A barra de lances continua onde estava: nada foi jogado fora.
+    expect(screen.getByTestId('bet-controls')).toBeInTheDocument();
+  });
+
+  it('CORRER E LEVANTAR é o único caminho que fecha a mesa', async () => {
+    const user = userEvent.setup();
+    const { props } = renderArena();
+
+    await user.click(screen.getByTestId('leave-table'));
+    await user.click(screen.getByTestId('leave-confirm'));
+
+    expect(props.onLeaveTable).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByTestId('leave-prompt')).not.toBeInTheDocument());
   });
 
   it('a barra some quando a palavra não é sua', () => {
@@ -611,6 +673,63 @@ describe('PokerArena — o embate do showdown', () => {
     });
   }
 
+  /** A mesa no instante da DESISTÊNCIA do rival, com o convite no ar. */
+  function awaitingShowAnswer() {
+    return renderArena({
+      phase: 'settle',
+      round: round({
+        phase: 'settled',
+        street: 'showdown',
+        board: BOARD,
+        opponentHole: [card('K', 'clubs'), card('K', 'diamonds')],
+        legalActions: [],
+        toAct: null,
+      }),
+      result: result({ showdown: false, foldedBy: 'opponent' }),
+      showPrompt: { seconds: 5, foldedBy: 'opponent' },
+    });
+  }
+
+  it('com o CONVITE no ar a mesa congela: o embate não entra', () => {
+    /* A ordem já esteve invertida, e era o defeito: as cartas viravam, o
+       embate rodava, o vencedor era coroado — e só então a mesa
+       perguntava se você queria mostrar o que tinha. Perguntar depois de
+       mostrar não é perguntar. */
+    awaitingShowAnswer();
+    expect(screen.getByTestId('show-prompt')).toBeInTheDocument();
+    expect(screen.queryByTestId('showdown-clash')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('winner-plate')).not.toBeInTheDocument();
+  });
+
+  it('e as fechadas do rival ficam de bruços enquanto o convite espera', () => {
+    /* A engine já mandou a mão dele, mas a mesa não a virou: decidir se
+       mostra a sua com a dele já na tela seria decidir com a resposta
+       dada. */
+    awaitingShowAnswer();
+    expect(screen.getByLabelText('Carta de Luna 1: carta oculta')).toBeInTheDocument();
+  });
+
+  it('o convite existe também para QUEM CORREU', () => {
+    /* Faltava o outro lado: a mesa só perguntava a quem ganhava, como se
+       largar a mão não fosse também uma história a contar. */
+    renderArena({
+      phase: 'settle',
+      round: round({ phase: 'settled', street: 'showdown', legalActions: [], toAct: null }),
+      result: result({ showdown: false, foldedBy: 'player', outcome: 'lose' }),
+      showPrompt: { seconds: 5, foldedBy: 'player' },
+    });
+    expect(screen.getByTestId('show-prompt-lead')).toHaveTextContent('Você correu');
+    expect(screen.queryByTestId('showdown-clash')).not.toBeInTheDocument();
+  });
+
+  it('respondido o convite, o embate entra — a mesma cena de sempre', () => {
+    settled({ showdown: false, foldedBy: 'opponent' });
+    expect(screen.queryByTestId('show-prompt')).not.toBeInTheDocument();
+    expect(screen.getByTestId('showdown-clash')).toBeInTheDocument();
+    // Quem correu perde, tenha o que tiver: a placa dele diz por quê.
+    expect(screen.getByTestId('clash-opponent')).toHaveTextContent('desistiu');
+  });
+
   it('as duas placas entram, cada uma com a categoria e a força da mão', () => {
     settled();
     const embate = screen.getByTestId('showdown-clash');
@@ -686,6 +805,8 @@ describe('PokerArena — o embate do showdown', () => {
       phase: 'settle',
       round: round({ phase: 'settled', legalActions: [], toAct: null, result: folded }),
       result: folded,
+      // Você abriu a mão: ela entra no embate como qualquer outra.
+      cardsShown: true,
     });
 
     expect(screen.getByTestId('showdown-clash')).toBeInTheDocument();
@@ -695,6 +816,94 @@ describe('PokerArena — o embate do showdown', () => {
     expect(screen.getByTestId('clash-player')).not.toHaveTextContent('desistiu');
     // Quem ficou leva o pote, tenha a mão que tiver.
     expect(screen.getByTestId('clash-player')).toHaveClass('clash-plate--won');
+  });
+
+  it('mão GUARDADA: o embate não conta o que você escolheu não contar', () => {
+    /* Guardar a mão é jogada, e uma jogada que a tela seguinte desfaz não
+       é jogada nenhuma. Nem a categoria nem a força entram — as duas SÃO
+       a mão. */
+    const folded = result({ showdown: false, foldedBy: 'opponent' });
+    renderArena({
+      phase: 'settle',
+      round: round({ phase: 'settled', legalActions: [], toAct: null, result: folded }),
+      result: folded,
+      cardsShown: false,
+    });
+
+    const minha = screen.getByTestId('clash-player');
+    expect(minha).toHaveTextContent('Mão guardada');
+    expect(minha).toHaveTextContent('não revelou');
+    expect(minha).not.toHaveTextContent('Um par');
+    // A mão DELE continua em cena: ele nunca foi convidado a guardar nada.
+    expect(screen.getByTestId('clash-opponent')).toHaveTextContent('Um par');
+  });
+
+  it('o RIVAL também guarda: a placa dele entra fechada', () => {
+    /* Era a via de mão única do sistema: você escolhia guardar e ele
+       abria sempre. Toda vez que ele largava uma mão você aprendia como
+       ele joga; ele nunca aprendia nada de você — e guardar, sem risco
+       nenhum, deixava de ser jogada. */
+    const folded = result({ showdown: false, foldedBy: 'opponent', opponentShown: false });
+    renderArena({
+      phase: 'settle',
+      round: round({ phase: 'settled', legalActions: [], toAct: null, result: folded }),
+      result: folded,
+      cardsShown: true,
+    });
+
+    const dele = screen.getByTestId('clash-opponent');
+    expect(dele).toHaveTextContent('Mão guardada');
+    expect(dele).not.toHaveTextContent('de Reis');
+    // E a SUA continua aberta: você mostrou.
+    expect(screen.getByTestId('clash-player')).toHaveTextContent('Um par');
+  });
+
+  it('as fechadas do rival não chegam à mesa quando ele guarda', () => {
+    /* A mão muchada não fica escondida na tela: ela não está lá. A engine
+       não a manda (ver `LocalPokerEngine.table`), e o assento desenha dois
+       versos. */
+    const folded = result({ showdown: false, foldedBy: 'opponent', opponentShown: false });
+    renderArena({
+      phase: 'settle',
+      round: round({
+        phase: 'settled',
+        // A engine devolve a mão VAZIA quando ele guarda.
+        opponentHole: [],
+        legalActions: [],
+        toAct: null,
+        result: folded,
+      }),
+      result: folded,
+    });
+    expect(screen.getByLabelText('Carta de Luna 1: carta oculta')).toBeInTheDocument();
+  });
+
+  it('quando VOCÊ correu e guardou, é a sua placa que entra fechada', () => {
+    const folded = result({ showdown: false, foldedBy: 'player', outcome: 'lose' });
+    renderArena({
+      phase: 'settle',
+      round: round({ phase: 'settled', legalActions: [], toAct: null, result: folded }),
+      result: folded,
+      cardsShown: false,
+    });
+
+    const minha = screen.getByTestId('clash-player');
+    expect(minha).toHaveTextContent('Mão guardada');
+    // "desistiu" tem precedência sobre "não revelou": largar a mão é a
+    // notícia da rodada, e guardá-la é a nota de rodapé dela.
+    expect(minha).toHaveTextContent('desistiu');
+    expect(minha).not.toHaveTextContent('Um par');
+  });
+
+  it('num SHOWDOWN não há o que guardar: as duas mãos foram pagas', () => {
+    renderArena({
+      phase: 'settle',
+      round: round({ phase: 'settled', legalActions: [], toAct: null }),
+      result: result(),
+      cardsShown: false,
+    });
+    expect(screen.getByTestId('clash-player')).toHaveTextContent('Um par');
+    expect(screen.getByTestId('clash-player')).not.toHaveTextContent('guardada');
   });
 
   it('o embate é da fase settle — não sobra para a mesa em jogo', () => {
@@ -806,9 +1015,77 @@ describe('PokerArena — o placar do desfecho', () => {
         cards: [card('A', 'spades'), card('A', 'hearts')],
       },
     });
-    renderArena({ phase: 'handover', result: preflop });
+    renderArena({ phase: 'handover', result: preflop, cardsShown: true });
     // Não havia cinco cartas a montar: o placar mostra o que existia.
     expect(screen.getByTestId('winner-cards').children).toHaveLength(2);
+    expect(screen.getByLabelText('Carta 1 da mão vencedora: A de espadas')).toBeInTheDocument();
+  });
+
+  it('mão GUARDADA: o placar não abre o que você escolheu não mostrar', () => {
+    /* Você levou o pote sem ninguém pagar para ver e disse que não
+       mostrava (ou deixou os cinco segundos passarem, que vale o mesmo).
+       Escancarar aqui o que a mesa acabou de aceitar guardar desfaria a
+       jogada — e guardar a mão É jogada, com valor nas mãos seguintes. */
+    renderArena({
+      phase: 'handover',
+      result: result({ showdown: false, foldedBy: 'opponent' }),
+      cardsShown: false,
+    });
+
+    expect(screen.getByTestId('winner-note')).toHaveTextContent('decidiu não revelar');
+    expect(screen.getByTestId('winner-hand')).toHaveTextContent('MÃO GUARDADA');
+    // A leitura da mão é justamente o que se escolheu não contar.
+    expect(screen.getByTestId('winner-plate')).not.toHaveTextContent('Ases');
+
+    /* No lugar das cartas, INTERROGAÇÕES — e são duas, porque o lugar
+       delas continua ocupado: a placa não muda de forma conforme a
+       resposta. */
+    const cartas = screen.getByTestId('winner-cards');
+    expect(cartas.children).toHaveLength(2);
+    expect(screen.getByTestId('winner-card-hidden-1')).toHaveTextContent('?');
+    expect(screen.getByTestId('winner-card-hidden-2')).toHaveTextContent('?');
+  });
+
+  it('quando o RIVAL leva o pote e guarda, é a mão DELE que o placar fecha', () => {
+    /* A placa mostra a mão de quem venceu, então é a escolha dele que
+       manda ali — não a sua. */
+    renderArena({
+      phase: 'handover',
+      result: result({
+        showdown: false,
+        foldedBy: 'player',
+        outcome: 'lose',
+        opponentShown: false,
+      }),
+      cardsShown: true,
+    });
+    expect(screen.getByTestId('winner-hand')).toHaveTextContent('MÃO GUARDADA');
+    expect(screen.getByTestId('winner-note')).toHaveTextContent('decidiu não revelar');
+    expect(screen.getByTestId('winner-card-hidden-1')).toHaveTextContent('?');
+  });
+
+  it('mão MOSTRADA: o placar abre as cartas normalmente', () => {
+    renderArena({
+      phase: 'handover',
+      result: result({ showdown: false, foldedBy: 'opponent' }),
+      cardsShown: true,
+    });
+    expect(screen.getByTestId('winner-hand')).toHaveTextContent('Um par');
+    expect(screen.getByTestId('winner-note')).toHaveTextContent('Luna desistiu');
+    expect(screen.queryByTestId('winner-card-hidden-1')).not.toBeInTheDocument();
+  });
+
+  it('quem leva o pote por desistência SUA não guarda mão nenhuma', () => {
+    /* O convite é só de quem ganhou sem mostrar. Quando quem correu foi
+       você, o rival nunca foi convidado a nada — e a mão dele entra
+       aberta, como sempre entrou. */
+    renderArena({
+      phase: 'handover',
+      result: result({ showdown: false, foldedBy: 'player', outcome: 'lose' }),
+      cardsShown: false,
+    });
+    expect(screen.getByTestId('winner-hand')).toHaveTextContent('Um par');
+    expect(screen.queryByTestId('winner-card-hidden-1')).not.toBeInTheDocument();
   });
 });
 
@@ -909,16 +1186,34 @@ describe('ChipRack — o montante de cada duelista', () => {
 });
 
 describe('ShowCardsPrompt — abrir a mão a quem correu', () => {
-  const prompt = { seconds: 5, handLabel: 'Carta alta: Ás' };
+  const prompt: ShowPrompt = { seconds: 5, foldedBy: 'opponent' };
 
-  it('traz a LEITURA da mão: é ela que decide se vale mostrar', () => {
-    /* Abrir um par de Ases diz "eu aposto com mão feita"; abrir carta
-       alta diz "eu blefo", e é o que faz a aposta seguinte valer o
-       dobro. Sem a leitura, o balão cobraria memória em vez de
-       estratégia. */
+  it('a mensagem é de DUAS linhas: quem correu, e a pergunta', () => {
+    /* Um relógio de cinco segundos não paga leitura de parágrafo. O balão
+       já trouxe o pote, o sigilo e a leitura da mão em quatro linhas — e
+       a pessoa lia a explicação e perdia a decisão. */
     render(<ShowCardsPrompt prompt={prompt} opponentName="Luna" onAnswer={vi.fn()} instant />);
-    expect(screen.getByTestId('show-prompt-hand')).toHaveTextContent('Carta alta: Ás');
-    expect(screen.getByTestId('show-prompt')).toHaveTextContent('Luna correu');
+    expect(screen.getByTestId('show-prompt-lead')).toHaveTextContent('Luna correu');
+    expect(screen.getByTestId('show-prompt')).toHaveTextContent(
+      'Deseja mostrar sua mão para ele?',
+    );
+    /* A leitura da mão saiu: a placa do assento a traz em cena o tempo
+       todo, a dois dedos do balão. */
+    expect(screen.queryByTestId('show-prompt-hand')).not.toBeInTheDocument();
+  });
+
+  it('quando QUEM CORREU foi você, a mensagem diz isso', () => {
+    /* O convite passou a valer dos dois lados: quem corre também escolhe
+       se conta o que jogou fora. */
+    render(
+      <ShowCardsPrompt
+        prompt={{ seconds: 5, foldedBy: 'player' }}
+        opponentName="Luna"
+        onAnswer={vi.fn()}
+        instant
+      />,
+    );
+    expect(screen.getByTestId('show-prompt-lead')).toHaveTextContent('Você correu');
   });
 
   it('as duas respostas chegam a quem conduz a mesa', async () => {

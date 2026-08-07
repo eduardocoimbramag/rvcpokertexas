@@ -22,6 +22,9 @@ function createMemoryStorage(): Storage {
 
 function sampleState(): PersistedState {
   return {
+    // Sem mesa aberta: o canhoto da compra de fichas só existe entre
+    // sentar e levantar (ver `openTableSchema`).
+    openTable: null,
     balance: 750,
     history: [
       {
@@ -67,6 +70,7 @@ function sampleState(): PersistedState {
           ],
         },
         showdown: true,
+        opponentShown: true,
         outcome: 'win',
         stake: 100,
         committed: { player: 50, opponent: 50 },

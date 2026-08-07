@@ -3,7 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- A mesa é um app de tela cheia, não uma página: o zoom do navegador
+         não tem função nenhuma aqui e só atrapalha. `maximum-scale=1` +
+         `user-scalable=no` matam o duplo-toque/duplo-clique que dava zoom
+         no feltro no meio de uma mão (o par com `touch-action: manipulation`
+         no index.css, que é o que resolve no Safari, onde estas duas
+         chaves são ignoradas). -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#140404" />
 
     <!-- Tipografia Royal VIP Club: Oswald (condensada, no lugar do

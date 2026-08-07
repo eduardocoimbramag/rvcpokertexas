@@ -12,38 +12,56 @@ export interface ShowdownClashProps {
   /** Resultado da mão. Só há embate quando ela foi ao showdown. */
   result: PokerResult;
   opponentName: string;
+  /**
+   * Você abriu a sua mão depois da desistência (ver ShowCardsPrompt). Com
+   * `false` numa mão morta por desistência, a SUA placa entra fechada:
+   * guardar a mão é jogada, e uma jogada que a tela seguinte desfaz não é
+   * jogada nenhuma.
+   */
+  cardsShown: boolean;
   /** Movimento reduzido: o embate vira um quadro parado. */
   instant: boolean;
 }
 
 /* Os beats em segundos — o framer conta em segundos, o store em ms. */
-const REVEAL_S = TIMINGS.revealMs / 1000;
-const ENTER_S = TIMINGS.clashEnterMs / 1000;
 const IMPACT_S = TIMINGS.clashImpactMs / 1000;
-const VERDICT_S = TIMINGS.clashVerdictMs / 1000;
-
-/** O instante em que as duas placas se tocam. */
-const IMPACT_AT = REVEAL_S + ENTER_S;
-/** O instante em que o veredito assume. */
-const VERDICT_AT = IMPACT_AT + IMPACT_S;
-/** A cena inteira, do mount ao último frame. */
-const TOTAL_S = VERDICT_AT + VERDICT_S;
 
 /**
- * As CINCO MARCAS da cena, como frações de 0 a 1:
+ * O RELÓGIO DA CENA, montado a partir de duas perguntas:
  *
- *   0 ─── espera ─── entrada ─── impacto ─── veredito ─── 1
+ * - **há cartas a virar?** A espera inicial existe só porque o embate
+ *   divide o showdown com a virada das fechadas do rival. Numa
+ *   desistência em que ele guardou a mão não há o que virar, e esperar
+ *   por isso era 1,5 s de tela parada.
+ * - **houve comparação?** Numa desistência não houve: quem correu perdeu
+ *   por ter largado, não por ter carta pior. A cena então é comprimida
+ *   (ver `foldSettleMs`) — há uma notícia a dar, não duas mãos a ler.
  *
- * Toda a coreografia mora numa keyframe por propriedade amarrada a estas
- * marcas. É de propósito: encadear três animações separadas por
- * `onComplete` deixaria um buraco de um frame entre elas — e num beat de
- * 1,8 s um buraco de frame é visível.
- *
- * A ESPERA no começo existe porque o embate divide o showdown com a
- * virada das cartas: durante `revealMs` as fechadas do rival estão
- * girando, e é isso que se tem de ver. As placas só entram depois.
+ * Os dois casos partilham a mesma coreografia e as mesmas cinco marcas;
+ * o que muda são os números que as geram.
  */
-const MARKS = [0, REVEAL_S / TOTAL_S, IMPACT_AT / TOTAL_S, VERDICT_AT / TOTAL_S, 1];
+function beats(reveal: boolean, brief: boolean) {
+  const revealS = reveal ? TIMINGS.revealMs / 1000 : 0;
+  const enterS = (brief ? TIMINGS.foldClashEnterMs : TIMINGS.clashEnterMs) / 1000;
+  const verdictS = (brief ? TIMINGS.foldClashVerdictMs : TIMINGS.clashVerdictMs) / 1000;
+  const impactAt = revealS + enterS;
+  const verdictAt = impactAt + IMPACT_S;
+  const total = verdictAt + verdictS;
+  return {
+    total,
+    /**
+     * As CINCO MARCAS da cena, como frações de 0 a 1:
+     *
+     *   0 ─── espera ─── entrada ─── impacto ─── veredito ─── 1
+     */
+    marks: [0, revealS / total, impactAt / total, verdictAt / total, 1],
+  };
+}
+
+/* Toda a coreografia mora numa keyframe por propriedade amarrada às
+   cinco marcas. É de propósito: encadear três animações separadas por
+   `onComplete` deixaria um buraco de um frame entre elas — e num beat de
+   1,8 s um buraco de frame é visível. */
 
 /** Quantas fagulhas saem da colisão. */
 const SPARKS = 14;
@@ -87,9 +105,25 @@ const SPARKS = 14;
  * o detalhe fica logo abaixo dela: quando as forças empatam, é ele que
  * decide, e é para ele que o olho tem de ir.
  */
-export function ShowdownClash({ result, opponentName, instant }: ShowdownClashProps) {
+export function ShowdownClash({
+  result,
+  opponentName,
+  cardsShown,
+  instant,
+}: ShowdownClashProps) {
   const { playerRank, opponentRank, outcome, foldedBy } = result;
   const tie = outcome === 'tie';
+  /* CADA LADO GUARDA A SUA. Num SHOWDOWN não há o que guardar — as duas
+     mãos foram pagas para serem vistas —, mas numa desistência os dois
+     escolhem: você no balão do convite, ele na cabeça dele (ver
+     `botShowsHand`). Enquanto só você escolhia, a leitura da mesa corria
+     num sentido só. */
+  const byFold = !result.showdown;
+  const youHid = byFold && !cardsShown;
+  const heHid = byFold && !result.opponentShown;
+  /* Sem carta nenhuma a virar, a cena não espera pela virada — e sem
+     comparação, ela é comprimida. */
+  const { total, marks } = beats(!byFold || result.opponentShown, byFold);
 
   return (
     // aria-hidden: o embate é a ENCENAÇÃO de um veredito que o leitor de
@@ -103,11 +137,14 @@ export function ShowdownClash({ result, opponentName, instant }: ShowdownClashPr
         won={outcome === 'lose'}
         tie={tie}
         folded={foldedBy === 'opponent'}
+        concealed={heHid}
         decidedBy={outcome === 'lose' ? result.decidedBy : undefined}
+        total={total}
+        marks={marks}
         instant={instant}
       />
 
-      <ClashImpact tie={tie} instant={instant} />
+      <ClashImpact tie={tie} total={total} marks={marks} instant={instant} />
 
       <ClashPlate
         side="player"
@@ -116,7 +153,10 @@ export function ShowdownClash({ result, opponentName, instant }: ShowdownClashPr
         won={outcome === 'win'}
         tie={tie}
         folded={foldedBy === 'player'}
+        concealed={youHid}
         decidedBy={outcome === 'win' ? result.decidedBy : undefined}
+        total={total}
+        marks={marks}
         instant={instant}
       />
     </div>
@@ -132,16 +172,34 @@ interface ClashPlateProps {
   tie: boolean;
   /** Este lado largou a mão — o pote foi dele para o outro sem disputa. */
   folded: boolean;
+  /** Este lado escolheu não abrir a mão: a placa entra fechada. */
+  concealed?: boolean;
   /**
    * A carta que decidiu, quando as duas mãos leram igual. Só a placa
    * VENCEDORA a recebe: é ela que tem o que explicar.
    */
   decidedBy?: string;
+  /** Duração da cena inteira, em segundos (ver `beats`). */
+  total: number;
+  /** As cinco marcas da coreografia, em frações de 0 a 1. */
+  marks: number[];
   instant: boolean;
 }
 
 /** Uma das duas placas do embate. */
-function ClashPlate({ side, name, rank, won, tie, folded, decidedBy, instant }: ClashPlateProps) {
+function ClashPlate({
+  side,
+  name,
+  rank,
+  won,
+  tie,
+  folded,
+  concealed = false,
+  decidedBy,
+  total,
+  marks,
+  instant,
+}: ClashPlateProps) {
   const player = side === 'player';
   /** De que borda a placa entra: a sua sobe, a do rival desce. */
   const from = player ? 132 : -132;
@@ -153,6 +211,7 @@ function ClashPlate({ side, name, rank, won, tie, folded, decidedBy, instant }: 
       level={level}
       won={won}
       folded={folded}
+      concealed={concealed}
       decidedBy={decidedBy}
     />
   );
@@ -199,7 +258,7 @@ function ClashPlate({ side, name, rank, won, tie, folded, decidedBy, instant }: 
       data-testid={`clash-${side}`}
       initial={{ y: from, opacity: 0, scale: 0.86, rotate: 0 }}
       animate={keyframes}
-      transition={{ duration: TOTAL_S, times: MARKS, ease: 'easeOut' }}
+      transition={{ duration: total, times: marks, ease: 'easeOut' }}
     >
       {face}
     </motion.div>
@@ -213,6 +272,7 @@ function PlateFace({
   level,
   won,
   folded,
+  concealed,
   decidedBy,
 }: {
   name: string;
@@ -220,6 +280,7 @@ function PlateFace({
   level: number;
   won: boolean;
   folded: boolean;
+  concealed: boolean;
   decidedBy?: string;
 }) {
   return (
@@ -229,13 +290,20 @@ function PlateFace({
         {name}
       </span>
       <span className="clash-plate__body">
-        <span className="clash-plate__category">{CATEGORY_NAME[rank.category]}</span>
+        {/* MÃO GUARDADA: nem a categoria nem a força. As duas SÃO a mão —
+            escrevê-las aqui contaria exatamente o que se escolheu não
+            contar, e a placa desfaria a jogada da tela anterior. */}
+        <span className="clash-plate__category">
+          {concealed ? 'Mão guardada' : CATEGORY_NAME[rank.category]}
+        </span>
         {/* Três coisas podem ocupar esta linha, nesta ordem de urgência:
             que este lado LARGOU a mão (a notícia da rodada, e o que
             revela o blefe), no que a mesa DECIDIU quando as duas leram
             igual, ou o detalhe que completa a categoria. */}
         {folded ? (
           <span className="clash-plate__detail clash-plate__detail--folded">desistiu</span>
+        ) : concealed ? (
+          <span className="clash-plate__detail clash-plate__detail--folded">não revelou</span>
         ) : decidedBy ? (
           <span className="clash-plate__detail clash-plate__detail--decider">
             decidiu no {decidedBy}
@@ -245,7 +313,7 @@ function PlateFace({
         )}
       </span>
       <span className="clash-plate__force" title="Força da mão, de 1 a 9">
-        {level}
+        {concealed ? '?' : level}
       </span>
     </>
   );
@@ -260,7 +328,17 @@ function PlateFace({
  * teste — a bagunça é desenhada, não sorteada. É a mesma regra do pote
  * de fichas da casa (ver ChipStack).
  */
-function ClashImpact({ tie, instant }: { tie: boolean; instant: boolean }) {
+function ClashImpact({
+  tie,
+  total,
+  marks,
+  instant,
+}: {
+  tie: boolean;
+  total: number;
+  marks: number[];
+  instant: boolean;
+}) {
   if (instant) return null;
 
   return (
@@ -269,7 +347,7 @@ function ClashImpact({ tie, instant }: { tie: boolean; instant: boolean }) {
         className={`clash-impact__flash ${tie ? 'is-tie' : ''}`}
         initial={{ opacity: 0, scale: 0.2 }}
         animate={{ opacity: [0, 0, 0, 1, 0], scale: [0.2, 0.2, 0.3, 1.7, 2.6] }}
-        transition={{ duration: TOTAL_S, times: MARKS, ease: 'easeOut' }}
+        transition={{ duration: total, times: marks, ease: 'easeOut' }}
       />
       {Array.from({ length: SPARKS }, (_, index) => {
         // Leque completo em volta do impacto, alternando entre fagulhas
@@ -290,7 +368,7 @@ function ClashImpact({ tie, instant }: { tie: boolean; instant: boolean }) {
               y: [0, 0, 0, y, y * 1.55],
               scale: [0.4, 0.4, 0.4, 1, 0.15],
             }}
-            transition={{ duration: TOTAL_S, times: MARKS, ease: 'easeOut' }}
+            transition={{ duration: total, times: marks, ease: 'easeOut' }}
           />
         );
       })}

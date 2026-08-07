@@ -1,10 +1,10 @@
-import { AnimatePresence, motion } from 'framer-motion';
 import type { CSSProperties } from 'react';
 
 import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
 import type { Card, Duelist } from '../../engine/types';
+import { Monogram } from '../AvatarBadge';
 import { Card3D } from '../Card3D';
 import { ChipRack } from './ChipRack';
 
@@ -19,8 +19,6 @@ export interface PokerSeatProps {
   cards: readonly (Card | null)[];
   /** Fichas que ainda restam a este lado. */
   stack: number;
-  /** Fichas que este lado já pôs NESTA rua; 0 não desenha aposta. */
-  committed: number;
   /**
    * Este assento tem o BOTÃO DO DEALER. Nesta mesa ele não cobra blind
    * nenhum — a entrada é igual dos dois lados —, e diz uma coisa só:
@@ -53,22 +51,29 @@ export interface PokerSeatProps {
  * fechadas dele.
  *
  * O que se mostra de um lado da mesa é exatamente o que uma mesa de
- * verdade mostra: o STACK e a APOSTA são públicos — é com eles que se
- * calcula tudo o que há para calcular no poker — e as CARTAS não são. A
- * mão do rival fica de bruços até o showdown, e a leitura ("dois pares")
- * só existe do seu lado, porque só sai da sua própria mão.
+ * verdade mostra: o STACK é público — é com ele que se calcula tudo o que
+ * há para calcular no poker — e as CARTAS não são. A mão do rival fica de
+ * bruços até o showdown, e a leitura ("dois pares") só existe do seu
+ * lado, porque só sai da sua própria mão.
  *
- * A APOSTA DA RUA fica solta entre o assento e o centro do feltro, não
- * dentro da placa: são as fichas que a pessoa empurrou para a mesa e
- * ainda não foram recolhidas ao pote. É essa distinção — o que já é pote
- * e o que ainda é aposta de alguém — que deixa ler uma rua de olho nu.
+ * A IDENTIDADE do assento é UMA placa (ver `.seat-plate`), não três
+ * pastilhas soltas: brasão, nome, montante e — do seu lado — a leitura
+ * da mão, na mesma moldura. Antes eram três peças em três alturas do
+ * feltro, e ler o próprio assento custava três paradas do olho no meio
+ * de uma decisão cronometrada.
+ *
+ * O que este assento NÃO mostra mais é a aposta da rua em cifra solta no
+ * feltro. Ela pendurava um número ao lado do disco do dealer que ninguém
+ * pedia para ler e que competia com as duas coisas que importam ali — o
+ * montante de cada lado e o POTE no meio, que já soma tudo o que foi
+ * empurrado. O lance que acabou de acontecer continua sendo dito por
+ * extenso pela mesa (ver MoveCall).
  */
 export function PokerSeat({
   side,
   name,
   cards,
   stack,
-  committed,
   button,
   toAct,
   allIn,
@@ -79,25 +84,67 @@ export function PokerSeat({
   instant,
 }: PokerSeatProps) {
   const you = side === 'player';
-  const cardSize = you ? 'var(--hole-card-w)' : 'var(--rival-card-w)';
+  /* A MESMA carta dos dois lados da mesa. O rival já teve uma escala
+     própria (0,62 da sua) e uma face compacta, pelo argumento de que uma
+     carta de bruços não tem nada a ler; o que aquilo produzia na tela era
+     um assento em segundo plano, como se ele jogasse com outro baralho.
+     Mesa de verdade tem um baralho só. Ver --hole-card-w no index.css. */
+  const cardSize = 'var(--hole-card-w)';
 
+  /* A PLACA DO ASSENTO — a peça de identidade de cada lado da mesa.
+     Uma placa só, e não três pastilhas soltas: quem é, quanto tem e o
+     que a mão vale AGORA são a mesma leitura, e antes elas moravam em
+     três lugares diferentes do feltro. Reunidas na mesma moldura, o olho
+     faz uma parada em vez de três.
+
+     A ordem é a da importância na mesa: NOME e MONTANTE na linha de
+     cima, que é a que se consulta a cada lance; a LEITURA embaixo, em
+     ouro menor — ela muda a cada rua e é comentário, não decisão.
+
+     À esquerda, o RETRATO de quem senta ali: o monograma do clube (ver
+     AvatarBadge), a mesma identidade que a pessoa tem no chaveamento do
+     torneio, no perfil do rival e em toda lista do salão. Ali já morou o
+     naipe da casa, e o naipe era decoração: dizia a mesma coisa nos dois
+     lados da mesa. O retrato diz QUEM — que é a única pergunta que uma
+     placa de assento existe para responder. Enquanto o pareamento não
+     revela o rival, o monograma dele é uma interrogação, e é assim que
+     tem de ser (ver `initialOf`).
+
+     A LEITURA só existe do SEU lado, e isso é regra de poker, não de
+     layout: ela sai das suas duas fechadas com o que a mesa abriu. Do
+     lado do rival a linha simplesmente não nasce, e a placa fica de uma
+     linha só. */
   const identity = (
-    <div className={`poker-seat__id ${toAct ? 'is-turn' : ''}`} data-testid={`seat-${side}`}>
-      <span className="poker-seat__dot" aria-hidden="true" />
-      <span className="poker-seat__name">{name}</span>
-      <span className="poker-seat__stack" data-testid={`stack-${side}`}>
-        <Icon name="chip" size="0.85em" /> {formatCredits(stack)}
+    <div
+      className={`seat-plate seat-plate--${side} ${toAct ? 'is-turn' : ''}`}
+      data-testid={`seat-${side}`}
+    >
+      <span className="seat-plate__crest" data-testid={`seat-avatar-${side}`} aria-hidden="true">
+        <Monogram name={name} you={you} />
       </span>
-      {allIn && (
-        <span className="poker-seat__allin" data-testid={`allin-${side}`}>
-          ALL-IN
+      <span className="seat-plate__body">
+        <span className="seat-plate__line">
+          <span className="seat-plate__name">{name}</span>
+          {allIn && (
+            <span className="seat-plate__flag seat-plate__flag--allin" data-testid={`allin-${side}`}>
+              ALL-IN
+            </span>
+          )}
+          {shown && (
+            <span className="seat-plate__flag seat-plate__flag--shown" data-testid={`shown-${side}`}>
+              MOSTROU
+            </span>
+          )}
+          <span className="seat-plate__stack" data-testid={`stack-${side}`}>
+            <Icon name="chip" size="0.9em" /> {formatCredits(stack)}
+          </span>
         </span>
-      )}
-      {shown && (
-        <span className="poker-seat__shown" data-testid={`shown-${side}`}>
-          MOSTROU
-        </span>
-      )}
+        {reading && (
+          <span className="seat-plate__reading" data-testid="hand-reading">
+            {reading}
+          </span>
+        )}
+      </span>
     </div>
   );
 
@@ -143,7 +190,6 @@ export function PokerSeat({
             <Card3D
               card={card}
               size={cardSize}
-              compact={!you}
               faceDown={card === null}
               dealDelayMs={dealDelayFor(index)}
               label={`${you ? 'Sua carta' : `Carta de ${name}`} ${index + 1}`}
@@ -152,26 +198,6 @@ export function PokerSeat({
         );
       })}
     </div>
-  );
-
-  /* A aposta da rua entra e sai com as fichas: ela nasce quando alguém
-     aposta e some quando a mesa recolhe o pote no fim da rua. */
-  const bet = (
-    <AnimatePresence>
-      {committed > 0 && (
-        <motion.span
-          className="street-bet"
-          data-testid={`bet-${side}`}
-          initial={instant ? false : { opacity: 0, y: you ? 14 : -14, scale: 0.8 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={instant ? { opacity: 0 } : { opacity: 0, scale: 0.7 }}
-          transition={instant ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 24 }}
-        >
-          <span className="street-bet__chip" aria-hidden="true" />
-          {formatCredits(committed)}
-        </motion.span>
-      )}
-    </AnimatePresence>
   );
 
   return (
@@ -198,13 +224,7 @@ export function PokerSeat({
         {hand}
         <span className="poker-seat__gutter">{you ? rack : puck}</span>
       </div>
-      {reading && (
-        <span className="hand-reading" data-testid="hand-reading">
-          {reading}
-        </span>
-      )}
       {you && identity}
-      {bet}
     </section>
   );
 }

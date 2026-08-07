@@ -5,17 +5,16 @@ import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
-import { TABLE_ANTE } from '../../engine/credits';
-
 import type { PokerResult, PokerRoundState, PokerSession } from '../../engine/poker/types';
 import type { Card, Match } from '../../engine/types';
 import type { ActionClock, GamePhase, MoveAnnounce, ShowPrompt } from '../../store/gameStore';
-import { HANDOVER_SECONDS, useGameStore } from '../../store/gameStore';
+import { useGameStore } from '../../store/gameStore';
 import { OpponentProfileSheet } from '../OpponentProfileSheet';
 import { ChipStack } from '../table/ChipStack';
 import { SeatMedallion } from '../table/SeatMedallion';
 import { BetControls } from './BetControls';
 import { CommunityBoard } from './CommunityBoard';
+import { LeaveTablePrompt } from './LeaveTablePrompt';
 import { MoveCall } from './MoveCall';
 import { PokerSeat } from './PokerSeat';
 import { ShowCardsPrompt } from './ShowCardsPrompt';
@@ -45,6 +44,12 @@ export interface PokerArenaProps {
   showPrompt: ShowPrompt | null;
   /** Segundos até a mesa distribuir a próxima mão (fase `handover`). */
   handoverSeconds: number;
+  /**
+   * De quantos segundos era ESTE intervalo. Não é constante: uma mão
+   * morta por desistência tem intervalo pela metade. A barra do relógio
+   * se mede por ele — com um total fixo ela nasceria pela metade.
+   */
+  handoverTotal: number;
   /** Você abriu a mão para o rival neste pote. */
   cardsShown: boolean;
   onAnswerShowCards: (show: boolean) => void;
@@ -63,10 +68,10 @@ export interface PokerArenaProps {
  * - as duas FECHADAS de cada lado, na borda do respectivo assento;
  * - as cinco COMUNITÁRIAS no centro, em cinco lugares que existem desde
  *   o primeiro instante (ver CommunityBoard);
- * - o POTE logo acima delas, em fichas — o que já foi recolhido;
- * - as APOSTAS DA RUA soltas entre cada assento e o centro: o que foi
- *   empurrado e ainda não virou pote. A distinção não é decorativa; é o
- *   que deixa ler uma rua de olho nu.
+ * - o POTE logo acima delas, em fichas. Ele é a ÚNICA cifra de dinheiro
+ *   no meio do feltro: o que cada lado empurrou nesta rua não ganha
+ *   plaquinha própria ao lado do assento — sai do montante e entra no
+ *   pote, e é no montante e no pote que se lê.
  *
  * O SIGILO é o do poker, e é estrutural: as duas cartas do rival ficam
  * de bruços até o showdown, e a engine nem as manda para cá (ver
@@ -99,6 +104,7 @@ export function PokerArena({
   session,
   showPrompt,
   handoverSeconds,
+  handoverTotal,
   cardsShown,
   onAnswerShowCards,
   onLeaveTable,
@@ -108,10 +114,42 @@ export function PokerArena({
   // Perfil do rival: estado LOCAL de UI, aberto pelo medalhão do
   // desfecho. Não toca no store nem na máquina de estados.
   const [profileOpen, setProfileOpen] = useState(false);
+  /* Levantar no meio de uma mão pede confirmação (ver LeaveTablePrompt).
+     Estado LOCAL: é uma pergunta de interface, e a máquina de estados do
+     jogo não tem — nem deve ter — uma fase "quase levantando". */
+  const [leaveAsk, setLeaveAsk] = useState(false);
+
+  /* A vez só existe depois da distribuição: enquanto as cartas voam, a
+     mesa não anuncia de quem é a palavra — ninguém tem palavra ainda.
+     A barra de lances entra JUNTO com o relógio dela, não antes: entre a
+     mesa voltar da engine e o beat do anúncio vencer, a palavra já é sua
+     e a janela ainda não abriu (ver ActionClock.open).
+
+     Vive ACIMA dos retornos antecipados porque o efeito abaixo depende
+     dela, e hook não pode nascer depois de um `return`. */
+  const yourTurn =
+    phase === 'betting' && clock.open && round?.toAct === 'player' && round.legalActions.length > 0;
+
+  /* A vez passou com a confirmação de levantar aberta — o relógio venceu
+     e a mesa jogou por você, ou o lance saiu por outro caminho. A
+     pergunta morre com a vez que a motivou: deixá-la marcada faria ela
+     ressurgir sozinha na rua seguinte, sobre uma mesa que já é outra.
+
+     O ajuste é feito em RENDER, e não num efeito. É o padrão do React
+     para estado que depende de prop: aqui ele descarta o render em curso
+     e refaz na hora, sem pintar o quadro errado uma vez antes de
+     corrigi-lo — que é exatamente o que um `useEffect` faria. */
+  if (leaveAsk && !yourTurn) setLeaveAsk(false);
 
   const dealing = phase === 'dealing';
   const handover = phase === 'handover';
-  const revealed = phase === 'settle' || handover;
+  /* A MESA CONGELA ENQUANTO O CONVITE DE MOSTRAR AS CARTAS ESTÁ NO AR.
+     A fase já é `settle`, mas nada do desfecho entrou: as fechadas do
+     rival continuam de bruços e o embate espera. É essa pausa que faz a
+     pergunta valer alguma coisa — respondê-la com as cartas já viradas na
+     tela seria escolher uma porta aberta. */
+  const settling = phase === 'settle' && !showPrompt;
+  const revealed = settling || handover;
 
   /* ---- Fase completed: a MESA FECHOU. A câmera volta ao frontal, a
      crupiê entra no quadro e o caixa é feito (ver SessionBanner). Aqui a
@@ -149,15 +187,7 @@ export function PokerArena({
      Num empate as duas leituras são a mesma mão. */
   const highlight = revealed ? winningCards(result) : undefined;
 
-  // A vez só existe depois da distribuição: enquanto as cartas voam, a
-  // mesa não anuncia de quem é a palavra — ninguém tem palavra ainda.
-  const betting = phase === 'betting';
-  /* A barra de lances entra JUNTO com o relógio dela, não antes: entre a
-     mesa voltar da engine e o beat do anúncio vencer, a palavra já é sua
-     e a janela ainda não abriu (ver ActionClock.open). */
-  const yourTurn =
-    betting && clock.open && round.toAct === 'player' && round.legalActions.length > 0;
-  const waiting = betting && round.toAct === 'opponent';
+  const waiting = phase === 'betting' && round.toAct === 'opponent';
 
   /* A PORTA DA SESSÃO abre a partir da segunda mão. Na primeira ela está
      em cena e apagada: quem senta descobre que a saída existe antes de
@@ -172,9 +202,16 @@ export function PokerArena({
       {/* ---- O EMBATE do fim da mão, por cima do feltro ----
           Ele roda em TODA mão que chega ao fim, inclusive a levada por
           desistência: ver o que o rival tinha quando largou é a única
-          leitura que este duelo dá dele. */}
-      {phase === 'settle' && result && (
-        <ShowdownClash result={result} opponentName={match.opponent.name} instant={reducedMotion} />
+          leitura que este duelo dá dele. Numa desistência ele espera a
+          resposta do convite (`settling`) — o desfecho é a resposta à
+          pergunta, e não pode entrar antes dela. */}
+      {settling && result && (
+        <ShowdownClash
+          result={result}
+          opponentName={match.opponent.name}
+          cardsShown={cardsShown}
+          instant={reducedMotion}
+        />
       )}
 
       {/* ---- O BEAT ENTRE AS MÃOS ----
@@ -184,23 +221,44 @@ export function PokerArena({
           não para: sair da mesa para ler um veredito e voltar quebraria
           a única coisa que uma sessão tem de diferente de uma mão. */}
       <AnimatePresence>
-        {handover && result && !showPrompt && (
+        {handover && result && (
           <WinnerPlate
             key={result.id}
             result={result}
             opponentName={match.opponent.name}
+            cardsShown={cardsShown}
             instant={reducedMotion}
           />
         )}
       </AnimatePresence>
 
-      {/* ---- O convite de abrir a mão a quem correu ---- */}
+      {/* ---- O convite de abrir a mão a quem correu ----
+          Ele entra no INSTANTE da desistência, com a mesa parada, e é a
+          primeira coisa que acontece depois dela. */}
       <AnimatePresence>
-        {handover && showPrompt && (
+        {showPrompt && (
           <ShowCardsPrompt
             prompt={showPrompt}
             opponentName={match.opponent.name}
             onAnswer={onAnswerShowCards}
+            instant={reducedMotion}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ---- A confirmação de levantar com a mão viva ---- */}
+      <AnimatePresence>
+        {leaveAsk && yourTurn && (
+          <LeaveTablePrompt
+            committed={round.committed.player}
+            pot={round.pot}
+            stack={round.stacks.player}
+            opponentName={match.opponent.name}
+            onConfirm={() => {
+              setLeaveAsk(false);
+              onLeaveTable();
+            }}
+            onCancel={() => setLeaveAsk(false)}
             instant={reducedMotion}
           />
         )}
@@ -212,7 +270,6 @@ export function PokerArena({
         name={match.opponent.name}
         cards={opponentCards}
         stack={round.stacks.opponent}
-        committed={round.committed.opponent}
         button={round.button === 'opponent'}
         toAct={waiting}
         allIn={round.stacks.opponent === 0 && !revealed}
@@ -250,7 +307,6 @@ export function PokerArena({
         name="Você"
         cards={round.playerHole}
         stack={round.stacks.player}
-        committed={round.committed.player}
         button={round.button === 'player'}
         toAct={yourTurn}
         shown={cardsShown}
@@ -265,11 +321,15 @@ export function PokerArena({
           O slot tem altura reservada em TODAS as fases: a barra entra e
           sai sem que a mesa suba e desça junto. */}
       <div className="arena-actions">
-        {phase === 'dealing' && (
-          <p className="table-note" data-testid="ante-note">
-            Entrada {formatCredits(TABLE_ANTE)} · mesa {formatCredits(match.stake)}
-          </p>
-        )}
+        {/* Na DISTRIBUIÇÃO o rodapé fica vazio, e é de propósito. Ele já
+            trouxe "Entrada 100 · mesa 5.000" enquanto as cartas voavam:
+            um aviso que repetia, a cada mão, dois números que não mudam
+            nunca — a entrada desta mesa é fixa e o valor da mesa foi
+            travado quando você sentou. Repetir o que não muda é ruído, e
+            ruído numa cena de 2,8 s é ruído em cima da única coisa que
+            importa ali, que são as cartas saindo do baralho. Quem precisa
+            do número o tem no pote, que nasce com as duas entradas
+            dentro. */}
 
         {/* O INTERVALO ENTRE AS MÃOS: um relógio de 10 s correndo e a
             porta aberta ao lado dele. Zerado, a mesa distribui sozinha —
@@ -284,7 +344,7 @@ export function PokerArena({
             animate={{ opacity: 1, y: 0 }}
             transition={reducedMotion ? { duration: 0 } : { duration: 0.25 }}
           >
-            <HandoverClock seconds={handoverSeconds} instant={reducedMotion} />
+            <HandoverClock seconds={handoverSeconds} total={handoverTotal} instant={reducedMotion} />
             {/* No INTERVALO a porta é a única decisão que existe, e por
                 isso ela ocupa a barra inteira. Espremida num quarto da
                 fileira, ela dividia espaço com três lugares vazios — e um
@@ -331,7 +391,11 @@ export function PokerArena({
               onCall={onCall}
               onRaise={onRaise}
               canLeave={canLeave}
-              onLeave={onLeaveTable}
+              /* No MEIO da mão o botão PERGUNTA antes; no intervalo entre
+                 as mãos ele age direto (ver o LEVANTAR DA MESA acima), e é
+                 a diferença certa: ali não há mão a correr nem pote a
+                 entregar, então não há o que confirmar. */
+              onLeave={() => setLeaveAsk(true)}
               instant={reducedMotion}
             />
           </motion.div>
@@ -348,8 +412,19 @@ export function PokerArena({
  * tempo na mesa é uma só. O que muda é o que ela promete — ali a mesa
  * joga por você, aqui ela só continua.
  */
-function HandoverClock({ seconds, instant }: { seconds: number; instant: boolean }) {
-  const progress = Math.max(0, Math.min(1, seconds / HANDOVER_SECONDS));
+function HandoverClock({
+  seconds,
+  total,
+  instant,
+}: {
+  seconds: number;
+  total: number;
+  instant: boolean;
+}) {
+  /* O TOTAL vem de fora e não é constante: depois de uma desistência o
+     intervalo é a metade (ver `FOLD_HANDOVER_SECONDS`), e uma barra
+     medida por um total fixo nasceria pela metade. */
+  const progress = Math.max(0, Math.min(1, seconds / Math.max(1, total)));
   return (
     <div className="handover-clock" data-testid="handover-clock">
       <span className="handover-clock__track" aria-hidden="true">

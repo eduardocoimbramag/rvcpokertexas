@@ -54,6 +54,13 @@ body {
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+  /* SEM ZOOM DE DUPLO-TOQUE. `manipulation` mantém rolagem e pinça e
+     descarta só o gesto de duplo-toque/duplo-clique — que num app de mesa
+     não é um comando, é um acidente: dois toques rápidos no botão de
+     APOSTAR viravam zoom no feltro no meio da mão. É esta linha (e não o
+     `user-scalable=no` do index.html) que resolve no Safari, onde a meta
+     tag é ignorada de propósito. */
+  touch-action: manipulation;
 }
 
 /* Títulos em display condensado da marca (Oswald/Morganite) — só troca
@@ -103,19 +110,22 @@ h2 {
   --arena-nameplate-h: 1.4rem;
   --arena-total-h: 1.65rem;
 
-  /* AS TRÊS ESCALAS DE CARTA DA MESA DE POKER, todas derivadas de
-     --card-w para nunca saírem de sincronia com o resto do salão. Elas
-     são desiguais porque as três cartas têm funções diferentes:
+  /* AS ESCALAS DE CARTA DA MESA DE POKER, todas derivadas de --card-w
+     para nunca saírem de sincronia com o resto do salão:
 
-     - as suas FECHADAS são a carta cheia: é a mão que você joga, e é a
-       única que precisa ser lida sem esforço nenhum;
+     - as FECHADAS, suas e do rival, são a carta cheia — e são a MESMA
+       carta dos dois lados. O rival já teve uma escala própria, menor,
+       com o argumento de que uma carta de bruços não tem nada a ler e
+       de que a diferença devolvia altura ao feltro. O argumento estava
+       errado: numa mesa de verdade os dois lados jogam com o mesmo
+       baralho, e duas cartas visivelmente menores do outro lado não
+       liam como economia de espaço — liam como uma mão de segunda
+       categoria, ou como se o rival estivesse mais longe da mesa. A
+       altura que se ganhava não pagava a assimetria;
      - a MESA são cinco, e cinco cartas cheias não cabem lado a lado num
        aparelho de 320px. Em 0,78 a fileira inteira fecha em ~220px no
-       pior caso e ainda se lê de relance;
-     - as do RIVAL ficam de bruços a mão inteira, até o showdown. Uma
-       carta virada não tem nada a ler: ela só precisa CONTAR (são duas)
-       e ocupar o lugar dela na mesa — daí a face compacta e a escala
-       menor, que devolvem altura para o feltro. */
+       pior caso e ainda se lê de relance. Esta continua menor porque a
+       razão dela é de LARGURA, e largura de verdade não existe. */
   --board-card-w: calc(var(--card-w) * 0.78);
   /* A carta do PLACAR do desfecho. Este é o tamanho de quando a placa
      mostra POUCAS cartas — a combinação e o kicker que decidiu, duas ou
@@ -123,8 +133,10 @@ h2 {
      Uma mão de cinco (sequência, flush, full house) encolhe de volta no
      próprio `.winner-plate__cards`. */
   --winner-card-w: calc(var(--card-w) * 0.62);
+  /* UMA fechada só, usada pelos dois assentos: não há token separado
+     para a carta do rival, e é de propósito — sem dois valores não há
+     como eles voltarem a divergir. */
   --hole-card-w: var(--card-w);
-  --rival-card-w: calc(var(--card-w) * 0.62);
 
   /* COLUNA DE CENA: a faixa central onde o salão é desenhado. No
      celular ela É a tela — nada muda em relação ao que sempre existiu.
@@ -1826,20 +1838,31 @@ h2 {
     inset 0 0 calc(var(--card-size, var(--card-w)) * 0.12) rgba(122, 82, 48, 0.14);
 }
 
-/* Verso da casa: o baralho é UM só, então o verso é um só — vinho
+/* A CARA DA CASA: o baralho é UM só, então o verso é um só — vinho
    borgonha do clube no mesmo eixo 145° do resto da mesa, com filete
    interno dourado e trama de losangos: filigrana de baralho de cassino,
-   não um retângulo chapado. */
-.card3d__face--back {
-  transform: rotateY(180deg);
+   não um retângulo chapado.
+
+   É uma classe à parte do `--back` porque ela veste DUAS faces. Uma
+   carta cuja identidade a interface não conhece — a do rival antes do
+   showdown — não tem frente: as duas faces dela são o verso. Enquanto a
+   frente dessas cartas era o papel-marfim vazio, qualquer soluço de
+   pintura do navegador (e o plano 3D vive dentro de um `filter`, que é
+   onde eles acontecem) mostrava um RETÂNGULO BRANCO no lugar da carta.
+   Com as duas faces iguais, o pior caso vira o caso certo. */
+.card3d__face--house {
   background: linear-gradient(145deg, #6d1826 0%, #2a0810 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     inset 0 0 0 1px rgba(20, 8, 8, 0.5);
 }
 
+.card3d__face--back {
+  transform: rotateY(180deg);
+}
+
 /* Moldura interna do verso: o filete dourado clássico. */
-.card3d__face--back::before {
+.card3d__face--house::before {
   content: '';
   position: absolute;
   inset: 7%;
@@ -1850,7 +1873,7 @@ h2 {
 }
 
 /* Trama de losangos do verso, recortada dentro da moldura. */
-.card3d__face--back::after {
+.card3d__face--house::after {
   content: '';
   position: absolute;
   inset: 9%;
@@ -2966,104 +2989,314 @@ h2 {
   gap: 0.3rem;
 }
 
-/* A placa de identidade: quem é, o botão do dealer e o stack, numa linha
-   só. É a mesma pastilha de vinho das outras mesas da casa — e acende em
-   ouro, com o ponto respirando, quando a mesa espera a decisão DESTE
-   lado. Altura fixa: nada aqui empurra as cartas do lugar. */
-.poker-seat__id {
+/* ==================== A PLACA DO ASSENTO ====================
+
+   A peça de identidade de cada lado da mesa: brasão, nome, montante e —
+   só do seu lado — a leitura da mão.
+
+   Ela substituiu TRÊS pastilhas soltas no feltro (a do nome, a do stack
+   e a da leitura, esta última numa plaquinha de ouro à parte). O
+   problema não era o desenho de cada uma: era que ler o próprio assento
+   exigia três paradas do olho em três alturas diferentes, no meio de uma
+   decisão cronometrada. Reunidas numa moldura só, viram uma leitura.
+
+   A MATÉRIA é a da casa: VINHO BORGONHA lapidado (#4C0A15 e vizinhos, os
+   hexas do manual) sob uma moldura de OURO MACIÇO.
+
+   A moldura não é uma linha translúcida por cima do fundo — é uma faixa
+   de metal, e é assim que ela se faz: `border-box` recebe um degradê de
+   ouro com sete paradas (luz alta, âmbar, sombra de bronze, luz de novo)
+   e `padding-box` recebe o vinho. O ouro fica no anel da borda e o vinho
+   no miolo, sem um pintar por cima do outro. Uma `rgba` de ouro a 30% não
+   dava isso: dava um fio apagado, do mesmo tom em toda a volta — e metal
+   de verdade nunca tem o mesmo tom em toda a volta, porque a luz vem de
+   um lugar só.
+
+   TODA a geometria sai de --plate-fs, e é ele o único número que muda
+   entre um celular de 320px e um de 430px. Sem isto, uma placa com
+   retrato, duas linhas e três respiros precisaria de meia dúzia de media
+   queries para não estourar a largura do assento. */
+.seat-plate {
+  /* A escala da peça inteira. O piso (0,58rem) é o menor corpo em que a
+     leitura ainda se lê em Oswald condensado; o teto impede a placa de
+     virar faixa num tablet. */
+  --plate-fs: clamp(0.58rem, 3.05vw, 0.74rem);
+  --plate-crest: calc(var(--plate-fs) * 2.55);
+  /* O ouro do salão, na ordem em que a luz bate: champagne no alto à
+     esquerda, âmbar, bronze na sombra de baixo e a segunda luz na volta.
+     Vive num token porque a placa usa a MESMA liga em dois lugares — a
+     moldura e o aro do retrato — e duas cópias sairiam de sincronia. */
+  --plate-gold: linear-gradient(
+    152deg,
+    #fff3dc 0%,
+    #f5b76f 17%,
+    #c78a3f 33%,
+    #7d4a1b 49%,
+    #cb7349 61%,
+    #fcd9a0 78%,
+    #b8813c 100%
+  );
+
+  position: relative;
+  z-index: 2;
   display: inline-flex;
-  min-height: var(--arena-nameplate-h);
+  max-width: min(100%, 20rem);
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.1rem 0.6rem;
-  border-radius: 9999px;
-  background: rgba(20, 8, 8, 0.34);
-  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.2);
-  font-size: 0.64rem;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-ivory);
-  white-space: nowrap;
+  gap: calc(var(--plate-fs) * 0.6);
+  /* Assimétrico de propósito: o retrato já traz respiro redondo próprio,
+     então a borda da esquerda fecha mais que a da direita. */
+  padding: calc(var(--plate-fs) * 0.42) calc(var(--plate-fs) * 0.95) calc(var(--plate-fs) * 0.42)
+    calc(var(--plate-fs) * 0.46);
+  border: 2px solid transparent;
+  border-radius: calc(var(--plate-fs) * 0.82);
+  background:
+    linear-gradient(180deg, #63151f 0%, #3d0a13 48%, #1c0509 100%) padding-box,
+    var(--plate-gold) border-box;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 232, 0.18),
+    inset 0 -7px 14px rgba(0, 0, 0, 0.4),
+    /* o fio escuro POR FORA do ouro: sem ele a moldura encosta no feltro
+       claro e perde o gume */ 0 0 0 1px rgba(18, 5, 8, 0.5),
+    0 3px 12px rgba(10, 3, 6, 0.55);
+  font-size: var(--plate-fs);
   transition:
     box-shadow 0.4s ease,
-    background 0.4s ease;
+    background 0.4s ease,
+    filter 0.4s ease;
 }
 
-.poker-seat--player .poker-seat__id {
-  box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.35);
+/* O segundo fio, rebaixado: é ele que dá ESPESSURA à moldura — o ouro de
+   fora e este de dentro cercam uma faixa de vinho, e é essa faixa que faz
+   a peça ler como metal fundido em vez de retângulo pintado. */
+.seat-plate::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--plate-fs) * 0.16);
+  border: 1px solid rgba(245, 183, 111, 0.34);
+  border-radius: calc(var(--plate-fs) * 0.62);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.3);
+  pointer-events: none;
 }
 
-.poker-seat--opponent .poker-seat__id {
-  box-shadow: inset 0 0 0 1px rgba(252, 165, 165, 0.35);
-}
-
-.poker-seat__id.is-turn {
-  background: rgba(48, 12, 6, 0.6);
-  box-shadow:
-    inset 0 0 0 1px rgba(252, 217, 160, 0.9),
-    0 0 14px rgba(245, 183, 111, 0.45);
-}
-
-/* O ponto da vez: ocupa o lugar dele sempre (largura fixa) para a placa
-   não mudar de tamanho quando a palavra passa de um lado ao outro. */
-.poker-seat__dot {
-  width: 0.34rem;
-  height: 0.34rem;
-  border-radius: 9999px;
-  background: var(--color-gold-bright);
+/* O HALO DA VEZ mora num pseudo-elemento e não no box-shadow da placa
+   porque ele PULSA: animar opacidade custa uma composição por quadro,
+   animar box-shadow custa um repaint da placa inteira — e isto aqui roda
+   por baixo de uma mão de cartas em movimento. */
+.seat-plate::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 16px 2px rgba(245, 183, 111, 0.55);
   opacity: 0;
   transition: opacity 0.4s ease;
+  pointer-events: none;
 }
 
-.poker-seat__id.is-turn .poker-seat__dot {
+/* A MESA ESPERA ESTE LADO. O vinho clareia, a liga do ouro troca por uma
+   mais clara e o halo respira: de relance, a três palmos do aparelho, é a
+   única coisa acesa no feltro.
+
+   Trocar o TOKEN (e não repintar cada peça) é o que faz o aro do retrato
+   acender junto sem uma linha a mais: ele herda --plate-gold da placa. */
+.seat-plate.is-turn {
+  --plate-gold: linear-gradient(
+    152deg,
+    #fffaf0 0%,
+    #fcd9a0 17%,
+    #f5b76f 33%,
+    #b8813c 49%,
+    #f5b76f 61%,
+    #fff3dc 78%,
+    #dda85c 100%
+  );
+
+  background:
+    linear-gradient(180deg, #7d1c2a 0%, #4e0f19 48%, #26070d 100%) padding-box,
+    var(--plate-gold) border-box;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 232, 0.26),
+    inset 0 -7px 14px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(18, 5, 8, 0.5),
+    0 3px 14px rgba(10, 3, 6, 0.6);
+}
+
+.seat-plate.is-turn::before {
+  border-color: rgba(252, 217, 160, 0.5);
+}
+
+.seat-plate.is-turn::after {
   opacity: 1;
-  animation: nameplate-breathe 1.5s ease-in-out infinite;
+  animation: seat-plate-halo 1.8s ease-in-out infinite;
 }
 
-.poker-seat__name {
-  max-width: 8ch;
+@keyframes seat-plate-halo {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* O RETRATO: o monograma do clube num medalhão de vinho com aro de ouro
+   — a mesma identidade que a pessoa tem em qualquer lista do salão (ver
+   AvatarBadge). O aro sai da MESMA liga da moldura da placa, pelo token
+   --plate-gold, e por isso as duas peças acendem juntas quando a vez
+   chega sem que exista uma segunda receita de ouro para manter.
+
+   A ESPESSURA do aro acompanha o DIÂMETRO e não é medida fixa: a 320px o
+   medalhão encolhe, e 2px inteiros ali virariam uma rodela de ouro com a
+   letra espremida dentro. */
+.seat-plate__crest {
+  position: relative;
+  display: grid;
+  width: var(--plate-crest);
+  height: var(--plate-crest);
+  flex: none;
+  place-items: center;
+  border: calc(var(--plate-crest) * 0.075) solid transparent;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 34% 26%, #5f1420 0%, #37090f 58%, #180407 100%) padding-box,
+    var(--plate-gold) border-box;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 232, 0.18),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(18, 5, 8, 0.45),
+    0 2px 5px rgba(0, 0, 0, 0.45);
+  font-size: calc(var(--plate-crest) * 0.5);
+  transition: box-shadow 0.4s ease;
+}
+
+/* O fio interno — o vão entre o aro e a letra, que é o que faz a peça ler
+   como medalhão e não como botão. */
+.seat-plate__crest::before {
+  content: '';
+  position: absolute;
+  inset: 6%;
+  border: 1px solid rgba(245, 183, 111, 0.28);
+  border-radius: 9999px;
+}
+
+/* A letra tem de assentar no ÓPTICO do disco, e o Oswald tem descida.
+   Sem este empurrão de meio ponto ela flutua alta dentro do aro. */
+.seat-plate__crest .avatar-monogram {
+  position: relative;
+  top: 0.03em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.seat-plate.is-turn .seat-plate__crest {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 232, 0.24),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(18, 5, 8, 0.45),
+    0 0 10px rgba(245, 183, 111, 0.5);
+}
+
+.seat-plate__body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: calc(var(--plate-fs) * 0.2);
+}
+
+.seat-plate__line {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: calc(var(--plate-fs) * 0.45);
+}
+
+.seat-plate__name {
   overflow: hidden;
+  max-width: 9ch;
+  font-family: var(--font-display);
+  font-size: calc(var(--plate-fs) * 1.1);
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  line-height: 1.1;
   text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--color-ivory);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 /* O STACK é público, e é a informação mais consultada da mesa: é dele
-   que sai toda conta de aposta. Fica dourado e em algarismos tabulares
-   para não dançar de largura quando muda. */
-.poker-seat__stack {
+   que sai toda conta de aposta. Dourado, em display condensado e com
+   algarismos tabulares — não dança de largura quando o número muda.
+   `margin-left: auto` o joga para a borda direita quando a leitura de
+   baixo alarga a placa: as duas linhas ficam justificadas nas mesmas
+   duas bordas em vez de a de cima flutuar no meio. */
+.seat-plate__stack {
   display: inline-flex;
+  margin-left: auto;
   align-items: center;
-  gap: 0.2rem;
-  padding-left: 0.4rem;
-  border-left: 1px solid rgba(252, 217, 160, 0.25);
+  gap: calc(var(--plate-fs) * 0.26);
+  padding-left: calc(var(--plate-fs) * 0.6);
+  border-left: 1px solid rgba(252, 217, 160, 0.22);
+  font-family: var(--font-display);
+  font-size: calc(var(--plate-fs) * 1.1);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  white-space: nowrap;
   color: var(--color-gold-bright);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-/* Sem fichas: não há mais decisão a tomar deste lado, e a mesa diz isso
-   em brasa — é o estado mais alto de tensão de uma mão. */
-/* O selo de quem ABRIU a mão por vontade própria. Ele é de OURO, e o
-   all-in é de brasa: são dois acontecimentos diferentes e não podem ler
-   como o mesmo aviso — um é aperto, o outro é recado. */
-.poker-seat__shown {
-  padding: 0.02rem 0.32rem;
+/* A LEITURA DA SUA MÃO — "DOIS PARES, REIS E 9". Ela é informação SUA:
+   sai das suas cartas com o que está aberto na mesa, e por isso nunca
+   aparece do lado do rival. Sem ela, saber o que se tem exigiria montar
+   a mão de cabeça a cada carta que a mesa abre — que é exatamente o
+   trabalho que um bom software de poker faz por quem joga.
+
+   Ela é a SEGUNDA voz da placa: corpo menor, ouro médio e entreletra
+   larga. Comentário do que está em curso, não decisão — e por isso não
+   disputa o olho com o montante da linha de cima. */
+.seat-plate__reading {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: calc(var(--plate-fs) * 0.86);
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--color-gold);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Os dois SELOS da linha de cima. O all-in é de BRASA e o "mostrou" é de
+   OURO: são dois acontecimentos diferentes e não podem ler como o mesmo
+   aviso — um é aperto (não há mais ficha a jogar deste lado), o outro é
+   recado (abri a mão porque quis). */
+.seat-plate__flag {
+  align-self: center;
+  flex: none;
+  padding: calc(var(--plate-fs) * 0.08) calc(var(--plate-fs) * 0.44);
   border-radius: 9999px;
-  background: rgba(245, 183, 111, 0.2);
-  box-shadow: inset 0 0 0 1px rgba(245, 183, 111, 0.6);
-  font-size: 0.52rem;
+  font-size: calc(var(--plate-fs) * 0.78);
   font-weight: 900;
-  letter-spacing: 0.1em;
-  color: var(--color-gold-bright);
+  letter-spacing: 0.12em;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
-.poker-seat__allin {
-  padding: 0.05rem 0.35rem;
-  border-radius: 9999px;
+.seat-plate__flag--allin {
   background: linear-gradient(180deg, #ff7a3d, #b3300d);
   box-shadow: 0 0 10px rgba(255, 122, 61, 0.55);
-  font-size: 0.55rem;
-  letter-spacing: 0.14em;
   color: #fff4e8;
+}
+
+.seat-plate__flag--shown {
+  background: rgba(245, 183, 111, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(245, 183, 111, 0.6);
+  color: var(--color-gold-bright);
 }
 
 /* A LINHA DA MÃO em três colunas: vão · cartas · vão.
@@ -3116,34 +3349,10 @@ h2 {
   filter: brightness(1.06);
 }
 
-/* A LEITURA DA SUA MÃO — "Dois pares, Reis e 9" — na mesma placa de ouro
-   dos totais da casa. Ela é informação SUA: sai das suas cartas com o
-   que está aberto na mesa, e por isso nunca aparece do lado do rival.
-   Sem ela, saber o que se tem exigiria montar a mão de cabeça a cada
-   carta que a mesa abre — que é exatamente o trabalho que um bom
-   software de poker faz por quem joga. */
-.hand-reading {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: calc(var(--arena-total-h) * 0.1) calc(var(--arena-total-h) * 0.34);
-  border-radius: calc(var(--arena-total-h) * 0.32);
-  font-family: var(--font-display);
-  font-size: calc(var(--arena-total-h) * 0.5);
-  font-weight: 600;
-  line-height: 1.15;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #2a1206;
-  background: linear-gradient(180deg, #fff1d6 0%, #fcd9a0 26%, #f5b76f 62%, #dd9d51 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.8),
-    inset 0 -1px 0 rgba(122, 58, 20, 0.32),
-    0 0 0 1px rgba(122, 58, 20, 0.45),
-    0 3px 10px rgba(9, 42, 26, 0.35);
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
-}
+/* A leitura da mão saiu da plaquinha de ouro solta (`.hand-reading`) e
+   virou a segunda linha da placa do assento — ver `.seat-plate__reading`
+   lá em cima. Ela nunca foi uma peça independente: era a mesma
+   informação que o nome e o montante, a meia altura de distância deles. */
 
 /* ---------- Aposta da rua (o que ainda não é pote) ---------- */
 
@@ -3240,6 +3449,67 @@ h2 {
   width: 100%;
   flex-direction: column;
   gap: 0.4rem;
+}
+
+/* ---------- Levantar com a mão viva: a confirmação ---------- */
+
+/* Mesmo balão do convite de mostrar as cartas — é a mesma peça de mesa:
+   uma pergunta que para o feltro e cobra uma resposta. O que muda é o
+   ASSUNTO, e é ele que o aro vermelho anuncia antes de a pessoa ler
+   qualquer palavra: aqui não se ganha nada, se abre mão. */
+.leave-prompt {
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(239, 68, 68, 0.18),
+    0 18px 44px rgba(0, 0, 0, 0.62);
+}
+
+/* A CONTA da saída. Ela é o conteúdo da pergunta, não um detalhe dela:
+   "tem certeza?" não é informação, e três números são. */
+.leave-prompt__ledger {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 0.18rem;
+  margin-block: 0.15rem 0.35rem;
+}
+
+.leave-prompt__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 244, 232, 0.62);
+}
+
+.leave-prompt__row dd {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: rgba(255, 244, 232, 0.9);
+}
+
+/* A ÚLTIMA linha é a que fica: quanto se leva embora. Fio em cima para
+   separá-la das duas que explicam o custo, e ouro para dizer que este é
+   o número que vira crédito. */
+.leave-prompt__row--total {
+  padding-top: 0.28rem;
+  border-top: 1px solid rgba(252, 217, 160, 0.22);
+  color: rgba(255, 244, 232, 0.8);
+}
+
+.leave-prompt__row--total dd {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+  font-size: 1rem;
+  color: var(--color-gold-bright);
 }
 
 /* ==================== O balanço da sessão (caixa) ==================== */
@@ -3665,49 +3935,13 @@ h2 {
   color: #16110c;
 }
 
-/* Fica ao LADO das cartas do assento e virada para o centro: são as
-   fichas empurradas para o meio nesta rua. Ancorar no meio do feltro (e
-   não na borda da casca) é o que a mantém colada ao dono — na borda ela
-   virava uma pastilha solta no verde, sem dizer de quem era. Quando a
-   rua fecha ela some: a mesa recolheu tudo ao pote, e é essa a leitura. */
-/* A APOSTA DA RUA — as fichas que saíram do montante e ainda não viraram
-   pote. Ela mora do lado OPOSTO ao montante de quem a fez: as fichas
-   saem do rack, atravessam a mão e param aqui, a caminho do centro. Antes
-   ficava do mesmo lado, e o valor empurrado tapava o dinheiro de onde
-   ele tinha acabado de sair. */
-.street-bet {
-  position: absolute;
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  padding: 0.12rem 0.5rem;
-  border-radius: 9999px;
-  background: rgba(20, 8, 8, 0.6);
-  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.35);
-  font-size: 0.62rem;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-gold-bright);
-}
-
-.poker-seat--opponent .street-bet {
-  bottom: -0.7rem;
-  left: calc(50% + var(--hole-card-w) * 1.25);
-}
-
-.poker-seat--player .street-bet {
-  top: -0.7rem;
-  right: calc(50% + var(--hole-card-w) * 1.25);
-}
-
-.street-bet__chip {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 9999px;
-  background: linear-gradient(180deg, #fff1d6, #dd9d51);
-  box-shadow: 0 0 0 1px rgba(122, 58, 20, 0.6);
-}
+/* A APOSTA DA RUA em cifra solta (`.street-bet`) SAIU da mesa. Ela era uma
+   pastilha ancorada ao lado do disco do dealer, e ali fazia o contrário
+   do que prometia: em vez de deixar ler a rua de olho nu, punha um
+   terceiro número a competir com os dois que decidem a mão — o montante
+   de cada lado e o POTE do meio, que já soma tudo o que foi empurrado.
+   O lance em si continua sendo dito por extenso pela mesa (ver MoveCall),
+   que é onde ele tem contexto: quem fez, o quê, e para quanto. */
 
 /* ---------- O centro do feltro: pote, mesa e o que a mesa fala ---------- */
 
@@ -4688,6 +4922,30 @@ body.is-street-cut #root {
   border-radius: 0.3rem;
 }
 
+/* A CARTA GUARDADA: o lugar dela continua ocupado, com o verso vazio de
+   um baralho e uma interrogação no miolo. O tamanho é o mesmo de uma
+   carta de verdade — a placa não muda de forma conforme a resposta —, e
+   o que ela diz é o que a mesa sabe: havia uma carta ali, e ninguém
+   pagou para vê-la. */
+.winner-plate__card--hidden {
+  display: grid;
+  width: var(--card-size);
+  height: calc(var(--card-size) * 1.4);
+  place-items: center;
+  border-radius: 0.3rem;
+  background: linear-gradient(160deg, #5f1420 0%, #33090f 55%, #1a0508 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(252, 217, 160, 0.34),
+    inset 0 1px 0 rgba(255, 244, 232, 0.16),
+    0 2px 6px rgba(0, 0, 0, 0.5);
+  font-family: var(--font-display);
+  font-size: calc(var(--card-size) * 0.62);
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(245, 183, 111, 0.72);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
 .winner-plate__card + .winner-plate__card {
   margin-left: calc(var(--winner-card-w) * -0.16);
 }
@@ -4942,21 +5200,10 @@ body.is-street-cut #root {
   font-size: 0.95rem;
 }
 
-/* Aviso de mesa no pé (os blinds da mão, na distribuição): a mesma
-   pastilha discreta da espera pelo rival. */
-.table-note {
-  align-self: center;
-  margin-block: auto;
-  padding: 0.3rem 0.85rem;
-  border-radius: 9999px;
-  background: rgba(20, 8, 8, 0.36);
-  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.2);
-  font-size: 0.66rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(255, 244, 232, 0.8);
-}
+/* O aviso de mesa da distribuição ("Entrada 100 · mesa 5.000") saiu: eram
+   dois números que não mudam nunca, repetidos a cada mão por cima da cena
+   em que as cartas voam. Quem precisa deles lê o pote, que já nasce com
+   as duas entradas dentro. */
 
 /* Sem cenário não há crupiê que flanquear: a placa do vencedor volta ao
    fluxo e ocupa a faixa inteira (ver `.showdown-strip .winner-plate`). */
@@ -4969,7 +5216,10 @@ body.is-street-cut #root {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .poker-seat__id.is-turn .poker-seat__dot {
+  /* O halo da vez PARA de pulsar, mas continua aceso: ele não é enfeite,
+     é o aviso de quem tem a palavra — apagá-lo tiraria a informação
+     junto com o movimento. */
+  .seat-plate.is-turn::after {
     animation: none;
   }
 }

@@ -378,6 +378,42 @@ export function botDecision(context: BotContext): BotDecision {
   return legalActions.includes('fold') ? { action: 'fold' } : { action: 'check' };
 }
 
+/**
+ * O RIVAL DECIDE SE ABRE A MÃO que ninguém pagou para ver.
+ *
+ * Ele tem a mesma moeda que você (ver ShowCardsPrompt), e precisava ter:
+ * enquanto as cartas dele abriam SEMPRE numa desistência e as suas só
+ * abriam se você quisesse, a leitura da mesa corria num sentido só. Toda
+ * vez que ele largava uma mão você aprendia como ele joga; ele nunca
+ * aprendia nada de você, porque você podia se esconder. Guardar deixava
+ * de ser jogada — não custava nada — e virava o botão óbvio.
+ *
+ * A cabeça dele é a de um jogador de mesa, e por isso as três taxas são
+ * diferentes:
+ *
+ * - LEVOU o pote com mão FORTE: mostra bastante. É publicidade barata —
+ *   "eu aposto com mão feita" faz você pagar mais barato nas próximas.
+ * - LEVOU o pote com mão FRACA: mostra pouco. Abrir um blefe é entregar
+ *   a única arma que o blefe tem, e ele só faz isso de vez em quando —
+ *   justamente para você nunca ter certeza.
+ * - CORREU: mostra raramente. Um lay-down aberto conta que ele desiste
+ *   de mão boa, e essa é a informação mais cara que ele tem.
+ */
+export function botShowsHand(context: {
+  /** Força da mão dele, de 1 a 9 (a mesma escala do embate). */
+  level: number;
+  /** Foi ELE quem largou a mão. */
+  folded: boolean;
+  rng: Rng;
+}): boolean {
+  const { level, folded, rng } = context;
+  if (folded) return rng.next() < 0.15;
+  /* 2 é o degrau do PAR: daí para cima a mão está feita, e mão feita é o
+     que vale a pena anunciar. Abaixo dele só sobra carta alta — que é o
+     que ele estava blefando, e blefe aberto é arma gasta. */
+  return rng.next() < (level >= 2 ? 0.6 : 0.18);
+}
+
 /* ---------------- Distribuição empilhada (DevTools/testes) ---------------- */
 
 /** As cartas de uma mão empilhada, na ORDEM em que a mesa as distribui. */

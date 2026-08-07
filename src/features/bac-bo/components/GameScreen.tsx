@@ -47,6 +47,7 @@ export function GameScreen() {
   const session = useGameStore((state) => state.session);
   const showPrompt = useGameStore((state) => state.showPrompt);
   const handoverSeconds = useGameStore((state) => state.handoverSeconds);
+  const handoverTotal = useGameStore((state) => state.handoverTotal);
   const cardsShown = useGameStore((state) => state.cardsShown);
   const answerShowCards = useGameStore((state) => state.answerShowCards);
   const leaveTable = useGameStore((state) => state.leaveTable);
@@ -136,6 +137,7 @@ export function GameScreen() {
                   session={session}
                   showPrompt={showPrompt}
                   handoverSeconds={handoverSeconds}
+                  handoverTotal={handoverTotal}
                   cardsShown={cardsShown}
                   onAnswerShowCards={answerShowCards}
                   onLeaveTable={leaveTable}

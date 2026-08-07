@@ -32,10 +32,39 @@ export const gameSettingsSchema = z.object({
 });
 export type GameSettings = z.infer<typeof gameSettingsSchema>;
 
+/**
+ * A MESA QUE FICOU ABERTA.
+ *
+ * O buy-in sai do saldo no instante em que a pessoa senta — é como
+ * comprar fichas no caixa —, e só volta quando ela se levanta pelo
+ * caminho normal. A mesa, porém, vivia SÓ NA MEMÓRIA: um F5, uma aba
+ * descartada pelo sistema, uma ligação que bloqueia a tela, e os
+ * créditos sumiam. Tinham saído do saldo e não voltavam nunca.
+ *
+ * Este registro é o canhoto da compra. Enquanto houver mesa aberta ele
+ * fica gravado com o buy-in e o MONTANTE da última mão fechada; se o
+ * jogo voltar a nascer e encontrar um canhoto pendurado, a mesa é
+ * liquidada pelo último placar conhecido e o dinheiro volta ao saldo.
+ *
+ * Guarda o montante, e não só o buy-in, de propósito: devolver o buy-in
+ * cheio pagaria a quem estivesse perdendo para recarregar a página —
+ * o F5 viraria um botão de desfazer. Pelo último placar, recarregar
+ * devolve exatamente o que a pessoa tinha na frente dela.
+ */
+export const openTableSchema = z.object({
+  buyIn: z.number().int().positive(),
+  /** O montante do jogador na última mão que fechou. */
+  stack: z.number().int().nonnegative(),
+});
+export type OpenTable = z.infer<typeof openTableSchema>;
+
 export const persistedStateSchema = z.object({
   balance: z.number().int().nonnegative(),
   history: z.array(pokerHistoryEntrySchema),
   settings: gameSettingsSchema,
+  /* `.default(null)` mantém compatibilidade com estados gravados antes
+     do canhoto existir — sem exigir migração de versão. */
+  openTable: openTableSchema.nullable().default(null),
 });
 export type PersistedState = z.infer<typeof persistedStateSchema>;
 

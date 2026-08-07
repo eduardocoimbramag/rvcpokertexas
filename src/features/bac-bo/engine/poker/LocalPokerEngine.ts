@@ -15,10 +15,11 @@ import type {
   LeaveTableParams,
   PokerEngine,
 } from './PokerEngine';
-import { compareRanks, decidingCard, rankName, readHand } from './handRank';
+import { categoryLevel, compareRanks, decidingCard, rankName, readHand } from './handRank';
 import type { HandRank } from './handRank';
 import {
   botDecision,
+  botShowsHand,
   cardsDealtOn,
   contestedOf,
   firstToAct,
@@ -464,6 +465,19 @@ export class LocalPokerEngine implements PokerEngine {
     let decided: Card | undefined;
     const showdown = hand.foldedBy === undefined;
 
+    /* O RIVAL ESCOLHE se abre a mão, do mesmo jeito que você (ver
+       `botShowsHand`). Num showdown não há escolha: as duas mãos foram
+       pagas para serem vistas. A decisão é tomada AQUI, no instante em
+       que a mão morre, e não na hora de desenhar — assim ela é uma só,
+       fica gravada no resultado e não muda a cada re-render. */
+    const opponentShown = showdown
+      ? true
+      : botShowsHand({
+          level: categoryLevel(opponentRank.category),
+          folded: hand.foldedBy === 'opponent',
+          rng: this.rng,
+        });
+
     if (hand.foldedBy) {
       outcome = hand.foldedBy === 'player' ? 'lose' : 'win';
     } else {
@@ -506,6 +520,7 @@ export class LocalPokerEngine implements PokerEngine {
       playerRank: summarize(playerRank),
       opponentRank: summarize(opponentRank),
       showdown,
+      opponentShown,
       /* A carta que decidiu vai inteira, e não só o nome dela: a placa
          do desfecho mostra a FACE dela ao lado da combinação, e um nome
          não se vira em carta do outro lado da fronteira. O nome sai
@@ -532,10 +547,12 @@ export class LocalPokerEngine implements PokerEngine {
   private table(matchId: string, hand: ActiveHand): PokerRoundState {
     const settled = hand.settled;
     const legalActions = settled || hand.toAct !== 'player' ? [] : this.legalFor(hand, 'player');
-    /* As fechadas do rival abrem quando a mão ACABA — por showdown ou
-       por desistência. O sigilo que importa é o de DURANTE a mão; depois
-       dela, ver o que o outro tinha é o que ensina a jogar contra ele. */
-    const revealOpponent = settled;
+    /* As fechadas do rival abrem quando a mão ACABA — mas só quando ELE
+       as abre. Num showdown ele não escolhe: as duas mãos foram pagas
+       para serem vistas. Numa desistência ele escolhe (`opponentShown`),
+       e o que ele guardou não atravessa esta fronteira: a mão muchada
+       não fica escondida na tela, ela não está lá. */
+    const revealOpponent = settled && (hand.result?.opponentShown ?? true);
 
     return pokerRoundStateSchema.parse({
       matchId,
