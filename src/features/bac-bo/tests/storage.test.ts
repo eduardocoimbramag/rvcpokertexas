@@ -28,6 +28,7 @@ function sampleState(): PersistedState {
     balance: 750,
     history: [
       {
+        kind: 'duel' as const,
         id: 'r1',
         matchId: 'm1',
         playerHole: [

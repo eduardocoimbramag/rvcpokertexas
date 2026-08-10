@@ -311,6 +311,15 @@ export type PokerRoundState = z.infer<typeof pokerRoundStateSchema>;
  * o que cada um tinha.
  */
 export const pokerHistoryEntrySchema = pokerResultSchema.extend({
+  /**
+   * A marca do DUELO no extrato.
+   *
+   * `.default('duel')` porque o histórico gravado antes de existir mesa
+   * de 6 é todo de duelo — e essa é a informação verdadeira sobre
+   * aquelas mãos, não uma conveniência de schema. Ver
+   * `pokerHistoryRecordSchema`.
+   */
+  kind: z.literal('duel').default('duel'),
   opponentName: z.string().min(1),
   /**
    * Ausente nos registros gravados antes de a mesa virar SESSÃO. Não é
@@ -321,3 +330,92 @@ export const pokerHistoryEntrySchema = pokerResultSchema.extend({
   session: pokerSessionSchema.optional(),
 });
 export type PokerHistoryEntry = z.infer<typeof pokerHistoryEntrySchema>;
+
+/* ---------------- O extrato da mesa de 6 ---------------- */
+
+/** Um assento no registro de uma mão de anel. */
+export const ringSeatRecordSchema = z.object({
+  seat: z.number().int().nonnegative(),
+  name: z.string().min(1),
+  isYou: z.boolean(),
+  /** O que ele pôs na mão inteira. */
+  putIn: z.number().int().nonnegative(),
+  /** Quanto recebeu do meio. Zero para quem correu. */
+  won: z.number().int().nonnegative(),
+  folded: z.boolean(),
+  /**
+   * As duas fechadas — SÓ de quem as mostrou.
+   *
+   * O sigilo do extrato é o mesmo da mesa: quem correu não abre, e o que
+   * a mesa nunca viu o histórico não inventa. É por isso que este campo
+   * é opcional em vez de um par vazio: um par vazio seria uma mão sem
+   * cartas, e o que houve foi uma mão que não se mostrou.
+   */
+  hole: holeCardsSchema.optional(),
+  /** A leitura, quando houve showdown. */
+  rank: handRankSummarySchema.optional(),
+});
+export type RingSeatRecord = z.infer<typeof ringSeatRecordSchema>;
+
+/** Uma camada do pote, no registro. */
+export const potRecordSchema = z.object({
+  amount: z.number().int().nonnegative(),
+  eligible: z.array(z.number().int().nonnegative()),
+});
+
+/**
+ * UMA MÃO DA MESA DE 6 no extrato.
+ *
+ * Ela não cabe no registro do duelo, e não por preguiça de modelagem: o
+ * registro do duelo tem `playerHole` e `opponentHole`, `playerRank` e
+ * `opponentRank`, `committed` de dois lados. Uma mesa de seis não tem
+ * "os dois lados" — tem cadeiras, e tem POTES no plural.
+ *
+ * O extrato passa então a guardar DOIS FORMATOS, distinguidos por `kind`
+ * (ver `pokerHistoryRecordSchema`). Nada foi migrado e nada foi
+ * descartado: as mãos de duelo já gravadas continuam válidas exatamente
+ * como estão, e ganham `kind: 'duel'` por padrão ao serem lidas. Um
+ * `dropHistory` para a versão 4 teria sido mais simples de escrever e
+ * teria apagado o extrato de quem já jogou — que é dado da pessoa, não
+ * do formato.
+ */
+export const ringHistoryEntrySchema = z.object({
+  kind: z.literal('ring'),
+  id: z.string().min(1),
+  /** A mesa em que a mão aconteceu. */
+  tableId: z.string().min(1),
+  tableName: z.string().min(1),
+  seats: z.array(ringSeatRecordSchema).min(2),
+  board: z.array(cardSchema).max(5),
+  pots: z.array(potRecordSchema),
+  /** A cadeira que tinha o botão nesta mão. */
+  button: z.number().int().nonnegative(),
+  /** A SUA cadeira — a régua de todo lucro e prejuízo do registro. */
+  yourSeat: z.number().int().nonnegative(),
+  smallBlind: z.number().int().positive(),
+  bigBlind: z.number().int().positive(),
+  showdown: z.boolean(),
+  /** O que ESTA mão fez com o seu stack, com sinal. */
+  netChange: z.number().int(),
+  /** O seu stack depois de a mão fechar. */
+  stack: z.number().int().nonnegative(),
+  completedAt: z.number().int().nonnegative(),
+});
+export type RingHistoryEntry = z.infer<typeof ringHistoryEntrySchema>;
+
+/**
+ * UMA LINHA DO EXTRATO: uma mão de duelo ou uma mão de mesa de 6.
+ *
+ * A ordem da união importa. O registro de anel é testado PRIMEIRO porque
+ * ele tem discriminante literal (`kind: 'ring'`), enquanto o do duelo
+ * aceita `kind` ausente — sem essa ordem, uma linha de anel entraria no
+ * schema do duelo e falharia por falta de `playerHole`, e o extrato
+ * inteiro seria descartado como corrompido.
+ */
+export const pokerHistoryRecordSchema = z.union([ringHistoryEntrySchema, pokerHistoryEntrySchema]);
+export type PokerHistoryRecord = z.infer<typeof pokerHistoryRecordSchema>;
+
+/** A linha é de uma mesa de 6. */
+export function isRingEntry(entry: PokerHistoryRecord): entry is RingHistoryEntry {
+  return entry.kind === 'ring';
+}

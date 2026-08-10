@@ -13,6 +13,7 @@ import type {
   ForcedPokerDeal,
   PokerAction,
   PokerHistoryEntry,
+  PokerHistoryRecord,
   PokerMove,
   PokerOutcome,
   PokerResult,
@@ -266,7 +267,7 @@ export interface GameStoreState {
    * mão.
    */
   streetAnnounce: Street | null;
-  history: PokerHistoryEntry[];
+  history: PokerHistoryRecord[];
   /**
    * Segundo beat da fase `found`: a apresentação já passou e o letreiro
    * HORA DO DUELO está no feltro. É o que separa as duas cenas de uma
@@ -306,6 +307,16 @@ export interface GameStoreState {
   /** Ajusta o saldo por um delta (débito/crédito) e persiste — usado pelo
       buy-in e pelo prêmio do modo Torneio. */
   applyBalanceDelta: (delta: number) => void;
+  /**
+   * Grava uma linha no extrato e persiste.
+   *
+   * Existe porque o extrato deixou de ser só do duelo: a mesa de cash de
+   * 6 escreve nele pela mesma porta, e o duelo continua escrevendo pela
+   * dele (ver `closeHand`). O corte de saldo NÃO acontece aqui — num
+   * cash as fichas ficam no feltro entre as mãos, e o caixa só abre
+   * quando alguém levanta.
+   */
+  pushHistory: (entry: PokerHistoryRecord) => void;
   markTutorialSeen: () => void;
   updateAudioSettings: (patch: Partial<AudioSettings>) => void;
   setVibrationEnabled: (enabled: boolean) => void;
@@ -961,7 +972,11 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       const { result, match, history } = get();
       if (!result || !match || !transitionTo('handover')) return;
 
-      const entry: PokerHistoryEntry = { ...result, opponentName: match.opponent.name };
+      const entry: PokerHistoryEntry = {
+        ...result,
+        kind: 'duel',
+        opponentName: match.opponent.name,
+      };
       /* O canhoto acompanha o placar: cada mão que fecha atualiza o
          montante gravado. É por isso que recarregar a página devolve o
          que a pessoa tinha na frente dela, e não o buy-in cheio. */
@@ -1006,7 +1021,9 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     const showdownBeatMs = (outcome: PokerResult | undefined): number => {
       const showdown = outcome?.showdown ?? true;
       const reveals = showdown || (outcome?.opponentShown ?? true);
-      return (reveals ? TIMINGS.revealMs : 0) + (showdown ? TIMINGS.settleMs : TIMINGS.foldSettleMs);
+      return (
+        (reveals ? TIMINGS.revealMs : 0) + (showdown ? TIMINGS.settleMs : TIMINGS.foldSettleMs)
+      );
     };
 
     /**
@@ -1280,6 +1297,11 @@ export function createGameStore(deps: GameStoreDeps = {}) {
 
       applyBalanceDelta: (delta) => {
         set({ balance: Math.max(0, get().balance + delta) });
+        persist();
+      },
+
+      pushHistory: (entry) => {
+        set({ history: [entry, ...get().history].slice(0, HISTORY_LIMIT) });
         persist();
       },
 

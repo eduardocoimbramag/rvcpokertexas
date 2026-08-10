@@ -13,7 +13,7 @@ import { illustrativeRating } from '../../components/opponentProfile';
 import type { Opponent } from '../../engine/types';
 import { prizeFor, tablePrize, tournamentSelectors, useTournamentStore } from '../tournamentStore';
 import type { TournamentPlayer } from '../types';
-import { TABLE_TARGET_WINS, formatLabel } from '../types';
+import { TABLE_TARGET_WINS, formatLabel, seatsLabel } from '../types';
 import { TournamentSettingsSheet } from './TournamentSettingsSheet';
 
 /**
@@ -282,11 +282,18 @@ export function LobbyScreen() {
         </button>
       </header>
 
-      {/* Resumo: formato · jogadores · taxa de entrada · prêmio. */}
+      {/* Resumo: o que a mesa É · jogadores · o dinheiro dela.
+          Numa sala de poker o "formato" virou o TAMANHO DA MESA, porque é
+          ele que muda o jogo: numa mesa de três a mão média que se joga é
+          muito mais larga que numa de seis. */}
       <div className="tournament-summary mb-3">
         <span className="tournament-summary__item flex items-center gap-1.5">
           <Icon name={format === 'bracket' ? 'trophy' : 'users'} size="0.95em" />{' '}
-          {format === 'bracket' ? formatLabel(format) : `Melhor de ${TABLE_TARGET_WINS}`}
+          {format === 'cash'
+            ? seatsLabel(size)
+            : format === 'bracket'
+              ? formatLabel(format)
+              : `Melhor de ${TABLE_TARGET_WINS}`}
         </span>
         <span className="tournament-summary__sep" aria-hidden="true">
           ·

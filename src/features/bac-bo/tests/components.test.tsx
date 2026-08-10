@@ -127,7 +127,11 @@ const samplePokerResult: PokerResult = {
   completedAt: 1700000000000,
 };
 
-const sampleEntry: PokerHistoryEntry = { ...samplePokerResult, opponentName: 'Luna' };
+const sampleEntry: PokerHistoryEntry = {
+  ...samplePokerResult,
+  kind: 'duel',
+  opponentName: 'Luna',
+};
 
 afterEach(() => {
   // Restaura o store singleton entre os testes.

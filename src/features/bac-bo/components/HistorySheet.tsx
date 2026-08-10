@@ -3,7 +3,8 @@ import { Icon } from '@/shared/components/Icon';
 import { Sheet } from '@/shared/components/Sheet';
 import { formatCredits, formatDelta, formatTime } from '@/shared/lib/format';
 
-import type { PokerHistoryEntry, PokerOutcome } from '../engine/poker/types';
+import type { PokerHistoryEntry, PokerOutcome, RingHistoryEntry } from '../engine/poker/types';
+import { isRingEntry } from '../engine/poker/types';
 import { useGameStore } from '../store/gameStore';
 import { EmptyState } from './EmptyState';
 
@@ -49,9 +50,13 @@ export function HistorySheet({ open, onClose }: HistorySheetProps) {
         </EmptyState>
       ) : (
         <ul className="flex flex-col gap-2" data-testid="history-list">
-          {history.map((entry) => (
-            <HistoryRow key={entry.id} entry={entry} />
-          ))}
+          {history.map((entry) =>
+            isRingEntry(entry) ? (
+              <RingRow key={entry.id} entry={entry} />
+            ) : (
+              <HistoryRow key={entry.id} entry={entry} />
+            ),
+          )}
         </ul>
       )}
     </Sheet>
@@ -72,8 +77,22 @@ function summaryOf(entry: PokerHistoryEntry): string {
   return entry.foldedBy === 'player' ? `${label} · você desistiu` : `${label} · rival desistiu`;
 }
 
-function HistoryRow({ entry }: { entry: PokerHistoryEntry }) {
-  const badge = OUTCOME_BADGE[entry.outcome];
+/**
+ * A CASCA DE UMA LINHA do extrato — o selo do desfecho, o miolo e o
+ * saldo da mão. Duelo e mesa de 6 são jogos diferentes e contam coisas
+ * diferentes, mas a linha é a mesma peça: um extrato em que metade das
+ * linhas tem outro formato deixa de ser um extrato.
+ */
+function Row({
+  outcome,
+  children,
+  netChange,
+}: {
+  outcome: PokerOutcome;
+  children: React.ReactNode;
+  netChange: number;
+}) {
+  const badge = OUTCOME_BADGE[outcome];
   return (
     <li className="flex items-center gap-3 rounded-2xl border border-arena-line bg-arena-800 px-4 py-3">
       {/* role="img": a letra sozinha ("V") não diz nada em voz alta, e o
@@ -81,33 +100,67 @@ function HistoryRow({ entry }: { entry: PokerHistoryEntry }) {
       <span
         className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-black ${badge.className}`}
         role="img"
-        aria-label={
-          entry.outcome === 'win' ? 'Vitória' : entry.outcome === 'lose' ? 'Derrota' : 'Empate'
-        }
+        aria-label={outcome === 'win' ? 'Vitória' : outcome === 'lose' ? 'Derrota' : 'Empate'}
       >
         {badge.label}
       </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold">
-          {summaryOf(entry)}
-          <span className="font-normal text-lavender"> vs {entry.opponentName}</span>
-        </p>
-        <p className="text-xs text-lavender/70">
-          {formatTime(entry.completedAt)}
-          {entry.pot > 0 ? ` · pote ${formatCredits(entry.pot)}` : ''}
-        </p>
-      </div>
+      <div className="min-w-0 flex-1">{children}</div>
       <span
         className={`text-sm font-black tabular-nums ${
-          entry.netChange > 0
-            ? 'text-gold'
-            : entry.netChange < 0
-              ? 'text-opponent-soft'
-              : 'text-lavender'
+          netChange > 0 ? 'text-gold' : netChange < 0 ? 'text-opponent-soft' : 'text-lavender'
         }`}
       >
-        {formatDelta(entry.netChange)}
+        {formatDelta(netChange)}
       </span>
     </li>
+  );
+}
+
+/**
+ * UMA MÃO DA MESA DE 6 no extrato.
+ *
+ * O que ela conta é o que só uma mesa de seis tem para contar: com
+ * quantas pessoas se disputou e quanto havia no meio. Repetir aqui o
+ * formato do duelo ("vs Fulano") mentiria — não houve um rival, houve
+ * cinco —, e a leitura da SUA mão só existe quando a mão foi ao
+ * showdown: numa mesa de verdade quem leva o pote sem mostrar não deixa
+ * registro do que tinha.
+ */
+function RingRow({ entry }: { entry: RingHistoryEntry }) {
+  const eu = entry.seats.find((s) => s.isYou);
+  const disputantes = entry.seats.filter((s) => !s.folded).length;
+  const pote = entry.pots.reduce((sum, p) => sum + p.amount, 0);
+  const outcome: PokerOutcome = entry.netChange > 0 ? 'win' : entry.netChange < 0 ? 'lose' : 'tie';
+
+  const leitura = eu?.rank?.label ?? (eu?.folded ? 'Você desistiu' : 'Levou sem mostrar');
+
+  return (
+    <Row outcome={outcome} netChange={entry.netChange}>
+      <p className="truncate text-sm font-bold">
+        {leitura}
+        <span className="font-normal text-lavender"> · {entry.tableName}</span>
+      </p>
+      <p className="text-xs text-lavender/70">
+        {formatTime(entry.completedAt)}
+        {` · mesa de ${entry.seats.length}`}
+        {entry.showdown ? ` · ${disputantes} no showdown` : ''}
+        {pote > 0 ? ` · pote ${formatCredits(pote)}` : ''}
+      </p>
+    </Row>
+  );
+}
+
+function HistoryRow({ entry }: { entry: PokerHistoryEntry }) {
+  return (
+    <Row outcome={entry.outcome} netChange={entry.netChange}>
+      <p className="truncate text-sm font-bold">
+        {summaryOf(entry)}
+        <span className="font-normal text-lavender"> vs {entry.opponentName}</span>
+      </p>
+      <p className="text-xs text-lavender/70">
+        {formatTime(entry.completedAt)}
+        {entry.pot > 0 ? ` · pote ${formatCredits(entry.pot)}` : ''}
+      </p>
+    </Row>
   );
 }

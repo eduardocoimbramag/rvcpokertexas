@@ -11,13 +11,19 @@ import { MIN_STAKE } from '../../engine/credits';
 import { useGameStore } from '../../store/gameStore';
 import { randomLobbyPassword, suggestLobbyName } from '../simulation';
 import { useTournamentStore } from '../tournamentStore';
-import type { LobbyVisibility, TournamentFormat, TournamentSize } from '../types';
+import type { LobbyVisibility, TableMode, TournamentFormat, TournamentSize } from '../types';
 import {
-  TABLE_TARGET_WINS,
-  TOURNAMENT_FORMATS,
+  CASH_DEFAULT_BLIND,
+  CASH_DEFAULT_BUY_IN,
+  CASH_MIN_BLIND,
+  CASH_MIN_BLINDS_DEEP,
+  CASH_SIZES,
+  TABLE_MODES,
   defaultSizeFor,
-  formatLabel,
-  sizesFor,
+  isCash,
+  seatsHint,
+  tableModeHint,
+  tableModeLabel,
 } from '../types';
 import { PrizeSplit } from './PrizeSplit';
 
@@ -48,8 +54,17 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
 
   const [visibility, setVisibility] = useState<LobbyVisibility>('public');
   const [name, setName] = useState(suggestLobbyName);
-  const [format, setFormat] = useState<TournamentFormat>('bracket');
-  const [size, setSize] = useState<TournamentSize>(defaultSizeFor('bracket'));
+  /* A SALA É DE POKER, e isso deixou de ser uma escolha. O formato
+     sobrevive como constante porque o store, a vitrine e o histórico
+     ainda falam essa língua — e porque os outros dois modos continuam
+     inteiros no projeto, atrás de `BRACKET_ENABLED`. */
+  const format: TournamentFormat = 'cash';
+  const [size, setSize] = useState<TournamentSize>(defaultSizeFor('cash'));
+  const [mode, setMode] = useState<TableMode>('open');
+  // Buy-in e blind são texto enquanto se digita, como a taxa: o campo
+  // precisa poder ficar vazio no meio da edição.
+  const [buyInDraft, setBuyInDraft] = useState(String(CASH_DEFAULT_BUY_IN));
+  const [blindDraft, setBlindDraft] = useState(String(CASH_DEFAULT_BLIND));
   // A taxa é texto enquanto se digita (o campo precisa poder ficar
   // vazio); o número derivado alimenta a validação E a premiação, que
   // por isso recalcula a cada tecla.
@@ -58,8 +73,11 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
   const [touched, setTouched] = useState(false);
 
   const fee = Number.parseInt(feeDraft, 10) || 0;
+  const buyIn = Number.parseInt(buyInDraft, 10) || 0;
+  const blind = Number.parseInt(blindDraft, 10) || 0;
   const trimmed = name.trim();
   const isPrivate = visibility === 'private';
+  const cash = isCash(format);
   const nameError = trimmed.length === 0 ? 'Dê um nome à sala.' : null;
   const passwordError =
     isPrivate && password.length !== PASSWORD_LENGTH
@@ -71,19 +89,29 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
       : fee > balance
         ? 'Sua taxa precisa caber no saldo.'
         : null;
-  const error = nameError ?? passwordError ?? feeError;
 
-  /** Trocar de formato troca a régua de tamanhos: o valor antigo pode não
-   *  existir no formato novo (16 não é mesa; 3 não é chaveamento). */
-  const chooseFormat = (next: TournamentFormat) => {
-    setFormat(next);
-    setSize(defaultSizeFor(next));
-  };
+  /* A ECONOMIA DA MESA DE CASH. As três regras existem para impedir uma
+     mesa que não dá jogo:
+     - o buy-in sai DO SEU SALDO na hora de sentar, então precisa caber;
+     - um blind sem piso não pressiona ninguém e a mão nunca fecha;
+     - um buy-in raso demais não é poker: com menos de 20 blinds na
+       frente, toda mão vira all-in pré-flop. */
+  const blindError = blind < CASH_MIN_BLIND ? `O blind mínimo é ${CASH_MIN_BLIND}.` : null;
+  const buyInError =
+    buyIn > balance
+      ? 'O buy-in precisa caber no seu saldo.'
+      : blind > 0 && buyIn < blind * CASH_MIN_BLINDS_DEEP
+        ? `Com este blind, o buy-in mínimo é ${formatCredits(blind * CASH_MIN_BLINDS_DEEP)}.`
+        : null;
+
+  const error = cash
+    ? (nameError ?? passwordError ?? blindError ?? buyInError)
+    : (nameError ?? passwordError ?? feeError);
 
   const submit = () => {
     setTouched(true);
     if (error) return;
-    createLobby({ name: trimmed, visibility, format, size, fee, password });
+    createLobby({ name: trimmed, visibility, format, size, fee, password, mode, buyIn, blind });
     onClose();
   };
 
@@ -162,82 +190,131 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
           )}
         </AnimatePresence>
 
-        {/* O FORMATO manda no resto da folha: ele define a régua de
-            tamanhos e o desenho da premiação. Escolhido aqui, vira
-            contrato — a sala nasce sendo uma coisa ou a outra. */}
-        <Field label="Formato">
-          <div className="seg seg--full" role="group" aria-label="Formato da sala">
-            {TOURNAMENT_FORMATS.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => chooseFormat(option)}
-                aria-pressed={format === option}
-                className={`seg__btn ${format === option ? 'seg__btn--on' : ''}`}
-                data-testid={`create-format-${option}`}
-              >
-                <Icon
-                  name={option === 'bracket' ? 'trophy' : 'users'}
-                  size="0.95em"
-                  className="mr-1 inline align-[-0.1em]"
-                />
-                {formatLabel(option)}
-              </button>
-            ))}
-          </div>
-          <p className="field__hint">
-            {format === 'bracket'
-              ? 'Mata-mata em duelos 1v1 até a final, com pódio premiado.'
-              : `Todos na mesma mesa: melhor de ${TABLE_TARGET_WINS} — quem vencer ${TABLE_TARGET_WINS} rodadas leva o bolo.`}
-          </p>
-        </Field>
-
-        {/* O quantitativo se decide AQUI e vira contrato: depois de criada
-            a sala, não há onde mudá-lo. Com 16, o chaveamento abre nas
-            oitavas de final; a mesa única vai de 3 a 6 assentos. */}
-        <Field label="Jogadores">
-          <div className="seg seg--full" role="group" aria-label="Número de jogadores">
-            {sizesFor(format).map((n) => (
+        {/* QUANTAS PESSOAS SENTAM — a escolha que substituiu o formato.
+            Só há um jogo nesta casa, e é poker: perguntar "qual formato"
+            era pedir para escolher entre um jogo e dois modos de outro.
+            O que muda de sala para sala é o TAMANHO DA MESA, e ele muda o
+            jogo de verdade: numa mesa de três a mão média que se joga é
+            muito mais larga que numa de seis, porque há menos mãos para
+            bater. Escolhido aqui, vira contrato — a sala nasce com o
+            número de lugares que tem. */}
+        <Field label="Participantes">
+          <div className="seg seg--full" role="group" aria-label="Número de participantes">
+            {CASH_SIZES.map((n) => (
               <button
                 key={n}
                 type="button"
                 onClick={() => setSize(n)}
                 aria-pressed={size === n}
-                aria-label={`${n} jogadores`}
+                aria-label={`${n} participantes`}
                 className={`seg__btn ${size === n ? 'seg__btn--on' : ''}`}
                 data-testid={`create-size-${n}`}
               >
-                {/* Com quatro opções (mesa única) o rótulo inteiro não
-                    cabe na coluna: fica o número, que o rótulo do campo
-                    já qualifica. */}
-                {format === 'bracket' ? `${n} jogadores` : n}
+                <Icon name="users" size="0.9em" className="mr-1 inline align-[-0.1em]" />
+                {n}
               </button>
             ))}
           </div>
-          <p className="field__hint">Fixo após a criação da sala.</p>
-        </Field>
-
-        {/* Taxa livre, no mesmo campo com atalhos da mesa de negociação:
-            o valor é da pessoa, não de uma lista de fichas. */}
-        <Field label="Taxa de entrada" error={touched ? feeError : null}>
-          <AmountStepper
-            value={feeDraft}
-            onChange={setFeeDraft}
-            label="Taxa de entrada em créditos"
-            placeholder={`Mín. ${MIN_STAKE}`}
-            data-testid="create-fee"
-            stepTestIdPrefix="create-fee-plus"
-          />
-          <p className="field__hint">
-            Seu saldo: {formatCredits(balance)} créditos. Só sai do seu saldo se você perder.
+          <p className="field__hint" data-testid="create-seats-hint">
+            {seatsHint(Number(size))} Você compra fichas, paga o blind e sai quando quiser.
           </p>
         </Field>
 
+        {/* MESA ABERTA OU FECHADA — a decisão que muda o que acontece
+            DEPOIS de a partida começar, e por isso vem antes do dinheiro:
+            é ela que diz se a sala continua na vitrine.
+            Só existe no cash: um torneio sempre fecha ao iniciar, porque
+            o chaveamento já foi montado com quem estava lá. */}
+        {cash && (
+          <Field label="Entrada na mesa">
+            <div className="seg seg--full" role="group" aria-label="Mesa aberta ou fechada">
+              {TABLE_MODES.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setMode(option)}
+                  aria-pressed={mode === option}
+                  className={`seg__btn ${mode === option ? 'seg__btn--on' : ''}`}
+                  data-testid={`create-mode-${option}`}
+                >
+                  <Icon
+                    name={option === 'open' ? 'users' : 'lock'}
+                    size="0.95em"
+                    className="mr-1 inline align-[-0.1em]"
+                  />
+                  {tableModeLabel(option)}
+                </button>
+              ))}
+            </div>
+            <p className="field__hint">{tableModeHint(mode)}</p>
+          </Field>
+        )}
+
+        {/* OS DOIS VALORES QUE A VITRINE ANUNCIA. Eles vêm em campo
+            separado e nesta ordem — primeiro com quanto se senta, depois
+            quanto custa cada mão — porque é assim que um jogador lê uma
+            mesa: quanto arrisco, e por quanto tempo isso dura. */}
+        {cash && (
+          <>
+            <Field label="Fichas ao sentar" error={touched ? buyInError : null}>
+              <AmountStepper
+                value={buyInDraft}
+                onChange={setBuyInDraft}
+                label="Buy-in em créditos"
+                placeholder={`Mín. ${blind * CASH_MIN_BLINDS_DEEP}`}
+                data-testid="create-buyin"
+                stepTestIdPrefix="create-buyin-plus"
+              />
+              <p className="field__hint">
+                Sai do seu saldo ao sentar e volta ao levantar. Seu saldo: {formatCredits(balance)}.
+              </p>
+            </Field>
+
+            <Field label="Blind por mão" error={touched ? blindError : null}>
+              <AmountStepper
+                value={blindDraft}
+                onChange={setBlindDraft}
+                label="Blind em créditos"
+                placeholder={`Mín. ${CASH_MIN_BLIND}`}
+                data-testid="create-blind"
+                stepTestIdPrefix="create-blind-plus"
+              />
+              <p className="field__hint" data-testid="create-depth">
+                {blind > 0
+                  ? `${Math.floor(buyIn / blind)} blinds na frente de cada um.`
+                  : 'O que cada um paga antes de ver carta, a cada mão.'}
+              </p>
+            </Field>
+          </>
+        )}
+
+        {/* Taxa livre, no mesmo campo com atalhos da mesa de negociação:
+            o valor é da pessoa, não de uma lista de fichas.
+            No cash não há taxa nem premiação: o dinheiro é o buy-in, e
+            ele volta para quem levantar da mesa com ele. */}
+        {!cash && (
+          <Field label="Taxa de entrada" error={touched ? feeError : null}>
+            <AmountStepper
+              value={feeDraft}
+              onChange={setFeeDraft}
+              label="Taxa de entrada em créditos"
+              placeholder={`Mín. ${MIN_STAKE}`}
+              data-testid="create-fee"
+              stepTestIdPrefix="create-fee-plus"
+            />
+            <p className="field__hint">
+              Seu saldo: {formatCredits(balance)} créditos. Só sai do seu saldo se você perder.
+            </p>
+          </Field>
+        )}
+
         {/* Recalcula a cada tecla: a premiação é função direta da taxa e
             do tamanho da mesa, então acompanha o campo acima ao vivo. */}
-        <Field label="Premiação">
-          <PrizeSplit fee={fee} size={size} format={format} data-testid="create-prize" />
-        </Field>
+        {!cash && (
+          <Field label="Premiação">
+            <PrizeSplit fee={fee} size={size} format={format} data-testid="create-prize" />
+          </Field>
+        )}
 
         <Button onClick={submit} size="md" fullWidth data-testid="create-confirm">
           <Icon name={isPrivate ? 'lock' : 'globe'} /> CRIAR SALA

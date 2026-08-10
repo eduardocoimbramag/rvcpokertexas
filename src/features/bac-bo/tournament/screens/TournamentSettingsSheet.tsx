@@ -3,7 +3,7 @@ import { Sheet } from '@/shared/components/Sheet';
 import { formatCredits } from '@/shared/lib/format';
 
 import { useTournamentStore } from '../tournamentStore';
-import { TABLE_TARGET_WINS, formatLabel } from '../types';
+import { TABLE_TARGET_WINS, formatLabel, seatsLabel } from '../types';
 import { PrizeSplit } from './PrizeSplit';
 
 export interface TournamentSettingsSheetProps {
@@ -44,13 +44,20 @@ export function TournamentSettingsSheet({ open, onClose }: TournamentSettingsShe
         {/* Formato: o que se joga aqui dentro. Vem antes do tamanho
             porque é ele que dá sentido ao número. */}
         <div>
-          <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">Formato</p>
+          <p className="mb-2 text-xs font-black uppercase tracking-widest text-copper">
+            {format === 'cash' ? 'Mesa' : 'Formato'}
+          </p>
           <div className="room-fact" data-testid="settings-format">
             <span className="flex items-center gap-2">
-              <Icon name={format === 'bracket' ? 'trophy' : 'users'} /> {formatLabel(format)}
+              <Icon name={format === 'bracket' ? 'trophy' : 'users'} />{' '}
+              {format === 'cash' ? seatsLabel(size) : formatLabel(format)}
             </span>
             <span className="room-fact__value">
-              {format === 'bracket' ? 'Mata-mata' : `Melhor de ${TABLE_TARGET_WINS}`}
+              {format === 'cash'
+                ? 'Mão após mão'
+                : format === 'bracket'
+                  ? 'Mata-mata'
+                  : `Melhor de ${TABLE_TARGET_WINS}`}
             </span>
           </div>
           <p className="field__hint">

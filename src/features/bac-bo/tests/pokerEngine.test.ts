@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { SeededRng } from '@/shared/lib/random';
 
@@ -6,6 +6,17 @@ import { GameEngineError } from '../engine/GameEngine';
 import { LocalPokerEngine } from '../engine/poker/LocalPokerEngine';
 import { TABLE_ANTE } from '../engine/credits';
 import type { PokerRoundState } from '../engine/poker/types';
+
+/* ESTE ARQUIVO É CARO, e de propósito.
+   Sete dos testes daqui varrem dezenas de mesas INTEIRAS contra a engine
+   de verdade — é assim que se garante que nenhuma mesa trava sem quem
+   fale, que a mão sempre fecha e que a conta de fichas nunca escapa. Não
+   dá para baratear sem baratear a garantia.
+   O limite padrão de 5 s do vitest foi calibrado para teste de unidade, e
+   em máquina lenta ele derruba estes por tempo e não por defeito — uma
+   suíte que pisca vermelho sem motivo é pior que uma suíte lenta. O
+   limite explícito declara a conta em vez de escondê-la. */
+vi.setConfig({ testTimeout: 30_000 });
 
 /** Engine determinística e sem espera — o relógio é dos testes. */
 function engineWith(seed: number, allowForcedDeals = true) {

@@ -7,6 +7,7 @@ import { SeededRng } from '@/shared/lib/random';
 import { COUNTDOWN_START, TIMINGS } from '../animations/timings';
 import type { FindMatchParams, SetStakeParams } from '../engine/GameEngine';
 import { LocalPokerEngine } from '../engine/poker/LocalPokerEngine';
+import { isRingEntry } from '../engine/poker/types';
 import type {
   ActParams,
   AdvanceParams,
@@ -629,9 +630,11 @@ describe('fluxo completo da sessão', () => {
     expect(store.getState().session?.stacks.player).toBe(1000);
     expect(store.getState().balance).toBe(950);
     expect(store.getState().result?.outcome).toBe('win');
-    // Uma mão jogada, UMA entrada no histórico.
+    // Uma mão jogada, UMA entrada no histórico — e ela é de DUELO.
     expect(store.getState().history).toHaveLength(1);
-    expect(store.getState().history[0]?.opponentName).toBe('Stub');
+    const linha = store.getState().history[0];
+    expect(linha?.kind).toBe('duel');
+    expect(linha && !isRingEntry(linha) ? linha.opponentName : null).toBe('Stub');
   });
 
   it('quebrar na mesa zera o stack, e o caixa não cobra de quem perdeu', async () => {

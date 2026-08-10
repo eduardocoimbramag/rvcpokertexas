@@ -9,6 +9,7 @@ import {
   useTournamentStore,
 } from '../tournament/tournamentStore';
 import type { LobbyListing } from '../tournament/types';
+import { CASH_SEATS } from '../tournament/types';
 import { sizesFor } from '../tournament/types';
 import type { RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
@@ -40,6 +41,11 @@ function listing(overrides: Partial<LobbyListing> = {}): LobbyListing {
     fee: 25,
     visibility: 'public',
     password: '',
+    // Economia do cash: irrelevante num chaveamento, mas o cartão da
+    // vitrine é um só e sempre carrega os três campos.
+    mode: 'open',
+    buyIn: 1000,
+    blind: 20,
     ...overrides,
   };
 }
@@ -127,15 +133,23 @@ describe('porta da sala privada', () => {
       // Toda privada da lista tem senha de 4 dígitos; pública, nenhuma.
       if (lobby.visibility === 'private') expect(lobby.password).toMatch(/^\d{4}$/);
       else expect(lobby.password).toBe('');
-      // O tamanho tem de ser válido PARA O FORMATO da sala: chaveamento
-      // só em potências de 2, mesa única de 3 a 6 assentos.
+      // O tamanho tem de ser válido para a mesa: de três a seis lugares.
       expect(sizesFor(lobby.format)).toContain(lobby.size);
     }
-    // Os dois formatos convivem na vitrine…
-    expect(lobbies.some((l) => l.format === 'bracket')).toBe(true);
-    expect(lobbies.some((l) => l.format === 'table')).toBe(true);
-    // …e a copa de 16 aparece nela — rara, mas existente.
-    expect(lobbies.some((l) => l.size === 16)).toBe(true);
+
+    /* A VITRINE É DE POKER, e só. Anunciar na lista uma sala que não se
+       pode criar seria oferecer uma porta que leva a outro jogo — os
+       modos de blackjack continuam no projeto, atrás de
+       `BRACKET_ENABLED`, sem porta de entrada. */
+    expect(lobbies.every((l) => l.format === 'cash')).toBe(true);
+
+    /* AS QUATRO MESAS APARECEM. A de seis é a mais comum, como numa casa
+       real à noite, mas a de três existe para quem quer jogar muitas
+       mãos — e uma vitrine que só mostrasse mesa cheia esconderia metade
+       da régua que a folha de criação oferece. */
+    for (const lugares of [3, 4, 5, 6]) {
+      expect(lobbies.some((l) => l.size === lugares)).toBe(true);
+    }
   });
 
   it('senha errada não abre a porta', () => {
@@ -472,5 +486,114 @@ describe('pódio: 50 / 30 / 20 do bolo, menos 10% da casa', () => {
       expect(placementOf(finished, 'you')).toBe(place);
       expect(useGameStore.getState().balance).toBe(950 + prizeFor(place, 50, 4));
     }
+  });
+});
+
+describe('sala de CASH — a economia da mesa de 6', () => {
+  it('a sala nasce com modo, buy-in e blind, e o tamanho é fixo em 6', () => {
+    useTournamentStore.getState().createLobby({
+      name: 'Mesa Borgonha',
+      visibility: 'public',
+      format: 'cash',
+      size: CASH_SEATS,
+      fee: 0,
+      password: '',
+      mode: 'open',
+      buyIn: 2000,
+      blind: 25,
+    });
+
+    const s = useTournamentStore.getState();
+    expect(s.format).toBe('cash');
+    expect(s.size).toBe(6);
+    expect(s.mode).toBe('open');
+    expect(s.buyIn).toBe(2000);
+    expect(s.blind).toBe(25);
+  });
+
+  it('a SUA sala entra na vitrine — e no topo dela', () => {
+    /* Ela nunca entrava: `createLobby` montava o lobby e não tocava em
+       `lobbies`, então a sala recém-criada não aparecia na lista. Não
+       incomodava enquanto a vitrine era decoração, mas "a mesa aberta
+       fica constando no lobby" é exatamente este caminho. */
+    useTournamentStore.setState({ lobbies: [listing({ id: 'alheia' })] });
+    useTournamentStore.getState().createLobby({
+      name: 'Mesa Borgonha',
+      visibility: 'public',
+      format: 'cash',
+      size: CASH_SEATS,
+      fee: 0,
+      password: '',
+      mode: 'open',
+      buyIn: 2000,
+      blind: 25,
+    });
+
+    const [primeira, ...resto] = useTournamentStore.getState().lobbies;
+    expect(primeira?.name).toBe('Mesa Borgonha');
+    expect(primeira?.hostName).toBe('Você');
+    expect(primeira?.buyIn).toBe(2000);
+    expect(primeira?.blind).toBe(25);
+    expect(primeira?.filled).toBe(1);
+    // E não empurra as outras para fora da lista.
+    expect(resto.map((l) => l.id)).toContain('alheia');
+  });
+
+  it('criar duas salas seguidas não deixa duas suas na vitrine', () => {
+    const abrir = (name: string) =>
+      useTournamentStore.getState().createLobby({
+        name,
+        visibility: 'public',
+        format: 'cash',
+        size: CASH_SEATS,
+        fee: 0,
+        password: '',
+        mode: 'open',
+        buyIn: 1000,
+        blind: 20,
+      });
+
+    abrir('Primeira');
+    abrir('Segunda');
+
+    const minhas = useTournamentStore.getState().lobbies.filter((l) => l.hostName === 'Você');
+    expect(minhas).toHaveLength(1);
+    expect(minhas[0]?.name).toBe('Segunda');
+  });
+
+  it('quem ENTRA numa sala herda a economia dela, não a sua', () => {
+    /* O contrato é o que o cartão da vitrine anunciou: quem senta depois
+       compra o mesmo buy-in e paga o mesmo blind de quem já estava. */
+    const alheia = listing({
+      id: 'cash-1',
+      format: 'cash',
+      size: CASH_SEATS,
+      mode: 'closed',
+      buyIn: 5000,
+      blind: 100,
+    });
+
+    expect(useTournamentStore.getState().joinLobby(alheia)).toBe(true);
+
+    const s = useTournamentStore.getState();
+    expect(s.mode).toBe('closed');
+    expect(s.buyIn).toBe(5000);
+    expect(s.blind).toBe(100);
+  });
+
+  it('os torneios não precisam declarar a economia do cash', () => {
+    // Uma sala de chaveamento genuinamente não tem buy-in nem blind:
+    // obrigá-la a informar os dois seria pedir um número sem sentido.
+    useTournamentStore.getState().createLobby({
+      name: 'Copa',
+      visibility: 'public',
+      format: 'bracket',
+      size: 8,
+      fee: 50,
+      password: '',
+    });
+
+    expect(useTournamentStore.getState().format).toBe('bracket');
+    expect(useTournamentStore.getState().entryFee).toBe(50);
   });
 });

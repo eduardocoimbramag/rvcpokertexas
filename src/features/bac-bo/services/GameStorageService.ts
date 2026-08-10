@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { pokerHistoryEntrySchema } from '../engine/poker/types';
+import { pokerHistoryRecordSchema } from '../engine/poker/types';
 
 /**
  * Persistência do jogo em localStorage, com envelope versionado.
@@ -60,7 +60,7 @@ export type OpenTable = z.infer<typeof openTableSchema>;
 
 export const persistedStateSchema = z.object({
   balance: z.number().int().nonnegative(),
-  history: z.array(pokerHistoryEntrySchema),
+  history: z.array(pokerHistoryRecordSchema),
   settings: gameSettingsSchema,
   /* `.default(null)` mantém compatibilidade com estados gravados antes
      do canhoto existir — sem exigir migração de versão. */

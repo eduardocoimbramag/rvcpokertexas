@@ -10,7 +10,7 @@ import { formatCredits } from '@/shared/lib/format';
 
 import { useTournamentStore } from '../tournamentStore';
 import type { LobbyListing } from '../types';
-import { formatLabel } from '../types';
+import { isCash, seatsLabel, tableModeLabel } from '../types';
 import { CreateLobbySheet } from './CreateLobbySheet';
 import { JoinPrivateSheet } from './JoinPrivateSheet';
 
@@ -93,6 +93,7 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
           )}
           {lobbies.map((lobby, i) => {
             const isPrivate = lobby.visibility === 'private';
+            const cash = isCash(lobby.format);
             return (
               <motion.button
                 key={lobby.id}
@@ -108,7 +109,11 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
                 transition={{ delay: i * 0.06 }}
                 className={`lobby-card ${isPrivate ? 'lobby-card--locked' : ''}`}
                 data-testid={`lobby-${lobby.id}`}
-                aria-label={`${lobby.name}, ${formatLabel(lobby.format)}${isPrivate ? ', sala privada com senha' : ''}`}
+                aria-label={
+                  cash
+                    ? `${lobby.name}, ${tableModeLabel(lobby.mode)}, compra de ${lobby.buyIn} créditos, blind de ${lobby.blind}${isPrivate ? ', sala privada com senha' : ''}`
+                    : `${lobby.name}, ${seatsLabel(lobby.size)}${isPrivate ? ', sala privada com senha' : ''}`
+                }
               >
                 <span className="lobby-card__crown text-gold" aria-hidden="true">
                   <Icon name={isPrivate ? 'lock' : 'crown'} />
@@ -117,18 +122,42 @@ export function LobbyBrowseScreen({ onBack }: LobbyBrowseScreenProps) {
                   <span className="flex items-center gap-1.5">
                     <span className="truncate font-bold text-ivory">{lobby.name}</span>
                     {isPrivate && <span className="lobby-card__tag">Senha</span>}
+                    {/* MESA ABERTA é um SELO, e não mais uma palavra na
+                        linha de baixo: é a única característica que muda
+                        se você PODE entrar agora, e quem varre uma lista
+                        procura por ela antes de ler o resto. */}
+                    {cash && lobby.mode === 'open' && (
+                      <span
+                        className="lobby-card__tag lobby-card__tag--open"
+                        data-testid={`lobby-open-${lobby.id}`}
+                      >
+                        Aberta
+                      </span>
+                    )}
                   </span>
-                  {/* O formato vem antes da taxa: é o que a pessoa
-                      precisa saber para decidir se quer aquela sala. */}
+                  {/* O formato vem antes do dinheiro: é o que a pessoa
+                      precisa saber para decidir se quer aquela sala.
+                      No CASH o dinheiro são DOIS números, e os dois
+                      precisam ser anunciados — a compra diz quanto se
+                      arrisca, o blind diz quanto tempo aquilo dura. Um
+                      sem o outro não descreve mesa nenhuma. */}
                   <span className="block text-xs text-lavender">
                     <Icon
-                      name={lobby.format === 'bracket' ? 'trophy' : 'users'}
+                      name={cash ? 'chip' : lobby.format === 'bracket' ? 'trophy' : 'users'}
                       size="0.85em"
                       className="inline align-[-0.1em]"
                     />{' '}
-                    {formatLabel(lobby.format)} ·{' '}
-                    <Icon name="chip" size="0.85em" className="inline align-[-0.1em]" />{' '}
-                    {formatCredits(lobby.fee)}
+                    {cash ? (
+                      <span data-testid={`lobby-stakes-${lobby.id}`}>
+                        Compra {formatCredits(lobby.buyIn)} · Blind {formatCredits(lobby.blind)}
+                      </span>
+                    ) : (
+                      <>
+                        {seatsLabel(lobby.size)} ·{' '}
+                        <Icon name="chip" size="0.85em" className="inline align-[-0.1em]" />{' '}
+                        {formatCredits(lobby.fee)}
+                      </>
+                    )}
                   </span>
                 </span>
                 <span className="lobby-card__count">

@@ -4,6 +4,7 @@ import type {
   ChatMessage,
   LobbyListing,
   LobbyVisibility,
+  TableMode,
   TournamentFormat,
   TournamentPlayer,
   TournamentSize,
@@ -59,6 +60,21 @@ const LOBBY_NAMES = [
  * sem lista nenhuma.
  */
 const SIMULATED_FEES = [10, 25, 50, 100, 250];
+
+/**
+ * Buy-ins e blinds plausíveis das mesas de cash da vitrine, EM PARES: o
+ * buy-in de uma mesa de poker é sempre um múltiplo do blind (~40 a 100
+ * vezes), e um par sorteado de duas listas independentes produziria
+ * mesas absurdas — 5.000 de compra com blind de 5, ou 200 de compra com
+ * blind de 100 (que seriam duas mãos e acabou).
+ */
+const CASH_STAKES: readonly { buyIn: number; blind: number }[] = [
+  { buyIn: 500, blind: 10 },
+  { buyIn: 1000, blind: 20 },
+  { buyIn: 2000, blind: 25 },
+  { buyIn: 2500, blind: 50 },
+  { buyIn: 5000, blind: 100 },
+];
 
 /**
  * Sugestões para a sala do PRÓPRIO jogador — o campo de nome já nasce
@@ -145,23 +161,25 @@ export function makeLobbyListings(): LobbyListing[] {
   return shuffle(LOBBY_NAMES)
     .slice(0, randInt(4, 6))
     .map((name, index) => {
-      // Os dois formatos convivem na vitrine, com o chaveamento um pouco
-      // mais comum — é a modalidade mais antiga da casa.
-      const format: TournamentFormat = Math.random() < 0.6 ? 'bracket' : 'table';
+      /* A VITRINE É DE POKER, e só. Os outros dois formatos continuam no
+         projeto, sem porta de entrada (ver `BRACKET_ENABLED`): anunciar
+         na lista uma sala que não se pode criar seria oferecer uma porta
+         que leva a outro jogo. */
+      const format: TournamentFormat = 'cash';
       const roll = Math.random();
-      const size: TournamentSize =
-        format === 'bracket'
-          ? // As mesas de 16 existem, mas são raras — como numa casa real.
-            roll < 0.45
-            ? 4
-            : roll < 0.85
-              ? 8
-              : 16
-          : // Mesa única: de 3 a 6 assentos, sem preferência.
-            ((3 + Math.floor(roll * 4)) as TournamentSize);
+      /* MESAS CHEIAS EM MAIORIA, com as curtas aparecendo: é o que uma
+         casa real mostra à noite — quase todo mundo quer mesa cheia, e
+         quem quer jogar muitas mãos procura a de três. */
+      const size: TournamentSize = (roll < 0.16 ? 3 : roll < 0.34 ? 4 : roll < 0.58 ? 5 : 6) as TournamentSize;
       // Uma em cada três, e nunca a primeira: a lista abre com uma sala
       // de entrada livre em vez de uma porta trancada.
       const visibility: LobbyVisibility = index > 0 && Math.random() < 0.34 ? 'private' : 'public';
+      const stake = pick(CASH_STAKES);
+      /* A mesa FECHADA some da vitrine quando começa; a ABERTA fica. Uma
+         vitrine só de mesas abertas seria mentira, então as fechadas
+         aparecem enquanto ainda enchem — e a maioria é aberta, porque é
+         a que continua na lista depois. */
+      const mode: TableMode = Math.random() < 0.7 ? 'open' : 'closed';
       return {
         id: createId(),
         name,
@@ -172,6 +190,9 @@ export function makeLobbyListings(): LobbyListing[] {
         fee: pick(SIMULATED_FEES),
         visibility,
         password: visibility === 'private' ? randomLobbyPassword() : '',
+        mode,
+        buyIn: stake.buyIn,
+        blind: stake.blind,
       };
     });
 }

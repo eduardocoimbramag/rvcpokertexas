@@ -36,6 +36,17 @@ export const TIMINGS = {
   countdownTickMs: 900,
   /** Intervalo entre cada carta da distribuição inicial. */
   dealCardMs: DEAL_CARD_STAGGER_MS,
+  /** Quanto uma carta leva do voo até assentar (ver Card3D). */
+  settleCardMs: CARD_SETTLE_MS,
+  /**
+   * O respiro entre a última carta assentar e a vez abrir.
+   *
+   * Ele já vivia dentro de `dealMs`; virou número público quando a mesa
+   * de 6 precisou remontar a mesma conta com doze cartas em vez de
+   * quatro (ver `dealDurationMs`). Duas contas com o mesmo respiro
+   * escrito de dois jeitos sairiam de sincronia no primeiro ajuste.
+   */
+  dealBreathMs: DEAL_BREATH_MS,
   /**
    * Distribuição completa da rodada, derivada do stagger para nunca
    * dessincronizar: 4 cartas em fila + acomodação da última (Card3D) +

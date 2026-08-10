@@ -23,6 +23,9 @@ const publicLobby: LobbyListing = {
   size: 4,
   filled: 2,
   fee: 25,
+  mode: 'open',
+  buyIn: 1000,
+  blind: 20,
   visibility: 'public',
   format: 'bracket',
   password: '',
@@ -123,5 +126,59 @@ describe('confirmação de entrada na sala', () => {
     expect(screen.getByTestId('lobbies-empty')).toHaveTextContent(/nenhuma sala aberta/i);
     expect(screen.getByTestId('lobbies-empty')).toHaveTextContent(/botão acima/i);
     expect(screen.getByTestId('create-room')).toBeInTheDocument();
+  });
+});
+
+describe('vitrine — a mesa de cash anuncia a economia dela', () => {
+  const cashLobby: LobbyListing = {
+    id: 'cash-1',
+    name: 'Mesa Borgonha',
+    hostName: 'Otto',
+    format: 'cash',
+    size: 6,
+    filled: 3,
+    fee: 0,
+    mode: 'open',
+    buyIn: 2000,
+    blind: 25,
+    visibility: 'public',
+    password: '',
+  };
+
+  it('o cartão traz COMPRA e BLIND — os dois, e não um deles', () => {
+    /* Pedido explícito do dono: "esses 2 valores tem que ser anunciados
+       no lobby na mesa aberta". Um sem o outro não descreve mesa
+       nenhuma — a compra diz quanto se arrisca, o blind diz quanto
+       tempo aquilo dura. */
+    useTournamentStore.setState({ ...initialTournament, stage: 'browse', lobbies: [cashLobby] }, true);
+    render(<LobbyBrowseScreen onBack={() => undefined} />);
+
+    const stakes = screen.getByTestId('lobby-stakes-cash-1');
+    expect(stakes).toHaveTextContent('2.000');
+    expect(stakes).toHaveTextContent('25');
+  });
+
+  it('a mesa ABERTA leva selo; a fechada não', () => {
+    useTournamentStore.setState({ ...initialTournament, stage: 'browse', lobbies: [cashLobby] }, true);
+    const { unmount } = render(<LobbyBrowseScreen onBack={() => undefined} />);
+    expect(screen.getByTestId('lobby-open-cash-1')).toHaveTextContent(/aberta/i);
+    unmount();
+
+    useTournamentStore.setState(
+      { ...initialTournament, stage: 'browse', lobbies: [{ ...cashLobby, mode: 'closed' }] },
+      true,
+    );
+    render(<LobbyBrowseScreen onBack={() => undefined} />);
+    expect(screen.queryByTestId('lobby-open-cash-1')).not.toBeInTheDocument();
+  });
+
+  it('o rótulo acessível diz a mesma coisa que a tinta', () => {
+    useTournamentStore.setState({ ...initialTournament, stage: 'browse', lobbies: [cashLobby] }, true);
+    render(<LobbyBrowseScreen onBack={() => undefined} />);
+
+    const card = screen.getByTestId('lobby-cash-1');
+    expect(card).toHaveAccessibleName(/mesa aberta/i);
+    expect(card).toHaveAccessibleName(/2000 créditos/i);
+    expect(card).toHaveAccessibleName(/blind de 25/i);
   });
 });

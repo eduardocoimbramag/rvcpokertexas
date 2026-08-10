@@ -6,8 +6,8 @@ import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
 import type { PokerRoundState } from '../../engine/poker/types';
-import { ACTION_SECONDS } from '../../store/gameStore';
 import { AmountStepper } from '../AmountStepper';
+import { LeaveButton, TurnClock } from './TurnClock';
 
 export interface BetControlsProps {
   round: PokerRoundState;
@@ -152,7 +152,7 @@ export function BetControls({
               role="status": o motivo é ANUNCIADO, não só pintado de
               vermelho — quem usa leitor de tela também precisa saber por
               que o botão parou de responder. */}
-          <ActionClock seconds={seconds} compact />
+          <TurnClock seconds={seconds} compact />
 
           <div className="raise-panel__head">
             {/* "AUMENTAR MAIS", e não "aumentar para": o número embaixo é
@@ -221,7 +221,7 @@ export function BetControls({
           animate={{ opacity: 1, y: 0 }}
           transition={instant ? { duration: 0 } : { duration: 0.2, ease: 'easeOut' }}
         >
-          <ActionClock seconds={seconds} />
+          <TurnClock seconds={seconds} />
 
           {/* A ORDEM DA FILEIRA é fixa e vale para a mesa inteira:
               APOSTAR · PASSAR/PAGAR · CORRER · LEVANTAR.
@@ -316,62 +316,3 @@ export function BetControls({
  * fichas que já estão no meio ficaram no meio. O rótulo não esconde
  * isso, e o `title` diz por extenso.
  */
-function LeaveButton({
-  enabled,
-  onLeave,
-  disabled,
-  hint,
-}: {
-  enabled: boolean;
-  onLeave: () => void;
-  disabled: boolean;
-  hint: string;
-}) {
-  return (
-    <Button
-      variant="ghost"
-      size="md"
-      fullWidth
-      className="bet-row__leave"
-      onClick={onLeave}
-      disabled={disabled || !enabled}
-      title={enabled ? 'Correr a mão e levantar da mesa' : hint}
-      data-testid="leave-table"
-    >
-      <Icon name="close" /> LEVANTAR
-    </Button>
-  );
-}
-
-/**
- * O RELÓGIO DA VEZ — os 20 s que você tem para decidir.
- *
- * Ele mora na barra de apostas, e não na mesa, porque é da DECISÃO que
- * ele fala: some junto com os botões quando a palavra passa para o
- * rival, e acompanha o painel de aumento para dentro quando ele abre —
- * escolher quanto apostar é justamente o momento em que o tempo pesa, e
- * seria o pior momento para esconder o relógio.
- *
- * Nos últimos segundos tudo vira brasa: é o aviso de que a mesa vai
- * jogar por você (passa se for de graça, desiste se houver aposta na
- * frente).
- */
-function ActionClock({ seconds, compact = false }: { seconds: number; compact?: boolean }) {
-  const urgent = seconds <= 5;
-  return (
-    <div
-      className={`turn-clock ${compact ? 'turn-clock--compact' : ''} ${urgent ? 'is-urgent' : ''}`}
-      data-testid="turn-clock"
-      role="timer"
-      aria-label={`${seconds} segundos para decidir`}
-    >
-      <span className="turn-clock__track">
-        <span
-          className="turn-clock__fill"
-          style={{ width: `${Math.max(0, Math.min(1, seconds / ACTION_SECONDS)) * 100}%` }}
-        />
-      </span>
-      <span className="turn-clock__value">{seconds}s</span>
-    </div>
-  );
-}

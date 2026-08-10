@@ -1,7 +1,10 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
-import { TOURNAMENT_ENABLED } from '../src/features/bac-bo/tournament/availability.js';
+import {
+  BRACKET_ENABLED,
+  TOURNAMENT_ENABLED,
+} from '../src/features/bac-bo/tournament/availability.js';
 
 /**
  * E2E do modo Torneio, focado no desfecho da partida do jogador:
@@ -18,6 +21,20 @@ import { TOURNAMENT_ENABLED } from '../src/features/bac-bo/tournament/availabili
  * (10s) passam bem do padrão.
  */
 test.describe.configure({ timeout: 180_000 });
+
+/* SUSPENSO COM O CHAVEAMENTO.
+   A folha de criação virou uma folha de POKER — pergunta quantas pessoas
+   sentam, não que jogo se joga —, e a vitrine passou a anunciar só mesas
+   de poker. O chaveamento e a mesa única continuam inteiros no projeto,
+   sem porta de entrada, e este arquivo é o fluxo que passava por ela.
+
+   O arquivo fica — inteiro, e não comentado — atrás do mesmo booleano
+   que desligou o modo. Reativar numa linha reativa a cobertura na mesma
+   linha; apagá-lo agora seria pagar de novo para escrevê-lo depois.
+   As partes que valem para QUALQUER sala (expulsar do lobby, a senha da
+   sala privada, a confirmação da porta) foram levadas para a mesa de
+   poker em `e2e/cash-table.spec.ts`. */
+test.skip(!BRACKET_ENABLED, 'chaveamento e mesa única sem porta de entrada');
 
 /* A PORTA DE ENTRADA DO TORNEIO ESTÁ FECHADA (ver `TOURNAMENT_ENABLED`).
    Sem ela, o primeiro clique de todo teste daqui cai num botão apagado e
@@ -52,9 +69,22 @@ async function seedStorage(page: Page) {
 }
 
 /** Cria uma sala de 4, inicia o torneio e joga a partida do jogador. */
+/**
+ * Abre a folha de criação JÁ NO CHAVEAMENTO.
+ *
+ * A folha abre no formato CASH — é o poker de 6, o carro-chefe da casa —,
+ * e é o formato que decide quais campos existem: régua de tamanhos e taxa
+ * são do torneio, compra e blind são do cash. Todo teste de torneio passa
+ * por aqui antes de procurar um campo de torneio.
+ */
+async function openBracketSheet(page: Page) {
+  await page.getByTestId('create-room').click();
+  await page.getByTestId('create-format-bracket').click();
+}
+
 async function playTournamentMatch(page: Page) {
   await page.getByTestId('tournament-button').click();
-  await page.getByTestId('create-room').click();
+  await openBracketSheet(page);
 
   // Tudo se escolhe na criação: sala de 4 (enche bem mais rápido que a
   // de 8, com os bots entrando um a um) e a taxa digitada à mão.
@@ -108,7 +138,7 @@ test('alvo de toque: o × de expulsar responde além do próprio selo', async ({
   await page.goto('/');
 
   await page.getByTestId('tournament-button').click();
-  await page.getByTestId('create-room').click();
+  await openBracketSheet(page);
   await page.getByTestId('create-size-4').click();
   await page.getByTestId('create-fee').fill('10');
   await page.getByTestId('create-confirm').click();
@@ -155,7 +185,7 @@ test('sala privada: características escolhidas na criação, senha na porta', a
   await page.goto('/');
 
   await page.getByTestId('tournament-button').click();
-  await page.getByTestId('create-room').click();
+  await openBracketSheet(page);
 
   // A folha oferece os três tamanhos de mesa — inclusive a copa de 16,
   // que abre nas oitavas. O quantitativo é fixo após a criação.
@@ -202,7 +232,7 @@ test('mesa única: 3 a 6 assentos, todos no mesmo feltro, melhor de 3', async ({
   await page.goto('/');
 
   await page.getByTestId('tournament-button').click();
-  await page.getByTestId('create-room').click();
+  await openBracketSheet(page);
 
   // O formato manda na régua de tamanhos: chaveamento em potências de 2,
   // mesa única de 3 a 6 assentos.

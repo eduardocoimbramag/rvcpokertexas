@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { BRACKET_ENABLED } from '../tournament/availability';
 import { useGameStore } from '../store/gameStore';
 import { CreateLobbySheet } from '../tournament/screens/CreateLobbySheet';
 import { prizeFor } from '../tournament/tournamentStore';
@@ -10,6 +11,16 @@ import { useTournamentStore } from '../tournament/tournamentStore';
 /**
  * Taxa de entrada digitável (não há mais fichas de 10/25/50) e a
  * premiação recalculando junto, a cada tecla.
+ *
+ * SUSPENSOS COM O CHAVEAMENTO. A folha de criação virou uma folha de
+ * POKER: pergunta quantas pessoas sentam, não que jogo se joga. O campo
+ * de taxa só existia nos modos de blackjack, e sem porta de entrada para
+ * eles não há como chegar até ele.
+ *
+ * Os testes ficam — inteiros, e não comentados — atrás do mesmo booleano
+ * que desligou o modo (`BRACKET_ENABLED`). Reativar o chaveamento numa
+ * linha reativa a cobertura dele na mesma linha; apagá-los agora seria
+ * pagar de novo para escrevê-los depois.
  */
 
 const initialGame = useGameStore.getInitialState();
@@ -27,9 +38,17 @@ afterEach(() => {
 
 const openSheet = () => render(<CreateLobbySheet open onClose={() => undefined} />);
 
-describe('CreateLobbySheet — taxa de entrada', () => {
-  it('não oferece mais fichas de valor fixo', () => {
-    openSheet();
+/** Abre a folha já no chaveamento, que é onde a taxa existe. */
+async function openBracketSheet(user: ReturnType<typeof userEvent.setup>) {
+  const view = openSheet();
+  await user.click(screen.getByTestId('create-format-bracket'));
+  return view;
+}
+
+describe.skipIf(!BRACKET_ENABLED)('CreateLobbySheet — taxa de entrada', () => {
+  it('não oferece mais fichas de valor fixo', async () => {
+    const user = userEvent.setup();
+    await openBracketSheet(user);
     expect(screen.queryByTestId('create-fee-10')).not.toBeInTheDocument();
     expect(screen.queryByTestId('create-fee-25')).not.toBeInTheDocument();
     expect(screen.queryByTestId('create-fee-50')).not.toBeInTheDocument();
@@ -38,7 +57,7 @@ describe('CreateLobbySheet — taxa de entrada', () => {
 
   it('os atalhos somam sobre o valor digitado', async () => {
     const user = userEvent.setup();
-    openSheet();
+    await openBracketSheet(user);
 
     await user.click(screen.getByTestId('create-fee-plus-10'));
     expect(screen.getByTestId('create-fee')).toHaveValue('20');
@@ -49,9 +68,9 @@ describe('CreateLobbySheet — taxa de entrada', () => {
 
   it('a premiação acompanha a taxa em tempo real', async () => {
     const user = userEvent.setup();
-    openSheet();
+    await openBracketSheet(user);
 
-    // Sala de 8 (padrão): o campeão leva 50% do bolo dos 7 derrotados,
+    // Sala de 8 (padrão do chaveamento): o campeão leva 50% do bolo dos 7 derrotados,
     // já sem a comissão da casa.
     const prize = (fee: number) => String(prizeFor(1, fee, 8));
     expect(screen.getByTestId('create-prize')).toHaveTextContent(prize(10));
@@ -69,7 +88,7 @@ describe('CreateLobbySheet — taxa de entrada', () => {
 
   it('recusa taxa acima do saldo e abaixo do mínimo', async () => {
     const user = userEvent.setup();
-    openSheet();
+    await openBracketSheet(user);
     const input = screen.getByTestId('create-fee');
 
     await user.clear(input);
@@ -86,7 +105,7 @@ describe('CreateLobbySheet — taxa de entrada', () => {
 
   it('cria a sala com a taxa digitada', async () => {
     const user = userEvent.setup();
-    openSheet();
+    await openBracketSheet(user);
     const input = screen.getByTestId('create-fee');
 
     await user.clear(input);
