@@ -214,8 +214,8 @@ h2 {
   z-index: -1;
   width: var(--scene-stage-w);
   translate: -50%;
-  /* o salão Art Déco (1024×1536, ancorado na luminária do teto) */
-  background-image: url('/fundocassinobot.webp');
+  /* o salão Art Déco (1024×1536, ancorado no forro do teto) */
+  background-image: url('/fundopoker.webp');
   background-size: cover;
   background-position: center top;
   background-repeat: no-repeat;
@@ -250,17 +250,24 @@ h2 {
         rgba(20, 4, 4, 0.08) 24%,
         rgba(26, 6, 9, 0.34) 68%,
         rgba(20, 4, 4, 0.66) 100%
-      );
+      ),
+    /* véu do letreiro, ligado só no menu (ver --scene-panel-scrim). Entra
+       como VARIÁVEL no fim da lista, e não como um sexto gradiente
+       escrito à mão, porque uma segunda lista completa aqui é a armadilha
+       que a separação em camadas desta seção existe para evitar: os cinco
+       valores acima são afinados e não podem viver em duas cópias. */
+    var(--scene-panel-scrim, none);
 }
 
 /* Enquadramento de JOGO (mesa em cena): a câmera desce ao nível da
    mesa. A foto passa a ancorar pela LARGURA (colunas e arandelas
    inteiras, sem o corte lateral do cover) e sobe ~20% da própria
-   altura: o lustre sai do quadro (sobra só a franja no topo, atrás do
-   HUD) e atrás da dealer ficam o friso e as arandelas — não o teto.
+   altura: o forro do teto sai do quadro (sobra só a franja no topo,
+   atrás do HUD) e atrás da dealer ficam o friso e as arandelas — não o
+   teto.
    O trecho que a foto deixa de cobrir embaixo fica atrás da mesa
    (opaca), então nunca aparece. Menu, lobby e chaveamento seguem no
-   enquadramento original com o lustre em cena.
+   enquadramento original, com o teto em cena.
    O deslocamento é uma fração da COLUNA (não da viewport): no celular
    --scene-stage-w é 100vw e o valor continua sendo os mesmos -30vw de
    antes; na web ele acompanha a coluna, e a subida da foto fica igual à
@@ -268,6 +275,35 @@ h2 {
 .scene-ambient--game .scene-ambient__stage {
   background-size: 100% auto;
   background-position: center calc(var(--scene-stage-w) * -0.3);
+}
+
+/* Véu da FAIXA DO LETREIRO (só nos menus).
+
+   No enquadramento de menu a foto é ancorada pela ALTURA (a coluna é
+   sempre mais estreita que 2:3, então o `cover` escala pela altura e
+   corta nas laterais): a porcentagem vertical da foto cai exatamente
+   sobre a mesma porcentagem da tela. A fileira de caça-níqueis do salão
+   vive entre 41% e 56% da foto — e é aí que o letreiro POKER ARENA é
+   desenhado, em tipografia chapada, sem sombra nem caixa atrás.
+   O fundo anterior tinha parede lisa nessa faixa e o texto não precisava
+   de ajuda; este tem a região mais clara e mais saturada do quadro.
+
+   O véu rebaixa só essa faixa, com as duas pontas em `transparent` para
+   não virar uma tarja: as máquinas continuam em cena como cenário, sem
+   disputar o letreiro. É medido em porcentagem da COLUNA, então vale
+   igual no celular e na web, onde a faixa cai no mesmo lugar.
+
+   Não vale no jogo: lá a foto sobe 20% e essa altura da tela fica atrás
+   da mesa opaca — o véu não teria o que escurecer, e o topo em cena
+   (arandelas e friso atrás da crupiê) deve continuar como está. */
+.scene-ambient:not(.scene-ambient--game) {
+  --scene-panel-scrim: linear-gradient(
+    180deg,
+    transparent 30%,
+    rgba(20, 4, 4, 0.4) 42%,
+    rgba(20, 4, 4, 0.44) 54%,
+    transparent 66%
+  );
 }
 
 /* Luzes desfocadas do salão ao fundo (bokeh estático, só gradientes).
@@ -364,7 +400,7 @@ h2 {
     content: '';
     position: absolute;
     inset: -12%;
-    background-image: url('/fundocassinobot.webp');
+    background-image: url('/fundopoker.webp');
     background-size: 100% 100%;
     background-position: center;
     filter: blur(60px) saturate(0.95);
@@ -2559,6 +2595,37 @@ h2 {
   /* O espacejamento é o do justify: um tracking global brigaria com ele
      (e deixaria um vão sobrando depois da última letra de cada linha). */
   letter-spacing: 0;
+  /* AURA DE SEPARAÇÃO — três halos da mesma cor, raios em progressão.
+
+     O letreiro é tipografia chapada sobre uma foto: sem nada atrás, ele
+     encosta no salão em vez de flutuar na frente dele. Os três raios
+     fazem uma queda de luz contínua — contato (12px), halo (32px) e
+     ambiente (68px) —, e é a progressão que mata a borda: cada um começa
+     onde o anterior já está quase transparente, então não existe um
+     ponto onde a aura "acaba".
+
+     TODOS com deslocamento ZERO, de propósito. Uma sombra deslocada
+     (`0 2px …`) tem direção, e direção lê como sombra projetada — o
+     efeito marcado que este letreiro não pode ter. Centrada, ela vira
+     penumbra ao redor do glifo, que é o que se quer: separação, não
+     relevo. O offset também era o que mais sujava o tipo, porque
+     escurecia os pixels de antialias só de um lado e engordava a letra.
+
+     É `text-shadow`, não `filter: drop-shadow`. Os dois seguem o
+     contorno do glifo, mas o filter criaria contexto de empilhamento e
+     rasterizaria o bloco inteiro numa camada — bem no elemento que o
+     framer-motion anima na entrada da Home. O text-shadow é herdado
+     pelos spans de letra e pintado direto, sem camada nova.
+
+     A cor é o preto ameixa da paleta (#140404), o mesmo da base do
+     cenário: uma sombra preta neutra apagaria o vinho da parede e
+     denunciaria o efeito. Aqui ela lê como a penumbra do próprio salão.
+     Sem componente clara: um halo quente atrás de letras claras vira
+     glow, que é justamente o que esta marca não usa. */
+  text-shadow:
+    0 0 12px rgba(20, 4, 4, 0.3),
+    0 0 32px rgba(20, 4, 4, 0.36),
+    0 0 68px rgba(20, 4, 4, 0.3);
 }
 
 .brand-title__line {

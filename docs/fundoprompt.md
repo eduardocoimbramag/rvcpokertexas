@@ -1,13 +1,21 @@
 # Fundo do salão — especificação e prompts de geração
 
-> Documento de produção. O fundo em uso é `public/fundocassinobot.webp` —
-> arte própria, gerada com o **prompt 2** (jardim de inverno) desta
-> página. Aqui está **tudo o que uma imagem nova precisa respeitar** para
-> entrar no jogo sem quebrar a cena, mais os cinco prompts para novas
-> rodadas.
+> Documento de produção. O fundo em uso é `public/fundopoker.webp` — salão
+> Art Déco com fileira de caça-níqueis ao fundo. Aqui está **tudo o que
+> uma imagem nova precisa respeitar** para entrar no jogo sem quebrar a
+> cena, mais os cinco prompts para novas rodadas.
 >
-> O fundo anterior (`fundocassino.webp`), herdado de outro projeto, foi
-> removido do repositório — está no histórico do git se precisar.
+> Os fundos anteriores (`fundocassino.webp`, herdado de outro projeto, e
+> `fundocassinobot.webp`, o jardim de inverno do prompt 2) foram removidos
+> do repositório — estão no histórico do git se precisar.
+>
+> **Ressalva do fundo atual.** Ele tem os caça-níqueis na FAIXA CENTRAL
+> (y 41–56%), que a seção 2 manda deixar vazia. Na prática isso custou um
+> ajuste: no menu o letreiro POKER ARENA cai justamente ali, e o CSS
+> ganhou um véu só para essa faixa (`--scene-panel-scrim`, em
+> `src/index.css`). Na mesa não custou nada — o corpo da crupiê cobre a
+> máquina central e as laterais viram cenário. Se a próxima arte
+> respeitar a regra do centro vazio, o véu pode sair.
 
 ---
 
@@ -18,8 +26,8 @@
 | **Resolução** | **1024 × 1536 px** (retrato, proporção 2:3) |
 | Proporção | 2:3 — a mesma do arquivo atual; não mude |
 | Formato de entrega | PNG/WebP do gerador → recomprimido para **WebP com perdas** |
-| Peso alvo | ≤ 300 KB (o atual tem 217 KB) |
-| Caminho no projeto | `public/fundocassinobot.webp` |
+| Peso alvo | ≤ 300 KB (o atual tem 243 KB) |
+| Caminho no projeto | `public/fundopoker.webp` |
 | Referências no código | `src/index.css` (`.scene-ambient__stage` e `.scene-ambient__wash::before`) e o `<link rel="preload">` do `index.html` |
 
 **Por que 1024 × 1536.** É o tamanho retrato nativo do GPT Image (os três
@@ -31,24 +39,28 @@ proporção obriga a recortar, e o recorte quebra o mapa de zonas da seção 2.
 faça upscale para 2048×3072 num upscaler; **não** peça ao gerador uma
 proporção diferente para "ganhar" pixels.
 
-**Peso: a pegadinha.** O GPT Image devolve WebP **sem perdas** — a arte
-atual chegou com **1,4 MB**. É inviável: o fundo é pré-carregado com
-`fetchpriority="high"`, ou seja, ele disputa a primeira pintura da tela.
-Recomprimir com perdas em q≈0,9 derrubou para **217 KB (6,3×)** sem
-banding visível nos gradientes escuros, que é onde o WebP costuma
-falhar. **Sempre recomprima antes de commitar.**
+**Peso: a pegadinha.** O gerador devolve PNG ou WebP **sem perdas** — a
+arte atual chegou como PNG de **1,9 MB**. É inviável: o fundo é
+pré-carregado com `fetchpriority="high"`, ou seja, ele disputa a primeira
+pintura da tela. Recomprimir com perdas em q≈0,9 derrubou para **243 KB
+(8×)** sem banding visível nos gradientes escuros (o forro do teto e o
+piso polido), que é onde o WebP costuma falhar. **Sempre recomprima antes
+de commitar.**
 
 O projeto não tem `sharp` nem `squoosh` (e não vale somar dependência de
 build por um asset), então o caminho é o Chromium que o Playwright já
 instala:
 
 ```js
-// reencode.mjs — rode na raiz do projeto: node reencode.mjs entrada.webp saida.webp
+// reencode.mjs — rode na raiz do projeto: node reencode.mjs entrada.png saida.webp
 import { readFileSync, writeFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
 const [, , SOURCE, OUT] = process.argv;
-const dataUrl = `data:image/webp;base64,${readFileSync(SOURCE).toString('base64')}`;
+// O mime tem de bater com o arquivo de ENTRADA: um PNG anunciado como
+// webp não decodifica, e o erro só aparece no `img.decode()`.
+const mime = SOURCE.endsWith('.png') ? 'image/png' : 'image/webp';
+const dataUrl = `data:${mime};base64,${readFileSync(SOURCE).toString('base64')}`;
 const browser = await chromium.launch();
 const page = await browser.newPage();
 const base64 = await page.evaluate(async (url) => {
@@ -65,9 +77,10 @@ writeFileSync(OUT, Buffer.from(base64, 'base64'));
 await browser.close();
 ```
 
-Curva medida nesta arte: q0,9 → 217 KB · q0,86 → 165 KB · q0,82 → 135 KB
-· q0,78 → 113 KB · q0,72 → 94 KB. Ficamos em **0,9**: sobra orçamento e o
-degradê do teto continua liso.
+Curva medida nesta arte: q0,94 → 341 KB · q0,9 → 243 KB · q0,86 → 190 KB
+· q0,82 → 156 KB. Ficamos em **0,9**: cabe no orçamento e o degradê do
+teto continua liso. (A arte anterior, mais escura, rendia mais no mesmo
+q: 217 KB. Meça a sua — não reaproveite o número.)
 
 ---
 
@@ -390,7 +403,10 @@ Antes de substituir o arquivo, confira na imagem gerada:
 
 Testes no app, depois de trocar o arquivo:
 
-1. **Home** — o lustre aparece e o logotipo continua legível sobre o fundo.
+1. **Home** — o teto aparece e o logotipo continua legível sobre o fundo.
+   Este é o teste que a arte atual reprovou de primeira (ver a ressalva do
+   topo): confira o letreiro em tela ALTA e estreita, onde o `cover` corta
+   mais das laterais e joga o centro da foto para trás do texto.
 2. **Confirmação de duelo** — a crupiê recorta bem contra a parede lisa.
 3. **Mesa (1v1 e torneio)** — o enquadramento sobe; nada de ornamento
    estranho brotando atrás da crupiê.
