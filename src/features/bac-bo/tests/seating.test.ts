@@ -399,14 +399,42 @@ describe('a economia da mesa de cash', () => {
     }
   });
 
-  it('a SAÍDA da mesa abre a partir da segunda mão', async () => {
+  it('a SAÍDA abre no INTERVALO da primeira mão, não na segunda', async () => {
     /* Quem senta, joga ao menos uma. Sentar e levantar antes da primeira
-       carta seria ocupar a cadeira de outra pessoa sem jogar. */
+       carta seria ocupar a cadeira de outra pessoa sem jogar.
+
+       O QUE ESTE TESTE FIXA É O INSTANTE, e não só o fato: "ao menos uma"
+       é uma mão JOGADA, então a porta abre quando a primeira TERMINA —
+       no intervalo, onde ela é a única decisão em cena. Antes ela abria
+       uma batida tarde, quando a SEGUNDA mão era distribuída, e o
+       intervalo inteiro ficava com o botão apagado.
+
+       Esperar só por `cashCanLeave` não pegava isso: a porta abria de um
+       jeito ou de outro, e o teste passava com o defeito em pé. Por isso
+       a corrida aqui para no PRIMEIRO INTERVALO e mede a porta ali.
+
+       O instante é colhido por ASSINATURA, e não avançando o relógio até
+       encontrá-lo: o intervalo dura segundos e `avancaAte` salta de dois
+       em dois minutos: ele pularia a janela inteira e mediria a mesa no
+       meio da mão seguinte. Assinado, o flagrante independe do passo. */
     await abreMesa();
     // Na primeira mão a porta está em cena e FECHADA.
     expect(useTournamentStore.getState().cashCanLeave).toBe(false);
-    await avancaAte(() => useTournamentStore.getState().cashCanLeave);
-    expect(useTournamentStore.getState().cashCanLeave).toBe(true);
+
+    const flagrante: { handNo: number | undefined; podeSair: boolean }[] = [];
+    const parar = useTournamentStore.subscribe((s) => {
+      if (flagrante.length === 0 && s.cashPhase === 'handover') {
+        flagrante.push({ handNo: s.cashTable?.handNo, podeSair: s.cashCanLeave });
+      }
+    });
+    await avancaAte(() => flagrante.length > 0);
+    parar();
+
+    const [noIntervalo] = flagrante;
+    expect(flagrante).toHaveLength(1);
+    // A mão que acabou é a PRIMEIRA: a segunda ainda não foi distribuída.
+    expect(noIntervalo?.handNo).toBe(1);
+    expect(noIntervalo?.podeSair).toBe(true);
   });
 
   it('QUEBRADO, sempre há saída — a invariante que destrava a mesa', async () => {

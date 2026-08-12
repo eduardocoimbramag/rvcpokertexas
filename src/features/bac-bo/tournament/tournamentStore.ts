@@ -448,10 +448,17 @@ export interface TournamentState {
   /**
    * A saída da mesa já abriu.
    *
-   * Ela abre a partir da SEGUNDA mão, e a razão é a mesma do duelo: quem
-   * senta, joga ao menos uma. Sem isso, sentar e levantar antes da
-   * primeira carta seria um jeito de ocupar cadeira sem jogar — e numa
-   * mesa aberta isso é a cadeira de outra pessoa.
+   * Ela abre quando a PRIMEIRA MÃO TERMINA — no intervalo, junto com o
+   * relógio da próxima —, e a razão é a mesma do duelo: quem senta, joga
+   * ao menos uma. Sem isso, sentar e levantar antes da primeira carta
+   * seria um jeito de ocupar cadeira sem jogar, e numa mesa aberta isso é
+   * a cadeira de outra pessoa.
+   *
+   * "Ao menos uma" é uma mão JOGADA, não uma mão aberta: esta linha já
+   * dizia "a partir da segunda mão" e o código a cumpria ao pé da letra,
+   * destravando a porta só quando a segunda era distribuída. O intervalo
+   * inteiro depois da primeira ficava com a porta apagada — a tela que
+   * não oferece nenhuma outra decisão.
    */
   cashCanLeave: boolean;
   bracket: Bracket | null;
@@ -1368,6 +1375,16 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     set({
       cashPhase: 'handover',
       cashHandover: { seconds: CASH_HANDOVER_SECONDS, total: CASH_HANDOVER_SECONDS },
+      /* A PORTA ABRE AQUI — chegar ao intervalo é ter jogado uma mão
+         inteira, que é tudo o que a regra pede ("quem senta, joga ao
+         menos uma"). Ela abria uma batida tarde, em `dealNextCashHand`,
+         ou seja, só quando a mão SEGUINTE era distribuída: no intervalo
+         depois da primeira mão — exatamente onde a tela oferece a porta e
+         mais nada — o botão aparecia apagado, e quem quisesse sair tinha
+         de deixar a mesa distribuir mais uma para poder ir embora.
+         É a mesma leitura do duelo, que conta mãos JOGADAS
+         (`handsPlayed >= 1`, em PokerArena) e não mãos abertas. */
+      cashCanLeave: true,
     });
     const tick = (): void => {
       schedule(() => {
@@ -1481,10 +1498,6 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       cashCall: null,
       cashShown: false,
       cashShow: { open: false, seconds: 0 },
-      /* A SAÍDA ABRE NA SEGUNDA MÃO. Quem senta, joga ao menos uma —
-         sentar e levantar antes da primeira carta seria ocupar a cadeira
-         de outra pessoa sem jogar. */
-      cashCanLeave: true,
     });
     openHand(nova);
   };
