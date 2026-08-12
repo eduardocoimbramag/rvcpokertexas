@@ -4160,27 +4160,66 @@ h2 {
   flex: 1 1 0;
 }
 
-/* A PORTA é mais estreita que os lances: ela é a decisão mais rara da
-   mesa, e roubar largura de PAGAR para ela seria trocar o que se usa
-   toda mão pelo que se usa uma vez.
+/* A PORTA ABERTA NÃO TEM TINTA PRÓPRIA — e é isto que este bloco faz:
+   nada. Ela veste `variant="secondary"` no componente (ver
+   `LeaveButton`), que é a MESMA peça do PASSAR, o vinho borgonha
+   lapidado da casa.
 
-   A tinta é a de CORRER em CONTORNO, e não preenchida: as duas são
-   saídas e por isso vestem a mesma família, mas duas peças vermelhas
-   cheias lado a lado disputariam a mesma urgência — e correr uma mão não
-   é o mesmo que levantar da mesa. Sozinha no intervalo entre as mãos,
-   onde é a única decisão que existe, ela aparece cheia. */
-.bet-row__leave {
-  flex: 0 1 auto;
-  min-width: 0;
-  background: rgba(122, 31, 40, 0.22);
-  box-shadow: inset 0 0 0 1px rgba(214, 74, 74, 0.5);
-  color: #ff9d9d;
-}
+   Aqui moravam um vermelho em contorno para a porta aberta e um apagado
+   próprio para a fechada, e NENHUM DOS DOIS chegava à tela: uma classe
+   sozinha pesa menos que `.btn--ghost:not(:disabled)` e que
+   `.btn:disabled`, ambos declarados depois nesta folha. Eram trinta
+   linhas de tinta que a mesa nunca mostrou. Escolher a variante certa no
+   componente resolve o que aquele CSS tentava resolver e cobra menos: a
+   saída não passa a ter uma segunda casca para alguém manter em dia, e
+   toda melhoria futura do `secondary` chega nela de graça.
 
-.bet-row__leave:disabled {
-  background: rgba(20, 8, 8, 0.3);
-  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.16);
-  color: rgba(255, 244, 232, 0.34);
+   A LARGURA também não mora mais aqui. A regra pedia uma porta mais
+   estreita que os lances, e `.bet-row > .btn` — que pesa mais e vem
+   depois — reparte a fileira em quatro partes iguais desde sempre.
+   Quatro alvos do mesmo tamanho é o que faz o polegar aprender o
+   caminho, então o que a tela mostra é o que se quer; o que estava
+   errado era a regra que dizia o contrário.
+
+   Sobra uma coisa só, embaixo: a PORTA TRANCADA. Essa a mesa mostra. */
+
+/* A PORTA AINDA TRANCADA — a primeira mão da mesa, e só ela.
+
+   Apagar a saída com a tinta dos outros lances (o vinho queimado do
+   `.btn:disabled`) diz "este botão falhou agora" — que é exatamente o
+   que um lance travado no meio do envio quer dizer, e não é o que se
+   passa aqui. Aqui a mensagem é outra: a porta AINDA NÃO ABRIU, e vai
+   abrir sozinha quando a segunda mão começar.
+
+   GRAFITE NEUTRO é o que separa as duas coisas. A mesa decide em três
+   tintas — dourado (apostar), vinho (passar/pagar e levantar), vermelho
+   (correr) — e o cinza não é nenhuma delas: a peça sai da conversa sem
+   sair de cena, que é a única coisa que um botão trancado precisa
+   fazer, e sem herdar o vinho que ela vai vestir quando abrir. O fio
+   claro em volta e a luz de topo são os mesmos do resto da casa, porque
+   trancado não é motivo para parecer barato.
+
+   `.is-locked:disabled`, e não só `.is-locked`: os dois pesos são
+   deliberados. O `:disabled` garante a vitória sobre `.btn:disabled`,
+   que é declarado depois nesta folha; e a classe `is-locked` garante
+   que o cinza é o estado da PRIMEIRA MÃO — com um lance em trânsito a
+   fileira inteira apaga junto, e a porta apaga com ela, em vinho, como
+   as vizinhas.
+
+   Vale nas DUAS mesas — o duelo e a de seis —, porque as duas montam
+   esta fileira com o mesmo `LeaveButton`. Os outros LEVANTAR DA MESA da
+   casa (o do intervalo entre as mãos e o de quem ficou sem fichas) são
+   outra peça, em vermelho cheio, e seguem como estavam. */
+.bet-row__leave.is-locked:disabled {
+  background: linear-gradient(180deg, #474d49 0%, #323735 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 244, 232, 0.22),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+  color: rgba(255, 244, 232, 0.56);
+  /* No dedo não muda nada; no mouse, a seta diz antes do toque que ali
+     não há o que tocar. */
+  cursor: not-allowed;
 }
 
 /* ==================== O intervalo entre as mãos ==================== */

@@ -72,17 +72,49 @@ export interface LeaveButtonProps {
  * senta descobre a saída antes de precisar dela, e descobre também que
  * ela ainda não está disponível. Um botão que nasce do nada na segunda
  * mão empurra a fileira inteira de lugar no meio de uma decisão.
+ *
+ * ABERTA, ela é a MESMA PEÇA DO PASSAR: `variant="secondary"`, o vinho
+ * borgonha lapidado da casa. Não é uma cópia da aparência dele — é a
+ * variante dele, escolhida aqui e não redesenhada em CSS ao lado. A
+ * diferença importa na manutenção: a porta não passa a ter uma segunda
+ * casca para alguém manter em dia, e toda melhoria futura do
+ * `secondary` (bisel, hover, foco, alto contraste) chega nela sozinha.
+ *
+ * O que separa as duas decisões na fileira é o RÓTULO e o ÍCONE —
+ * ✓ PASSAR e ✕ LEVANTAR —, e, no meio de uma mão, a mesa ainda PERGUNTA
+ * antes de levantar (ver `LeaveTablePrompt`): a saída continua sendo a
+ * única da fileira que passa por uma confirmação.
+ *
+ * ENQUANTO NÃO ABRE, ela veste GRAFITE (`is-locked`) — e não o vinho
+ * queimado com que a casa apaga um botão qualquer. São dois "não" que
+ * não querem dizer a mesma coisa: o vinho apagado é o da fileira inteira
+ * quando um lance está em trânsito ("agora não dá"), e o cinza é o da
+ * porta que AINDA não abriu ("na próxima mão dá"). O cinza sai das
+ * tintas da decisão — dourado, vinho, vermelho — justamente porque, na
+ * primeira mão, esta não é uma decisão a tomar.
+ *
+ * As duas coisas valem nas DUAS mesas, o duelo e a de seis, porque as
+ * duas montam a fileira com este mesmo botão. Os outros LEVANTAR DA MESA
+ * da casa — o do intervalo entre as mãos e o de quem ficou sem fichas —
+ * são outra peça e seguem em vermelho cheio.
  */
 export function LeaveButton({ enabled, onLeave, disabled, hint }: LeaveButtonProps) {
   return (
     <Button
-      variant="ghost"
+      variant="secondary"
       size="md"
       fullWidth
-      className="bet-row__leave"
+      className={`bet-row__leave ${enabled ? '' : 'is-locked'}`}
       onClick={onLeave}
       disabled={disabled || !enabled}
       title={enabled ? 'Correr a mão e levantar da mesa' : hint}
+      /* O `title` de um botão apagado NÃO abre balão em navegador
+         nenhum: o elemento não recebe evento de mouse. Quem navega por
+         teclado ou leitor de tela ouviria só "LEVANTAR, indisponível" e
+         ficaria sem o porquê — que é a metade que importa, porque ele
+         volta sozinho daqui a uma mão. O nome acessível carrega o motivo
+         junto, e começa pelo rótulo que está escrito na peça. */
+      aria-label={enabled ? undefined : `Levantar da mesa — ${hint}`}
       data-testid="leave-table"
     >
       <Icon name="close" /> LEVANTAR

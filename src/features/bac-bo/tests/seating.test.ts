@@ -13,6 +13,7 @@ import {
   seatOf,
   seatsFromPov,
 } from '../tournament/seatOrder';
+import type { CashPhase } from '../tournament/tournamentStore';
 import { SEATING_SECONDS, useTournamentStore } from '../tournament/tournamentStore';
 import type { TournamentPlayer } from '../tournament/types';
 import { CASH_SEATS } from '../tournament/types';
@@ -416,19 +417,43 @@ describe('a economia da mesa de cash', () => {
        O instante é colhido por ASSINATURA, e não avançando o relógio até
        encontrá-lo: o intervalo dura segundos e `avancaAte` salta de dois
        em dois minutos: ele pularia a janela inteira e mediria a mesa no
-       meio da mão seguinte. Assinado, o flagrante independe do passo. */
-    await abreMesa();
-    // Na primeira mão a porta está em cena e FECHADA.
-    expect(useTournamentStore.getState().cashCanLeave).toBe(false);
+       meio da mão seguinte. Assinado, o flagrante independe do passo.
 
+       AS DUAS METADES SÃO ASSINADAS, e pelo mesmo motivo. A metade do
+       "ainda não" — a porta fechada enquanto a primeira mão corre — era
+       medida uma vez só, depois de `abreMesa`, e essa é uma leitura que
+       depende de ONDE os 30 s de abertura param: com a suíte inteira em
+       paralelo, a cadeia da mesa às vezes chega até o fim da primeira
+       mão dentro daquele salto, e o teste falhava por tempo com a mesa
+       se comportando exatamente como se pede dela. Assinada, a metade
+       vira o que ela sempre quis dizer — a porta NUNCA abriu antes do
+       primeiro intervalo —, e isso não tem instante para acertar.
+
+       A janela do "cedo demais" fecha no MESMO flagrante, e não numa
+       contagem de mãos: `handNo` da vista é `mãos fechadas + (mão viva
+       ? 1 : 0)`, então entre uma mão terminar e o `settle` correr ela
+       lê o número da anterior — medir "primeira mão" por ali acusaria a
+       mesa de abrir a porta cedo na SEGUNDA. O que se quer dizer é uma
+       ordem no tempo, e é assim que se escreve. */
     const flagrante: { handNo: number | undefined; podeSair: boolean }[] = [];
+    const cedoDemais: { fase: CashPhase; handNo: number | undefined }[] = [];
     const parar = useTournamentStore.subscribe((s) => {
-      if (flagrante.length === 0 && s.cashPhase === 'handover') {
+      if (s.stage !== 'cash' || flagrante.length > 0) return;
+      if (s.cashPhase === 'handover') {
         flagrante.push({ handNo: s.cashTable?.handNo, podeSair: s.cashCanLeave });
+        return;
+      }
+      // Porta aberta antes de o primeiro intervalo chegar: é o defeito.
+      if (cedoDemais.length === 0 && s.cashCanLeave) {
+        cedoDemais.push({ fase: s.cashPhase, handNo: s.cashTable?.handNo });
       }
     });
+    await abreMesa();
     await avancaAte(() => flagrante.length > 0);
     parar();
+
+    // Enquanto a primeira mão corre, a porta fica em cena e FECHADA.
+    expect(cedoDemais).toEqual([]);
 
     const [noIntervalo] = flagrante;
     expect(flagrante).toHaveLength(1);
