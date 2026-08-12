@@ -1,8 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion';
 
-import { Icon } from '@/shared/components/Icon';
-import { formatCredits } from '@/shared/lib/format';
-
 import { AvatarBadge } from '../../components/AvatarBadge';
 import { HandoverClock } from '../../components/poker/HandoverClock';
 import { neighbourHint, seatOf } from '../seatOrder';
@@ -38,8 +35,6 @@ export function SeatingScreen() {
   const claimError = useTournamentStore((s) => s.claimError);
   const claimSeat = useTournamentStore((s) => s.claimSeat);
   const releaseSeat = useTournamentStore((s) => s.releaseSeat);
-  const buyIn = useTournamentStore((s) => s.buyIn);
-  const blind = useTournamentStore((s) => s.blind);
   const lobbyName = useTournamentStore((s) => s.lobbyName);
 
   const clock = useTournamentStore((s) => s.seatingClock);
@@ -50,14 +45,14 @@ export function SeatingScreen() {
 
   return (
     <main className="seating" data-testid="seating-screen">
+      {/* Só o NOME DA SALA. A compra e o blind saíram daqui: já foram
+          escolhidos na criação (ou lidos na vitrine, para quem chegou pela
+          lista), e repeti-los sobre a única decisão que esta tela pede
+          punha economia e escolha disputando a mesma atenção. O contrato
+          continua dito onde ele é decisão — na folha de criação e no
+          cartão da vitrine —, e volta à vista na mesa montada. */}
       <header className="seating__head">
         <h1 className="seating__title">{lobbyName}</h1>
-        {/* A economia da mesa segue em cena: é o contrato que a vitrine
-            anunciou, e quem chega aqui pela lista precisa reconhecê-lo. */}
-        <p className="seating__stakes" data-testid="seating-stakes">
-          <Icon name="chip" size="0.9em" className="inline align-[-0.1em]" /> Compra{' '}
-          {formatCredits(buyIn)} · Blind {formatCredits(blind)}
-        </p>
       </header>
 
       {/* Chamada, cadeiras, regra e status andam JUNTOS num bloco só.
@@ -66,8 +61,17 @@ export function SeatingScreen() {
           o título e a primeira fileira. O véu do bloco resolve o resto:
           a foto da sala continua em cena, o texto continua legível. */}
       <div className="seating__body">
+        {/* A CHAMADA É FIXA. Ela dizia "Você está na mesa." depois de
+            sentar, e trocar o título no clique custava duas coisas: o
+            bloco inteiro reflui (a frase tem outra largura, e a 320px
+            outra ALTURA, empurrando as cadeiras) bem no instante em que a
+            mesa deveria assentar, e o rótulo do lugar deixava de nomear a
+            tela para narrar o seu estado — que a cadeira com o seu nome e
+            o botão TROCAR já contam, sem repetir. Fixa, ela é o título
+            desta tela do começo ao fim; quem conta o tempo e a vez é o
+            relógio, logo abaixo, que continua mudando com o seu estado. */}
         <p className="seating__lead" data-testid="seating-lead">
-          {seated ? 'Você está na mesa.' : 'Escolha sua cadeira.'}
+          Escolha sua cadeira.
         </p>
 
         <ul className="seating__ring" data-testid="seating-ring">

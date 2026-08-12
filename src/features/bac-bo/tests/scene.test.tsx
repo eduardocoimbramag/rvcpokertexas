@@ -11,9 +11,14 @@ import { resolveDealerReaction } from '../scene/dealer/useDealerReaction';
 import { resolveSceneQuality } from '../scene/sceneQuality';
 import type { GamePhase } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
+import { useTournamentStore } from '../tournament/tournamentStore';
 
 afterEach(() => {
   useGameStore.setState(useGameStore.getInitialState(), true);
+  // O cenário lê os DOIS stores para decidir o enquadramento: sem
+  // devolver o torneio ao estado inicial, um estágio de mesa vaza para o
+  // teste seguinte e o faz passar (ou falhar) pelo motivo errado.
+  useTournamentStore.setState({ stage: 'closed' });
 });
 
 describe('resolveDealerReaction', () => {
@@ -193,6 +198,32 @@ describe('AmbientLayer — coluna de cena e extensão de ambiente', () => {
     rerender(<AmbientLayer />);
     expect(screen.getByTestId('scene-ambient').className).toContain('scene-ambient--game');
   });
+
+  /* O 1v1 e a mesa de 6 mostram a MESMA crupiê; mostrá-la sobre dois
+     enquadramentos diferentes é o defeito que este teste guarda. Ele
+     cobra todos os estágios que desenham `TableScene` — foi ao ganhar
+     `cash` e `cashout` (e não atualizar o cenário junto) que o caixa da
+     mesa de 6 passou a aparecer com o enquadramento de menu. */
+  it.each(['match', 'table', 'cash', 'cashout'] as const)(
+    'usa o enquadramento de jogo no estágio %s do torneio',
+    (stage) => {
+      useTournamentStore.setState({ stage });
+      render(<AmbientLayer />);
+      expect(screen.getByTestId('scene-ambient').className).toContain('scene-ambient--game');
+    },
+  );
+
+  /* O contraponto: onde a mesa NÃO está em cena, o enquadramento tem de
+     continuar o do menu — inclusive na escolha de cadeira, que mostra o
+     salão inteiro atrás das seis cadeiras. */
+  it.each(['browse', 'lobby', 'seating', 'bracket'] as const)(
+    'mantém o enquadramento de menu no estágio %s',
+    (stage) => {
+      useTournamentStore.setState({ stage });
+      render(<AmbientLayer />);
+      expect(screen.getByTestId('scene-ambient').className).not.toContain('scene-ambient--game');
+    },
+  );
 
   it('com cenário desligado, não renderiza nada', () => {
     useGameStore.setState({

@@ -111,13 +111,18 @@ for (const vp of [
     await expect(page.getByTestId('seating-screen')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[data-testid^="seat-claim-"]')).toHaveCount(6);
     await expect(page.getByTestId('seating-clock')).toContainText(/Escolha em \d+s/);
-    await expect(page.getByTestId('seating-stakes')).toContainText('Compra');
+    await expect(page.getByTestId('seating-lead')).toContainText('Escolha sua cadeira');
 
     // Senta na 4: a cadeira mostra ícone e nome, e o botão vira "Trocar".
     await page.getByTestId('seat-claim-3').click();
     await expect(page.getByTestId('seat-name-3')).toHaveText('Você');
     await expect(page.getByTestId('seat-release')).toBeVisible();
-    await expect(page.getByTestId('seating-lead')).toContainText('Você está na mesa');
+    /* A CHAMADA NÃO MUDA ao sentar. Ela é o título da tela, não um
+       narrador do seu estado — quem conta que você sentou é a cadeira com
+       o seu nome (acima) e o relógio (abaixo). Antes virava "Você está na
+       mesa." e refluía o bloco no clique; esta asserção existe para que
+       ela não volte a mudar. */
+    await expect(page.getByTestId('seating-lead')).toContainText('Escolha sua cadeira');
 
     // Os outros terminam de encher a mesa sem tomar o seu lugar.
     await expect(page.locator('[data-testid^="seat-name-"]')).toHaveCount(6, {

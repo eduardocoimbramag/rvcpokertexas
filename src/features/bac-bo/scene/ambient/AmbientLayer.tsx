@@ -2,7 +2,7 @@ import { useReducedMotion } from 'framer-motion';
 import type { CSSProperties } from 'react';
 
 import { useGameStore } from '../../store/gameStore';
-import { useTournamentStore } from '../../tournament/tournamentStore';
+import { TABLE_STAGES, useTournamentStore } from '../../tournament/tournamentStore';
 import { resolveSceneQuality } from '../sceneQuality';
 
 /** Posições/durações fixas das partículas (determinístico e barato). */
@@ -35,10 +35,16 @@ export function AmbientLayer() {
   const quality = resolveSceneQuality(scenery, reducedMotion ?? false);
 
   // Enquadramento do salão: nos momentos de JOGO (mesa em cena — fluxo
-  // 1v1 inteiro ou partida do torneio) a foto sobe para mostrar colunas
-  // e arandelas atrás da dealer, não o teto. Menu, lobby e chaveamento
-  // mantêm o enquadramento original com o lustre em cena.
-  const atTable = phase !== 'idle' || tournamentStage === 'match';
+  // 1v1 inteiro ou qualquer estágio de torneio que desenhe a mesa) a foto
+  // sobe para mostrar colunas e arandelas atrás da dealer, não o teto.
+  // Menu, lobby, escolha de cadeira e chaveamento mantêm o enquadramento
+  // original, com o teto em cena.
+  //
+  // A condição pergunta ao CONJUNTO (`TABLE_STAGES`) em vez de listar os
+  // estágios aqui: escrita à mão, ela já ficou para trás uma vez e o
+  // caixa da mesa de 6 aparecia com a crupiê sobre o enquadramento de
+  // menu, enquanto a mesma crupiê no 1v1 aparecia sobre o de jogo.
+  const atTable = phase !== 'idle' || TABLE_STAGES.has(tournamentStage);
 
   if (quality === 'off') return null;
 

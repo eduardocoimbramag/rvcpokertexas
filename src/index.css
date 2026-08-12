@@ -228,6 +228,20 @@ h2 {
   position: absolute;
   inset: 0;
   background-image:
+    /* scrim do ENQUADRAMENTO: cada um tem o seu (ver --scene-frame-scrim
+       nas duas regras abaixo). Entra como VARIÁVEL, e não como um sexto
+       gradiente escrito à mão, porque uma segunda lista completa aqui é a
+       armadilha que a separação em camadas desta seção existe para
+       evitar: os cinco valores abaixo são afinados e não podem viver em
+       duas cópias.
+
+       PRIMEIRO da lista, ou seja, PINTADO POR CIMA de tudo — inclusive
+       das luzes âmbar. Não é detalhe: embaixo, as poças de luz repõem
+       brilho depois dele, e como elas moram no topo da tela (que é onde
+       este scrim mais trabalha) o efeito chegava amortecido a ~59% do
+       pedido. Por cima, o que se escreve é o que se vê, e a calibragem
+       abaixo pôde ser feita por medição em vez de tentativa. */
+    var(--scene-frame-scrim, none),
     /* poças de luz âmbar dos lustres nos cantos do salão */
     radial-gradient(34% 22% at 12% 0%, rgba(245, 183, 111, 0.16), transparent 70%),
     radial-gradient(34% 22% at 88% 0%, rgba(245, 183, 111, 0.16), transparent 70%),
@@ -250,13 +264,7 @@ h2 {
         rgba(20, 4, 4, 0.08) 24%,
         rgba(26, 6, 9, 0.34) 68%,
         rgba(20, 4, 4, 0.66) 100%
-      ),
-    /* véu do letreiro, ligado só no menu (ver --scene-panel-scrim). Entra
-       como VARIÁVEL no fim da lista, e não como um sexto gradiente
-       escrito à mão, porque uma segunda lista completa aqui é a armadilha
-       que a separação em camadas desta seção existe para evitar: os cinco
-       valores acima são afinados e não podem viver em duas cópias. */
-    var(--scene-panel-scrim, none);
+      );
 }
 
 /* Enquadramento de JOGO (mesa em cena): a câmera desce ao nível da
@@ -275,6 +283,40 @@ h2 {
 .scene-ambient--game .scene-ambient__stage {
   background-size: 100% auto;
   background-position: center calc(var(--scene-stage-w) * -0.3);
+}
+
+/* Scrim do enquadramento de JOGO — o que iguala a mesa ao menu.
+
+   O scrim base (acima) tem uma rampa VERTICAL afinada para o menu: ele é
+   mais fraco por volta de 24% da tela (α 0,08), que é onde o menu mostra
+   o teto — já escuro por conta própria, e que não precisa de ajuda.
+   No jogo a foto SOBE 20%, e quem cai nessa faixa fraca passa a ser a
+   parte mais clara do quadro: as arandelas acesas e a fileira de
+   caça-níqueis. O scrim continuou obedecendo a tela, não a foto, e o
+   salão da mesa ficava MEDIDOS 1,73× mais claro que o mesmo salão no
+   menu — a mesa parecia outro ambiente, mais lavado.
+
+   Esta camada devolve a diferença. Os valores saíram de MEDIÇÃO, não de
+   olho: fotografando só a camada de ambiente e comparando a luminância
+   média da mesma matéria nos dois enquadramentos, a curva foi ajustada
+   até a faixa das máquinas na mesa bater com a do menu. Ela sobe até 24%
+   (onde o scrim base é mais fraco) e afrouxa depois: COMPENSA a rampa de
+   baixo, em vez de repetí-la.
+
+   A cauda até 66% é de segurança, não de estética: no 1v1 a mesa cobre
+   a tela a partir de ~34%, mas torneio e mesa de dinheiro assentam a
+   mesa em alturas próprias. Descendo a zero devagar, qualquer modo que
+   mostre mais salão continua escurecido, sem degrau em altura nenhuma. */
+.scene-ambient--game {
+  --scene-frame-scrim: linear-gradient(
+    180deg,
+    rgba(20, 4, 4, 0.46) 0%,
+    rgba(20, 4, 4, 0.52) 14%,
+    rgba(20, 4, 4, 0.54) 24%,
+    rgba(20, 4, 4, 0.48) 38%,
+    rgba(20, 4, 4, 0.3) 52%,
+    transparent 66%
+  );
 }
 
 /* Véu da FAIXA DO LETREIRO (só nos menus).
@@ -297,7 +339,7 @@ h2 {
    da mesa opaca — o véu não teria o que escurecer, e o topo em cena
    (arandelas e friso atrás da crupiê) deve continuar como está. */
 .scene-ambient:not(.scene-ambient--game) {
-  --scene-panel-scrim: linear-gradient(
+  --scene-frame-scrim: linear-gradient(
     180deg,
     transparent 30%,
     rgba(20, 4, 4, 0.4) 42%,
@@ -8460,7 +8502,6 @@ body.is-street-cut #root {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.15rem;
 }
 
 .seating__title {
@@ -8469,15 +8510,6 @@ body.is-street-cut #root {
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--color-ivory);
-}
-
-/* A economia da mesa segue em cena: é o contrato que a vitrine anunciou,
-   e quem chegou aqui pela lista precisa reconhecê-lo. */
-.seating__stakes {
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  color: var(--color-gold);
 }
 
 /* O CORPO: chamada, cadeiras, regra e status como um bloco só, centrado

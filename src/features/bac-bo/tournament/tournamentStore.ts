@@ -117,6 +117,25 @@ export type TournamentStage =
   | 'cashout'
   | 'champion';
 
+/**
+ * Estágios em que a MESA ESTÁ EM CENA — exatamente os que desenham
+ * `TableScene` (crupiê, feltro e o salão atrás dela).
+ *
+ * Existe como conjunto nomeado, e não como uma condição escrita à mão em
+ * cada consumidor, porque a lista JÁ SAIU DE SINCRONIA uma vez: o
+ * cenário decidia o enquadramento por `stage === 'match'` e ficou para
+ * trás quando o poker cash trouxe `table`, `cash` e `cashout`. O sintoma
+ * era o salão do 1v1 e o da mesa de 6 divergirem — mesma crupiê, dois
+ * enquadramentos. Quem acrescentar um estágio com mesa em cena tem um
+ * lugar só para lembrar.
+ */
+export const TABLE_STAGES: ReadonlySet<TournamentStage> = new Set([
+  'match',
+  'table',
+  'cash',
+  'cashout',
+]);
+
 /** O lance que a mesa acabou de anunciar, para o alto-falante. */
 export interface CashMoveCall {
   /** Muda a cada lance — é a chave que faz o balão reentrar. */
