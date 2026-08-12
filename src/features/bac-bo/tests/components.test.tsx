@@ -242,26 +242,36 @@ describe('HandsArena — o duelo de 21 sobre o feltro', () => {
   const fichasNoPote = (container: HTMLElement) =>
     container.querySelectorAll('[data-testid="felt-pot"] .rvc-chip').length;
 
+  /* O QUE AS FICHAS DO POTE SOMAM. A cor de cada uma é o valor dela
+     (`.rvc-chip--100`), então o monte no feltro é auditável: dá para
+     conferir, ficha a ficha, se o desenho bate com a cifra. */
+  const valorDoPote = (container: HTMLElement) =>
+    [...container.querySelectorAll('[data-testid="felt-pot"] .rvc-chip')].reduce((soma, el) => {
+      const classe = [...el.classList].find((c) => /^rvc-chip--\d+$/.test(c));
+      return soma + Number(classe?.replace('rvc-chip--', '') ?? 0);
+    }, 0);
+
   it('o pote fica na mesa durante o duelo, com as fichas da aposta', () => {
     // As fichas que a negociação pôs na mesa continuam lá enquanto as
     // cartas correm: antes elas sumiam e o valor em jogo virava um
     // número que ninguém via.
     const { container } = renderArena({ match: { ...match, stake: 100 } });
     expect(screen.getByTestId('felt-pot')).toBeInTheDocument();
-    expect(fichasNoPote(container)).toBe(4);
+    expect(fichasNoPote(container)).toBeGreaterThan(0);
     expect(screen.getByRole('img', { name: /Pote na mesa: 100 créditos/ })).toBeInTheDocument();
   });
 
-  it('a dobra aceita DOBRA as fichas na mesa', () => {
-    // A dobra aceita reescreve `match.stake` no store; o pote é derivado
-    // dele, então dobrar o valor tem de dobrar o monte — é o retrato do
-    // gesto, e o motivo de a contagem ser proporcional (ver pot.ts).
-    const simples = renderArena({ match: { ...match, stake: 100 } });
-    expect(fichasNoPote(simples.container)).toBe(4);
-    simples.unmount();
-
-    const dobrada = renderArena({ match: { ...match, stake: 200 } });
-    expect(fichasNoPote(dobrada.container)).toBe(8);
+  it('AS FICHAS DO POTE SOMAM O VALOR DA MESA — é o contrato da peça', () => {
+    /* O pote contava fichas de valor único (uma a cada 25 créditos) e o
+       montante de cada jogador repartia por valor: as duas contas nunca
+       bateram, e o monte no meio do feltro não tinha relação nenhuma com
+       a cifra escrita embaixo dele.
+       Agora a cor de cada ficha é o valor dela, e a soma é auditável. */
+    for (const stake of [25, 100, 140, 200, 675, 2140]) {
+      const { container, unmount } = renderArena({ match: { ...match, stake } });
+      expect(valorDoPote(container), `${stake}`).toBe(stake);
+      unmount();
+    }
   });
 
   it('sem valor na mesa não há pote — é o caso do torneio', () => {
@@ -946,9 +956,7 @@ describe('SessionBanner — o caixa da sessão', () => {
        cobraria duas vezes pela mesma coisa. Mas negar o ouro seria
        mesquinhez — a diferença entre ganhar e não ganhar deixou de ser
        TER ou NÃO TER metal e passou a ser o que o metal faz. */
-    render(
-      <SessionBanner session={session({ stacks: { player: 300, opponent: 1700 } })} />,
-    );
+    render(<SessionBanner session={session({ stacks: { player: 300, opponent: 1700 } })} />);
 
     expect(screen.getByTestId('result-title')).toHaveTextContent('VALEU PELA PARTIDA!');
     expect(screen.getByTestId('result-blaze')).toHaveAttribute('data-outcome', 'close');
@@ -960,9 +968,7 @@ describe('SessionBanner — o caixa da sessão', () => {
     /* `!victory` deixou de significar "derrota" quando entrou o terceiro
        desfecho. Sem as guardas por extenso, quem levanta sem lucro leva
        um feixe vinho no título e uma vinheta escura no body. */
-    render(
-      <SessionBanner session={session({ stacks: { player: 300, opponent: 1700 } })} />,
-    );
+    render(<SessionBanner session={session({ stacks: { player: 300, opponent: 1700 } })} />);
 
     expect(screen.queryByTestId('ember-vignette')).not.toBeInTheDocument();
     expect(screen.queryByTestId('confetti')).not.toBeInTheDocument();
@@ -974,9 +980,7 @@ describe('SessionBanner — o caixa da sessão', () => {
   it('lucro que a comissão zera cai no fecho — nada de "+0" com festa', () => {
     /* `afterHouseEdge` arredonda para baixo: um lucro de 1 ficha vira 0.
        Carimbar "BOA PARTIDA! +0 créditos" seria a tela mentindo. */
-    render(
-      <SessionBanner session={session({ stacks: { player: 1001, opponent: 999 } })} />,
-    );
+    render(<SessionBanner session={session({ stacks: { player: 1001, opponent: 999 } })} />);
 
     expect(visible('payout-closed')).toBeInTheDocument();
     expect(screen.queryByTestId('payout-value')).not.toBeInTheDocument();

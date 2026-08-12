@@ -43,3 +43,25 @@ export const TOURNAMENT_SOON_HINT = 'Em breve';
  * remoção é caro e arriscado; um booleano é uma decisão que se desfaz.
  */
 export const BRACKET_ENABLED = false;
+
+/**
+ * A MESA ABERTA está DESLIGADA — toda sala de cash nasce FECHADA.
+ *
+ * Mesa aberta é a que continua na vitrine depois de começar: quem chega
+ * senta numa cadeira vaga e entra na mão seguinte. Ela existe inteira no
+ * projeto — o campo `mode` no lobby, o selo "Aberta" na vitrine, o texto
+ * da ficha da sala e os testes —, e o que saiu foi a porta: a folha de
+ * criação não pergunta mais, e a vitrine só sorteia mesas fechadas.
+ *
+ * O motivo de desligar é honestidade, não escopo: a entrada no meio da
+ * sessão pede coisas que a mesa ainda não tem — cadeira que vaga e é
+ * reocupada, blind obrigatório de quem entra fora da posição, e o corte
+ * de sigilo para quem chega no meio de uma mão. Anunciar "Aberta" numa
+ * sala em que ninguém entra é a vitrine mentindo.
+ *
+ * Reativar é mudar esta linha para `true`: a régua de entrada volta à
+ * folha e a vitrine volta a sortear os dois modos. É o mesmo flag dos
+ * outros dois acima, pelo mesmo motivo — um `git revert` de uma remoção
+ * é caro e arriscado; um booleano é uma decisão que se desfaz.
+ */
+export const OPEN_TABLE_ENABLED = false;

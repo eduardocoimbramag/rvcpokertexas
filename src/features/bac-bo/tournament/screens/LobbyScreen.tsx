@@ -13,7 +13,7 @@ import { illustrativeRating } from '../../components/opponentProfile';
 import type { Opponent } from '../../engine/types';
 import { prizeFor, tablePrize, tournamentSelectors, useTournamentStore } from '../tournamentStore';
 import type { TournamentPlayer } from '../types';
-import { TABLE_TARGET_WINS, formatLabel, seatsLabel } from '../types';
+import { TABLE_TARGET_WINS, formatLabel } from '../types';
 import { TournamentSettingsSheet } from './TournamentSettingsSheet';
 
 /**
@@ -202,6 +202,8 @@ export function LobbyScreen() {
   const format = useTournamentStore((s) => s.format);
   const size = useTournamentStore((s) => s.size);
   const entryFee = useTournamentStore((s) => s.entryFee);
+  const buyIn = useTournamentStore((s) => s.buyIn);
+  const blind = useTournamentStore((s) => s.blind);
   const members = useTournamentStore((s) => s.members);
   const readyIds = useTournamentStore((s) => s.readyIds);
   const ownerId = useTournamentStore((s) => s.ownerId);
@@ -282,37 +284,75 @@ export function LobbyScreen() {
         </button>
       </header>
 
-      {/* Resumo: o que a mesa É · jogadores · o dinheiro dela.
-          Numa sala de poker o "formato" virou o TAMANHO DA MESA, porque é
-          ele que muda o jogo: numa mesa de três a mão média que se joga é
-          muito mais larga que numa de seis. */}
+      {/* O RESUMO DA SALA: quem já chegou, quanto se leva para a mesa e
+          quanto custa girar uma mão.
+
+          Numa sala de POKER são estas três, e só estas. O que saiu:
+
+          - o TAMANHO DA MESA ("Mesa de 6") repetia, por extenso, o
+            denominador do X/6 logo ao lado. Duas peças para o mesmo
+            número, e a segunda ainda gastava a maior largura da linha;
+          - a PREMIAÇÃO é de torneio: no cash não há prêmio no fim, há o
+            que estiver na sua frente quando você levantar. Anunciar um
+            bolo numa mesa que não tem bolo é prometer o que a mesa não
+            paga.
+
+          O que entrou no lugar é o que decide se vale sentar: a COMPRA
+          (as fichas com que você entra) e o BLIND (o que uma volta de
+          mesa custa). A razão entre os dois é a profundidade da mesa, e
+          é ela que diz que jogo se vai jogar ali.
+
+          Os outros formatos continuam com a leitura deles — o torneio
+          tem taxa e prêmio de verdade. */}
       <div className="tournament-summary mb-3">
-        <span className="tournament-summary__item flex items-center gap-1.5">
-          <Icon name={format === 'bracket' ? 'trophy' : 'users'} size="0.95em" />{' '}
-          {format === 'cash'
-            ? seatsLabel(size)
-            : format === 'bracket'
-              ? formatLabel(format)
-              : `Melhor de ${TABLE_TARGET_WINS}`}
-        </span>
-        <span className="tournament-summary__sep" aria-hidden="true">
-          ·
-        </span>
         <span className="tournament-summary__item flex items-center gap-1.5">
           <Icon name="user" size="0.95em" /> {members.length}/{size}
         </span>
         <span className="tournament-summary__sep" aria-hidden="true">
           ·
         </span>
-        <span className="tournament-summary__item flex items-center gap-1.5">
-          <Icon name="chip" size="0.95em" /> {formatCredits(entryFee)}
-        </span>
-        <span className="tournament-summary__sep" aria-hidden="true">
-          ·
-        </span>
-        <span className="tournament-summary__item tournament-summary__item--prize flex items-center gap-1.5">
-          <Icon name="trophy" size="0.95em" /> {formatCredits(prize)}
-        </span>
+
+        {format === 'cash' ? (
+          <>
+            <span
+              className="tournament-summary__item flex items-center gap-1.5"
+              data-testid="lobby-buyin"
+            >
+              <Icon name="chip" size="0.95em" /> {formatCredits(buyIn)}
+            </span>
+            <span className="tournament-summary__sep" aria-hidden="true">
+              ·
+            </span>
+            {/* O DISCO DO DEALER ao lado do blind, e não uma ficha: quem
+                paga o blind é quem senta à esquerda dele, e é o disco que
+                diz de quem é a vez de pagar. */}
+            <span
+              className="tournament-summary__item flex items-center gap-1.5"
+              data-testid="lobby-blind"
+            >
+              <Icon name="dealer" size="0.95em" /> {formatCredits(blind)}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="tournament-summary__item flex items-center gap-1.5">
+              <Icon name={format === 'bracket' ? 'trophy' : 'users'} size="0.95em" />{' '}
+              {format === 'bracket' ? formatLabel(format) : `Melhor de ${TABLE_TARGET_WINS}`}
+            </span>
+            <span className="tournament-summary__sep" aria-hidden="true">
+              ·
+            </span>
+            <span className="tournament-summary__item flex items-center gap-1.5">
+              <Icon name="chip" size="0.95em" /> {formatCredits(entryFee)}
+            </span>
+            <span className="tournament-summary__sep" aria-hidden="true">
+              ·
+            </span>
+            <span className="tournament-summary__item tournament-summary__item--prize flex items-center gap-1.5">
+              <Icon name="trophy" size="0.95em" /> {formatCredits(prize)}
+            </span>
+          </>
+        )}
       </div>
 
       {/* Assentos, cada um com o seu estado de prontidão. A sala de 16

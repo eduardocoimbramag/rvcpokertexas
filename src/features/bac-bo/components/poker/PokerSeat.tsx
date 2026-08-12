@@ -43,6 +43,13 @@ export interface PokerSeatProps {
   highlight?: readonly Card[];
   /** Atraso da carta na coreografia da distribuição. */
   dealDelayFor: (index: number) => number;
+  /**
+   * Abre o perfil de quem senta aqui. Omitido, a placa não é clicável —
+   * é o que mantém o SEU assento como placa e não como botão, e o que
+   * cala a porta enquanto o rival ainda é anônimo (ver
+   * `opponentIdentity`).
+   */
+  onOpenProfile?: () => void;
   instant: boolean;
 }
 
@@ -81,6 +88,7 @@ export function PokerSeat({
   reading,
   highlight,
   dealDelayFor,
+  onOpenProfile,
   instant,
 }: PokerSeatProps) {
   const you = side === 'player';
@@ -114,11 +122,8 @@ export function PokerSeat({
      layout: ela sai das suas duas fechadas com o que a mesa abriu. Do
      lado do rival a linha simplesmente não nasce, e a placa fica de uma
      linha só. */
-  const identity = (
-    <div
-      className={`seat-plate seat-plate--${side} ${toAct ? 'is-turn' : ''}`}
-      data-testid={`seat-${side}`}
-    >
+  const identityBody = (
+    <>
       <span className="seat-plate__crest" data-testid={`seat-avatar-${side}`} aria-hidden="true">
         <Monogram name={name} you={you} />
       </span>
@@ -126,12 +131,18 @@ export function PokerSeat({
         <span className="seat-plate__line">
           <span className="seat-plate__name">{name}</span>
           {allIn && (
-            <span className="seat-plate__flag seat-plate__flag--allin" data-testid={`allin-${side}`}>
+            <span
+              className="seat-plate__flag seat-plate__flag--allin"
+              data-testid={`allin-${side}`}
+            >
               ALL-IN
             </span>
           )}
           {shown && (
-            <span className="seat-plate__flag seat-plate__flag--shown" data-testid={`shown-${side}`}>
+            <span
+              className="seat-plate__flag seat-plate__flag--shown"
+              data-testid={`shown-${side}`}
+            >
               MOSTROU
             </span>
           )}
@@ -145,6 +156,32 @@ export function PokerSeat({
           </span>
         )}
       </span>
+    </>
+  );
+
+  /* A PLACA ABRE O PERFIL de quem senta ali, e é a mesma porta que o
+     medalhão do desfecho já oferecia — só que agora ela existe DURANTE a
+     mão, que é quando se quer saber com quem se está jogando.
+     Ela vira `button` só quando há perfil a abrir: um `div` que responde
+     a clique não chega ao teclado nem ao leitor de tela, e um `button`
+     onde não há ação anuncia uma porta que não existe. */
+  const abrePerfil = onOpenProfile !== undefined;
+  const identity = abrePerfil ? (
+    <button
+      type="button"
+      className={`seat-plate seat-plate--${side} seat-plate--tappable ${toAct ? 'is-turn' : ''}`}
+      data-testid={`seat-${side}`}
+      onClick={onOpenProfile}
+      aria-label={`Ver o perfil de ${name}`}
+    >
+      {identityBody}
+    </button>
+  ) : (
+    <div
+      className={`seat-plate seat-plate--${side} ${toAct ? 'is-turn' : ''}`}
+      data-testid={`seat-${side}`}
+    >
+      {identityBody}
     </div>
   );
 

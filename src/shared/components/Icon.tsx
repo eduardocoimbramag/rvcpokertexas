@@ -20,6 +20,7 @@ export type IconName =
   | 'help'
   | 'gear'
   | 'chip'
+  | 'dealer'
   | 'swords'
   | 'check'
   | 'crown'
@@ -214,6 +215,15 @@ const GLYPHS: Record<IconName, ReactNode> = {
       <rect x="3.4" y="4.8" width="17.2" height="14.4" rx="2.6" />
       <circle cx="9" cy="9.8" r="1.7" />
       <path d="m6.2 17.6 4.3-4.8 2.9 3.2 2.4-2.7 3.9 4.3" />
+    </>
+  ),
+  /* O DISCO DO DEALER: o botão que roda a mesa, e a única peça que diz
+     de quem é a vez de pagar o blind. O "D" é traçado, e não tipografado
+     — o conjunto de ícones não depende de fonte carregada. */
+  dealer: (
+    <>
+      <circle cx="12" cy="12" r="8.4" />
+      <path d="M9.6 8.4h2.2a3.6 3.6 0 0 1 0 7.2H9.6z" />
     </>
   ),
   timer: (

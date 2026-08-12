@@ -14,11 +14,13 @@ import { ChipStack } from '../table/ChipStack';
 import { SeatMedallion } from '../table/SeatMedallion';
 import { BetControls } from './BetControls';
 import { CommunityBoard } from './CommunityBoard';
+import { HandoverClock } from './HandoverClock';
 import { LeaveTablePrompt } from './LeaveTablePrompt';
 import { MoveCall } from './MoveCall';
 import { PokerSeat } from './PokerSeat';
 import { ShowCardsPrompt } from './ShowCardsPrompt';
 import { ShowdownClash } from './ShowdownClash';
+import { TableVeil } from './TableVeil';
 import { WinnerPlate } from './WinnerPlate';
 import { dealDelay } from './dealOrder';
 
@@ -220,7 +222,11 @@ export function PokerArena({
           depois. Ela mora AQUI, e não numa tela à parte, porque a sessão
           não para: sair da mesa para ler um veredito e voltar quebraria
           a única coisa que uma sessão tem de diferente de uma mão. */}
+      {/* O VÉU E A PLACA entram e saem JUNTOS, na mesma `AnimatePresence`:
+          o desfoque é a moldura da notícia, e uma moldura que sobrevivesse
+          meio segundo à peça que emoldura ficaria em cena sem motivo. */}
       <AnimatePresence>
+        {handover && result && <TableVeil key="veil" instant={reducedMotion} />}
         {handover && result && (
           <WinnerPlate
             key={result.id}
@@ -275,7 +281,21 @@ export function PokerArena({
         allIn={round.stacks.opponent === 0 && !revealed}
         highlight={highlight}
         dealDelayFor={(index) => dealDelay('opponent', index, dealing)}
+        /* A PLACA DO RIVAL ABRE O PERFIL DELE. É a mesma porta que o
+           medalhão do desfecho já oferecia, e ela passou a existir
+           DURANTE a mão — que é quando se quer saber com quem se está
+           jogando, e não depois de a mão ter acabado.
+           A SUA placa não recebe a porta: um perfil de si mesmo aberto
+           por engano no meio de uma decisão cronometrada é só um toque
+           perdido. */
+        onOpenProfile={() => setProfileOpen(true)}
         instant={reducedMotion}
+      />
+
+      <OpponentProfileSheet
+        open={profileOpen}
+        opponent={match.opponent}
+        onClose={() => setProfileOpen(false)}
       />
 
       {/* ---- O centro do feltro: pote, mesa e o que a mesa fala ---- */}
@@ -344,7 +364,11 @@ export function PokerArena({
             animate={{ opacity: 1, y: 0 }}
             transition={reducedMotion ? { duration: 0 } : { duration: 0.25 }}
           >
-            <HandoverClock seconds={handoverSeconds} total={handoverTotal} instant={reducedMotion} />
+            <HandoverClock
+              seconds={handoverSeconds}
+              total={handoverTotal}
+              instant={reducedMotion}
+            />
             {/* No INTERVALO a porta é a única decisão que existe, e por
                 isso ela ocupa a barra inteira. Espremida num quarto da
                 fileira, ela dividia espaço com três lugares vazios — e um
@@ -401,41 +425,6 @@ export function PokerArena({
           </motion.div>
         )}
       </div>
-    </div>
-  );
-}
-
-/**
- * O RELÓGIO DO INTERVALO — os segundos até a mesa distribuir de novo.
- *
- * Ele é a mesma barra do relógio da vez, e de propósito: a linguagem do
- * tempo na mesa é uma só. O que muda é o que ela promete — ali a mesa
- * joga por você, aqui ela só continua.
- */
-function HandoverClock({
-  seconds,
-  total,
-  instant,
-}: {
-  seconds: number;
-  total: number;
-  instant: boolean;
-}) {
-  /* O TOTAL vem de fora e não é constante: depois de uma desistência o
-     intervalo é a metade (ver `FOLD_HANDOVER_SECONDS`), e uma barra
-     medida por um total fixo nasceria pela metade. */
-  const progress = Math.max(0, Math.min(1, seconds / Math.max(1, total)));
-  return (
-    <div className="handover-clock" data-testid="handover-clock">
-      <span className="handover-clock__track" aria-hidden="true">
-        <motion.span
-          className="handover-clock__bar"
-          initial={false}
-          animate={{ scaleX: progress }}
-          transition={instant ? { duration: 0 } : { duration: 1, ease: 'linear' }}
-        />
-      </span>
-      <span className="handover-clock__label">Próxima mão em {seconds}s</span>
     </div>
   );
 }

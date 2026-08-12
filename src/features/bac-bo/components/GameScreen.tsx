@@ -9,6 +9,7 @@ import { useDealerReaction } from '../scene/dealer/useDealerReaction';
 import type { GamePhase } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
 import { BalancePill } from './BalancePill';
+import { TableTools } from './table/TableTools';
 import { ConfirmPanel } from './ConfirmPanel';
 import { CountdownOverlay } from './CountdownOverlay';
 import { FoundSplash } from './FoundSplash';
@@ -85,8 +86,19 @@ export function GameScreen() {
           MESMA coluna em todas as fases, e nada dança de lugar quando a
           cena muda. */}
       <header className="relative z-20 mb-4 flex items-center justify-between gap-3">
-        <span className="h-11 w-11" aria-hidden="true" />
-        {!atTable && <BalancePill balance={balance} delta={balanceDelta} />}
+        {atTable && match ? (
+          /* NA MESA o cabeçalho é das FERRAMENTAS: o valor das fichas à
+             esquerda, o extrato da sessão à direita. É o único lugar da
+             tela que não disputa com nada — o feltro é do jogo e a faixa
+             de baixo é do polegar —, e é justamente onde o saldo deixou
+             de estar quando a sessão começou. */
+          <TableTools table={match.id} />
+        ) : (
+          <>
+            <span className="h-11 w-11" aria-hidden="true" />
+            <BalancePill balance={balance} delta={balanceDelta} />
+          </>
+        )}
       </header>
 
       {/* A TableScene fica FORA do AnimatePresence: a crupiê e a mesa
@@ -145,9 +157,7 @@ export function GameScreen() {
                 {/* O CAIXA da sessão, e não o veredito de uma mão: numa
                     mesa que corre até alguém quebrar, quem ganhou a
                     última mão não é o assunto (ver SessionBanner). */}
-                {phase === 'completed' && session && match && (
-                  <SessionBanner session={session} />
-                )}
+                {phase === 'completed' && session && match && <SessionBanner session={session} />}
               </div>
             )}
             {phase === 'error' && (

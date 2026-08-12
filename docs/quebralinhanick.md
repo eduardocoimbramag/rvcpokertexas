@@ -686,3 +686,46 @@ três, exatamente como a solução 3 faz.
    conta futura tem de sair desse número.
 2. `index.css:8719-8721` — "o nome não precisa mais de teto" é falso: `max-width: 9ch`
    (3326) continua valendo, sem override.
+
+---
+
+# ADENDO — o que entrou no jogo
+
+A solução **2 (nome em cima, montante embaixo)** foi implementada e é a que está
+em cena. Ela resolveu a quebra de linha pela raiz: empilhados, o nome e o
+montante pedem a largura do **maior** dos dois em vez da **soma**, e o
+`flex-wrap: wrap` que causava a quebra saiu do CSS.
+
+Duas coisas a mais entraram depois, e mudam o que está escrito acima.
+
+## A placa passou a ter largura FIXA
+
+A seção 4.3 mede quanto a placa *pede*; ela agora não pede: **recebe**. A largura
+da placa é o que sobra do assento depois da fenda do disco do dealer, e é a mesma
+em todos os assentos de uma faixa — inclusive no de quem tem o botão, porque a
+fenda é reservada mesmo em quem não o tem.
+
+Isto resolve um defeito que este documento descreve mas não nomeia como
+problema separado: a moldura **mudava de tamanho sozinha durante a mão**, a cada
+ficha ganha ou perdida, porque a largura vinha do conteúdo. Fixa, ela vira
+moldura de verdade — o que muda dentro é o texto, e o texto se centra.
+
+## A via fechada da seção "❌ A faixa de 3 para de pagar a perspectiva" mudou de sinal
+
+Aquela seção refuta tirar os −10% da faixa de três, e a refutação estava certa
+**enquanto a pilha do rival morava no vão do assento**. Ela não mora mais: as
+pilhas das pontas saem para fora da faixa (ver `encaixefichas.md`, seção 4). Com
+o corredor da pilha reservado nas bordas, a largura da faixa deixou de ser o que
+segura a pilha dentro da tela.
+
+O que ficou no lugar é o inverso do que a seção antiga propunha: a faixa de três
+**paga mais**, e não menos — 8% de recuo na carta contra 4% por faixa de
+profundidade —, porque a conta em 320 px não fecha de outro jeito. Em troca, a
+letra da placa recua só três quartos disso, e é essa diferença que devolve a
+folga que faz "Helena" caber sem reticências.
+
+## Medido depois de pronto
+
+Mesas de 3, 4, 5 e 6, em 320 e 412 px: **nenhum apelido cortado** (a largura
+visível do nome é igual à largura do texto em todos os assentos), e as placas de
+uma mesma faixa com largura idêntica ao pixel.

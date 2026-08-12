@@ -1,11 +1,12 @@
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 
 import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
 import { AvatarBadge } from '../../components/AvatarBadge';
-import { freeSeats, neighbourHint, seatOf } from '../seatOrder';
-import { useTournamentStore } from '../tournamentStore';
+import { HandoverClock } from '../../components/poker/HandoverClock';
+import { neighbourHint, seatOf } from '../seatOrder';
+import { SEATING_SECONDS, useTournamentStore } from '../tournamentStore';
 
 /**
  * AS SEIS CADEIRAS VAZIAS — a tela entre a sala e a primeira mão.
@@ -41,9 +42,11 @@ export function SeatingScreen() {
   const blind = useTournamentStore((s) => s.blind);
   const lobbyName = useTournamentStore((s) => s.lobbyName);
 
+  const clock = useTournamentStore((s) => s.seatingClock);
+  const reduced = useReducedMotion() ?? false;
+
   const mine = seatOf(seats, 'you');
   const seated = mine >= 0;
-  const livres = freeSeats(seats);
 
   return (
     <main className="seating" data-testid="seating-screen">
@@ -139,20 +142,44 @@ export function SeatingScreen() {
           })}
         </ul>
 
-        {/* O aviso que desarma a corrida. Fixo, e não um aposto: é ele que
-            faz perder meio segundo não custar posição. */}
-        <p className="seating__rule" data-testid="seating-rule">
-          O botão do dealer é sorteado depois que todos sentam.
-        </p>
+        {/* O RELÓGIO DA ESCOLHA — a única coisa que faltava dizer.
+            Aqui moravam dois avisos em texto: que o botão do dealer é
+            sorteado no fim, e a conta de cadeiras livres. O primeiro
+            explicava uma regra que a tela nunca contraria; o segundo
+            repetia, por extenso, o que as seis cadeiras já mostram de
+            relance. Nenhum dos dois respondia a pergunta que a tela
+            deixava no ar — QUANDO ISTO ACABA —, e sem resposta ela não
+            acabava mesmo: quem não clicasse ficava ali, e as outras cinco
+            pessoas junto.
 
-        <p className="seating__status" role="status" data-testid="seating-status">
-          {claimError ??
-            (seated
-              ? livres > 0
-                ? `Esperando os outros — ${livres} ${livres === 1 ? 'cadeira livre' : 'cadeiras livres'}.`
-                : 'Mesa completa. A primeira mão vem aí.'
-              : `${livres} de ${seats.length} livres.`)}
-        </p>
+            A barra é a mesma do intervalo entre as mãos (`HandoverClock`)
+            porque a linguagem do tempo desta casa é uma só.
+
+            A promessa muda com o seu estado, e é isso que a faz valer: de
+            pé, ela avisa que a mesa sorteia por você; sentado, ela deixa
+            de ser um prazo e vira uma contagem. */}
+        <div className="seating__clock">
+          <HandoverClock
+            seconds={clock}
+            total={SEATING_SECONDS}
+            label={
+              seated
+                ? `A mesa começa em ${clock}s`
+                : `Escolha em ${clock}s, ou a mesa sorteia por você`
+            }
+            testId="seating-clock"
+            instant={reduced}
+          />
+        </div>
+
+        {/* A RECUSA continua tendo voz. Ela é o único texto que sobrou
+            aqui, e sobrou porque é o único que conta uma novidade: a
+            cadeira que você pediu já era de outra pessoa. */}
+        {claimError && (
+          <p className="seating__status" role="status" data-testid="seating-status">
+            {claimError}
+          </p>
+        )}
       </div>
     </main>
   );

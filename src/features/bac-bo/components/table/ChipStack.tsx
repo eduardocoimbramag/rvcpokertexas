@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
-import { potChips, potColumns } from './pot';
+import { CHIP_MAX, chipCount, chipsFor, flatChips, potColumns } from './pot';
 
 /**
  * A cena em que o pote está — o que muda é a DENSIDADE, nunca a
@@ -38,7 +38,12 @@ export type ChipStackVariant = 'felt';
  * vinda de 120px abaixo atravessaria a sua própria mão de cartas.
  */
 const LAYOUT: Record<ChipStackVariant, { perColumn: number; stepPx: number; entryPx: number }> = {
-  felt: { perColumn: 6, stepPx: 4, entryPx: 70 },
+  /* QUATRO POR COLUNA, e não seis. A caixa da coluna reserva o curso
+     inteiro (ver `.chip-stack__pile`), então cada ficha de altura
+     permitida é altura cobrada do miolo do feltro — e o miolo é o que
+     falta num aparelho de 568px. Com quatro, o pote cresce PARA OS
+     LADOS, que é o que ele sempre disse que faria. */
+  felt: { perColumn: 4, stepPx: 4, entryPx: 70 },
 };
 
 /** Quanto a chegada do pote inteiro pode durar, em segundos. */
@@ -87,19 +92,33 @@ export function ChipStack({
   const { perColumn, stepPx, entryPx } = LAYOUT[variant];
 
   const columns = useMemo(() => {
-    const total = potChips(stake);
+    /* O POTE É REPARTIDO POR VALOR, como o montante de cada jogador.
+       Ele contava fichas de valor único — uma a cada 25 créditos —, e o
+       resultado era que o monte no meio do feltro não tinha relação
+       nenhuma com a cifra escrita embaixo dele: 2.140 desenhava 30
+       fichas iguais, e nenhuma delas valia 2.140/30.
+       Agora cada ficha do pote vale o que a cor dela diz, e a soma bate
+       com o número. Ver `chipsFor`. */
+    const grupos = chipsFor(stake, CHIP_MAX);
+    const total = chipCount(grupos);
+    const fichas = flatChips(grupos);
     const heights = potColumns(total, perColumn);
-    // O stagger encurta conforme o pote engorda: trinta fichas a 70ms
-    // cada levariam dois segundos para assentar.
+    // O stagger encurta conforme o pote engorda: duas dezenas de fichas
+    // a 70ms cada levariam dois segundos para assentar.
     const beat = total > 0 ? Math.min(ARRIVAL_STEP_S, ARRIVAL_S / total) : 0;
 
+    /* AS ALTAS FICAM POR CIMA (ver `flatChips`): numa pilha vista de
+       lado só a ficha do topo aparece inteira, e é ela que dá o valor de
+       relance ao monte. */
+    let cursor = 0;
     return heights.map((height, column) =>
       Array.from({ length: height }, (_, index) => {
         const seed = column * 13 + index;
+        const value = fichas[cursor++] ?? 1;
         return {
+          value,
           rotate: ((seed * 47) % 25) - 12,
           drift: ((seed * 31) % 11) - 5,
-          gold: seed % 3 === 2,
           /* As fichas caem POR CAMADA, atravessando as colunas — o fundo
              de todas primeiro, depois a segunda fileira. É assim que um
              pote se forma; coluna por coluna leria como gráfico de
@@ -129,7 +148,10 @@ export function ChipStack({
             className="chip-stack__pile"
             style={
               {
-                '--chip-count': chips.length,
+                /* O TETO da coluna, e não a contagem: a caixa reserva o
+                   curso inteiro para o pote não empurrar o board a cada
+                   ficha que cai (ver `.chip-stack__pile`). */
+                '--chip-cap': perColumn,
                 '--chip-step': `${stepPx}px`,
               } as CSSProperties
             }
@@ -137,12 +159,12 @@ export function ChipStack({
             {chips.map((chip, index) => (
               <motion.span
                 key={index}
-                /* A MESMA ficha do montante: uma ficha é uma ficha em
-                   toda a mesa. O pote se conta por unidade (dobrar a
-                   aposta dobra as fichas) e o montante por valor — mas a
-                   PEÇA é a da casa nos dois, e é isso que faz o dinheiro
-                   ler como dinheiro de um lugar só. */
-                className={`rvc-chip ${chip.gold ? 'rvc-chip--1000' : 'rvc-chip--100'}`}
+                /* A MESMA ficha do montante, no MESMO valor: uma ficha é
+                   uma ficha em toda a mesa, e o que ela vale é o mesmo em
+                   todo lugar. A cor sai do valor, e não de um sorteio —
+                   antes ela alternava ouro e vinho a cada três fichas,
+                   e o pote ficava bonito dizendo qualquer coisa. */
+                className={`rvc-chip rvc-chip--${chip.value}`}
                 style={{ zIndex: index }}
                 initial={
                   instant

@@ -9,29 +9,16 @@
  * fichas e 200 são oito: o gesto de dobrar tem retrato.
  */
 
-/** Quanto vale uma ficha desenhada na mesa. */
-export const CHIP_UNIT = 25;
-
 /**
- * Teto de fichas desenhadas. Existe porque a faixa livre do feltro do
- * duelo tem 92px de altura no pior aparelho — uma aposta de 5.000 são
- * 200 fichas, e não há mesa que as mostre.
+ * Teto de fichas desenhadas no pote. Existe porque a faixa livre do
+ * feltro do duelo tem 92px de altura no pior aparelho — não há mesa que
+ * mostre cem fichas.
  *
- * O teto foi escolhido para cair FORA do alcance de quem joga: com ele,
- * dobrar continua dobrando exatamente até uma aposta de 375 créditos, e
- * a aposta padrão da casa é 100. Passar do teto é a mesa dizendo "está
- * cheia", que é a leitura certa quando o pote é grande demais para
- * contar de relance.
+ * Passar do teto é a mesa dizendo "está cheia": ali ela engrossa a
+ * repartição (ver `ROUNDING_STEPS`), que é o que um crupiê faz quando o
+ * monte de miúdas fica alto demais para contar de relance.
  */
-export const CHIP_MAX = 30;
-
-/** Quantas fichas este valor põe no feltro. Zero não desenha pote. */
-export function potChips(stake: number): number {
-  if (!Number.isFinite(stake) || stake <= 0) return 0;
-  // O piso de 1 é o que mantém a aposta mínima (10) visível: menos de
-  // meia ficha ainda é dinheiro na mesa.
-  return Math.min(CHIP_MAX, Math.max(1, Math.round(stake / CHIP_UNIT)));
-}
+export const CHIP_MAX = 24;
 
 /**
  * Reparte as fichas em COLUNAS, como um pote de verdade — nenhuma mesa
@@ -72,8 +59,22 @@ export function potColumns(count: number, perColumn: number): number[] {
  * nada. É também o que mantém o montante do mesmo TAMANHO das fichas do
  * pote: uma ficha é uma ficha em toda a mesa, e o que muda é quanto ela
  * vale.
+ *
+ * ELAS ERAM QUATRO (1.000, 500, 100 e 25), e com a menor valendo 25 a
+ * mesa não conseguia escrever um número qualquer: um stack de 2.140 não
+ * se reparte em fichas de 25, e o desenho dizia um valor enquanto a
+ * cifra ao lado dizia outro. As três miúdas — 10, 5 e 1 — fecham
+ * QUALQUER conta, e é isso que faz as fichas na mesa passarem a ser o
+ * retrato do que se tem.
+ *
+ * O CONJUNTO É CANÔNICO, e isso importa: com {1, 5, 10, 25, 100, 500,
+ * 1000} a repartição gulosa (pegar sempre a maior que couber) é
+ * PROVADAMENTE a de menor número de fichas. Não é sorte — é a mesma
+ * família do sistema de moedas que a régua de qualquer caixa usa. Num
+ * conjunto não canônico ela falharia: com {1, 10, 25}, 30 sairia como
+ * 25+1×5 (seis fichas) em vez de 10+10+10 (três).
  */
-export const CHIP_DENOMINATIONS = [1000, 500, 100, 25] as const;
+export const CHIP_DENOMINATIONS = [1000, 500, 100, 25, 10, 5, 1] as const;
 export type ChipDenomination = (typeof CHIP_DENOMINATIONS)[number];
 
 /**
@@ -90,14 +91,15 @@ export const RACK_MAX_CHIPS = RACK_PER_COLUMN * 2;
 /**
  * Os degraus de arredondamento, do mais fino ao mais grosso.
  *
- * Um stack é um número qualquer (o menor lance da mesa é UM crédito), e
- * 3.076 não se escreve em fichas de 25. Arredondar é obrigatório, e o
- * degrau é escolhido pelo que CABE: começa fino e engrossa até o
- * montante caber na faixa. É o mesmo que um crupiê faz ao trocar as
- * fichas miúdas de quem está ganhando muito — a pilha continua legível
- * porque o valor de cada ficha subiu.
+ * O PRIMEIRO É 1 — ou seja, EXATO. Ele começava em 25, e com isso todo
+ * montante era arredondado antes mesmo de a mesa perguntar se ele cabia:
+ * a pilha nunca dizia o número da cifra ao lado. Agora o exato é a
+ * primeira tentativa, e só se ele não couber na faixa é que a mesa
+ * engrossa — que é o que um crupiê faz ao trocar as fichas miúdas de
+ * quem está ganhando muito. A pilha continua legível porque o valor de
+ * cada ficha subiu, e não porque o número mentiu.
  */
-const ROUNDING_STEPS = [25, 100, 500, 1000] as const;
+const ROUNDING_STEPS = [1, 5, 25, 100, 500, 1000] as const;
 
 /** Uma coluna do montante: N fichas de um mesmo valor. */
 export interface ChipGroup {
@@ -105,7 +107,13 @@ export interface ChipGroup {
   count: number;
 }
 
-/** Reparte um valor nas fichas da casa, da mais alta para a mais baixa. */
+/**
+ * Reparte um valor nas fichas da casa, da mais alta para a mais baixa.
+ *
+ * A repartição é GULOSA, e no conjunto da casa isso é o mesmo que
+ * ÓTIMA: pegar sempre a maior ficha que couber devolve o menor número
+ * de fichas possível (ver `CHIP_DENOMINATIONS`).
+ */
 function breakDown(amount: number): ChipGroup[] {
   let left = amount;
   const groups: ChipGroup[] = [];
@@ -120,31 +128,73 @@ function breakDown(amount: number): ChipGroup[] {
 }
 
 /**
- * O MONTANTE de um duelista em fichas da casa.
+ * UM VALOR EM FICHAS DA CASA, na repartição de MENOR número de fichas
+ * que cabe no espaço disponível.
  *
- * Devolve os grupos já prontos para desenhar — cor por cor, do valor mais
- * alto ao mais baixo. O arredondamento engrossa sozinho até o montante
- * caber na faixa livre (ver `ROUNDING_STEPS`): com isso um stack de
- * 6.724 vira seis douradas, uma roxa, duas vinho e uma clara, e um de
- * 9.900 vira dez douradas — nos dois casos uma pilha que se lê.
+ * É a única conta de fichas da mesa — a do montante de cada jogador e a
+ * do pote no meio do feltro. Elas eram duas: o pote contava fichas de
+ * valor único (uma a cada 25 créditos) e o montante repartia por valor,
+ * e o resultado era que as fichas do meio da mesa não tinham relação com
+ * a cifra escrita embaixo delas. Uma ficha é uma ficha em toda a mesa, e
+ * o que ela vale tem de ser o mesmo em todo lugar.
+ *
+ * A CONTA TENTA O EXATO PRIMEIRO. Só se a repartição exata não couber no
+ * teto é que ela engrossa, degrau a degrau (ver `ROUNDING_STEPS`) — o
+ * mesmo gesto de um crupiê que troca as miúdas de quem está ganhando
+ * muito. O número escrito ao lado continua sendo o verdadeiro; o que
+ * cede é a granularidade do desenho, e só quando não há alternativa.
  *
  * O piso de uma ficha é deliberado: quem está por um fio tem POUCO, e a
  * diferença entre pouco e nada é a própria sessão.
+ *
+ * @param maxChips Quantas fichas cabem no espaço em que ela vai ser
+ *                 desenhada. Muda por cena: a faixa ao lado da mão
+ *                 comporta doze, o meio do feltro comporta mais.
  */
-export function rackChips(stack: number): ChipGroup[] {
-  if (!Number.isFinite(stack) || stack <= 0) return [];
+export function chipsFor(amount: number, maxChips: number): ChipGroup[] {
+  if (!Number.isFinite(amount) || amount <= 0) return [];
+  const teto = Math.max(1, Math.floor(maxChips));
 
   for (const step of ROUNDING_STEPS) {
-    const rounded = Math.round(stack / step) * step;
+    const rounded = Math.round(amount / step) * step;
     // Arredondar para baixo até zero apagaria da mesa quem ainda tem
     // fichas: o piso é uma ficha do menor valor.
     if (rounded <= 0) continue;
     const groups = breakDown(rounded);
     const total = groups.reduce((sum, group) => sum + group.count, 0);
-    if (total > 0 && total <= RACK_MAX_CHIPS) return groups;
+    if (total > 0 && total <= teto) return groups;
   }
 
   // Piso: uma ficha do menor valor. Quem tem pouco tem POUCO, e a
   // diferença entre pouco e nada é a própria sessão.
-  return [{ value: 25, count: 1 }];
+  return [{ value: 1, count: 1 }];
+}
+
+/** Quantas fichas uma repartição põe na mesa. */
+export function chipCount(groups: readonly ChipGroup[]): number {
+  return groups.reduce((sum, group) => sum + group.count, 0);
+}
+
+/**
+ * A repartição achatada, uma entrada por FICHA, na ORDEM DE EMPILHAR: a
+ * de menor valor no fundo, a maior no topo.
+ *
+ * A ordem não é decorativa. Numa pilha vista de lado o que se vê inteiro
+ * é a ficha DE CIMA, e as de baixo aparecem só pela borda — com a menor
+ * no topo, um pote de 2.030 era coroado por uma ficha de 5 e lia como
+ * troco. Com a maior no topo, a pilha é lida pela melhor ficha dela, que
+ * é como se lê um monte numa mesa de verdade.
+ */
+export function flatChips(groups: readonly ChipGroup[]): ChipDenomination[] {
+  return groups
+    .flatMap((group) => Array.from({ length: group.count }, () => group.value))
+    .reverse();
+}
+
+/**
+ * O MONTANTE de um duelista em fichas da casa — a conta acima, no espaço
+ * da faixa ao lado da mão.
+ */
+export function rackChips(stack: number, maxChips: number = RACK_MAX_CHIPS): ChipGroup[] {
+  return chipsFor(stack, maxChips);
 }

@@ -472,6 +472,72 @@ próprio com diagnóstico medido e cinco ou mais soluções cada:
   espremido a zero. Com ele, o flexbox **quebra a linha antes de encolher** — a elipse
   do nome nunca chega a disparar, e o montante cai para a segunda linha.
 
+### O fim da mão passou a ter as três batidas do duelo
+
+O maior buraco que sobrava entre as duas mesas não era de pixel: era de **compasso**.
+No duelo, uma mão que acaba dispara três coisas em sequência — o **embate**
+(`ShowdownClash`), a **placa do vencedor** (`WinnerPlate`) e o **relógio da próxima**
+(`HandoverClock`). Na mesa de seis havia uma pausa cega de 5,6 s e uma plaquinha no
+rodapé. O momento mais importante da mão — a hora em que as mãos se medem — passava
+sem ninguém ver a medição acontecer.
+
+A correção foi de arquitetura, e não de cópia. Cada uma das três peças ganhou um
+**núcleo apresentacional** que não sabe de que mesa veio o veredito, e cada mesa virou
+um **adaptador** dele:
+
+| Peça | Núcleo comum | Adaptador do duelo | Adaptador da cash |
+| --- | --- | --- | --- |
+| Embate | `ClashStage` | `ShowdownClash` | `CashArena` |
+| Placa do desfecho | `WinnerPlateFrame` | `WinnerPlate` | `CashVerdictPlate` |
+| Relógio do intervalo | `HandoverClock` | `PokerArena` | `CashTableScreen` |
+
+**A redução de seis mãos para duas placas é deliberada.** A cena do duelo compara dois
+lados, e uma mesa de anel pode fechar com cinco mãos vivas. Quem escolhe os dois lados é
+`buildClash`, no store, nesta ordem: você **não** levou → quem levou; você levou com
+mais alguém → o outro dono do pote; você levou sozinho → a melhor mão que se mediu
+contra a sua. Não é um resumo pobre — é a única comparação que decidiu o dinheiro, e as
+outras perderam todas para a mesma placa. Enfileirar as cinco viraria uma tabela, e
+tabela não é cena.
+
+**O sigilo atravessa a tradução.** A leitura de um rival só entra no veredito quando ela
+é pública: ou a mão foi ao showdown, ou ele escolheu abrir. Fora disso a placa dele vai
+fechada — e vai fechada porque o **store não sabe**, não porque a tela decidiu não
+contar.
+
+O store ganhou uma fase (`cashPhase: 'hand' | 'settle' | 'handover'`) porque cada batida
+mostra uma coisa diferente e a tela precisa saber qual. O intervalo da mesa de anel é de
+**5 s**, contra os 10 do duelo: no duelo ele é o único respiro de uma sessão de duas
+pessoas; aqui uma mão de seis já leva o dobro do tempo para correr.
+
+### A porta saiu do canto e foi para onde a decisão se toma
+
+A saída da mesa era uma **bandeira de 2 rem** no canto superior direito. Duas coisas
+erradas nela: uma bandeira não diz "levantar" para ninguém, e o canto de cima não é onde
+o olho de quem quer sair vai parar. Ela saiu de cena, e a saída passou a ter três
+lugares, todos na faixa sob o polegar e todos escritos por extenso:
+
+- na **barra de lances**, enquanto a vez é sua (`LeaveButton`, a peça do duelo);
+- na **espera**, depois que você corre a mão — que era o buraco: quem corria ficava sem
+  lance, sem vez e sem nada a fazer até a mesa fechar o pote, e ficar olhando não é uma
+  escolha, é a ausência de uma;
+- na **janela do intervalo**, ocupando a barra inteira, porque ali ela é a única decisão
+  que existe.
+
+### A escolha de cadeira ganhou fim
+
+A tela das seis cadeiras não terminava: quem não clicasse ficava ali para sempre, e as
+outras cinco pessoas junto. Ela agora tem um **relógio de 10 s** — a mesma barra do
+intervalo entre mãos, porque a linguagem do tempo desta casa é uma só. Zerado, a mesa
+senta você numa cadeira sorteada, preenche o resto e abre.
+
+Saíram do lugar dele dois avisos em texto: o do sorteio do botão do dealer e a conta de
+cadeiras livres. O primeiro explicava uma regra que a tela nunca contraria; o segundo
+repetia, por extenso, o que as seis cadeiras mostram de relance. Nenhum dos dois
+respondia a única pergunta que ficava no ar.
+
+Sortear a cadeira não custa nada a ninguém, e é o §6.1 que garante isso: a cadeira só
+decide quem fala depois de você, e o botão do dealer é sorteado quando a mesa abre.
+
 **O que a Rota A ainda finge**, e precisa ser dito a quem assistir: os cinco rivais são
 bots; as salas do lobby nascem no seu próprio navegador (dois aparelhos veem listas
 diferentes); e a corrida pela cadeira é encenada com `setTimeout` — embora o contrato
@@ -623,3 +689,341 @@ Em aberto:
    inteiro, mesa ainda sem jogo) ou por F2 (a mesa bonita, sem lobby novo).
 
 Ver também: [`corre.md`](corre.md) para o estado atual da engine de poker.
+
+### Um defeito que a janela do intervalo revelou
+
+Com o desfecho parado em cena por oito segundos em vez de cinco e meio, ficou visível o
+que a pausa cega escondia: **a projeção da mesa congelava no instante ANTERIOR ao
+pagamento do pote**. Os stacks continuavam os de antes de repartir e as apostas seguiam
+no feltro à frente de cada assento — e tudo pulava de uma vez quando a mão seguinte
+começava.
+
+A causa estava em `CashTableEngine.view()`: ela lia o stack e a aposta do assento **da
+mão**, e `settle()` escreve o resultado noutro lugar (`this.stacks`). Enquanto a mão
+corre as duas leituras são separadas de propósito — o que sobrou na frente e o que se
+empurrou nesta rua são coisas diferentes, e é assim que uma mesa mostra. Fechado o pote
+elas viram uma só.
+
+O marco é o **pagamento**, e não o fim da mão: entre a última carta e `settle` existe um
+instante em que a mão está fechada e o pote ainda não foi repartido — ler `this.stacks`
+ali daria o montante de antes dos blinds. Quem separa os dois é `lastResult`.
+
+O defeito não era novo; era só curto demais para ser visto.
+
+### O intervalo tira a mesa de foco, e a placa virou porta
+
+Duas peças a mais entraram nas DUAS mesas, e as duas pelo mesmo princípio: o que a
+tela pede em cada momento.
+
+**O véu do intervalo** (`TableVeil`). No fim de uma mão o feltro continua cheio —
+cartas, fichas, placas de assento, o pote — e a placa do vencedor disputava a atenção
+com uma mesa inteira que já não decide nada. O véu desfoca o FUNDO, e não a tela: ele
+usa `backdrop-filter`, que age sobre o que está **pintado atrás**, então tudo o que vem
+depois na ordem de pintura fica nítido — a placa do desfecho (z 12) e a faixa de lances
+(z 12), que é onde estão o relógio da próxima mão e a porta.
+
+É a diferença que importa em relação ao corte de cena do letreiro de rua
+(`body.is-street-cut`), que desfoca o `#root` inteiro: ali não há nada com que
+interagir; aqui há dois botões sob o polegar, e desfocar justamente o que se precisa
+tocar seria o inverso do que o véu existe para fazer.
+
+Ele **sangra para fora da arena**, e o de cima sangra o dobro. Colado no `inset: 0` o
+véu tinha a caixa da arena, e a arena não é o feltro: sobrava uma faixa nítida no alto e
+o desfoque terminava numa reta no meio do pano — a tela lia como um retângulo colado por
+cima, e não como uma mesa fora de foco.
+
+**A placa do nome abre o perfil.** A porta já existia no medalhão do desfecho do duelo,
+e só lá: dava para saber com quem se jogou, nunca com quem se está jogando. Agora a
+placa do rival é um `button` de verdade nas duas mesas — não um `div` que responde a
+clique, porque a placa é o único alvo de toque do assento (na mesa de seis ela mede
+~50px) e um `div` clicável não chega ao teclado, não anuncia nada ao leitor de tela e
+não recebe o anel de foco da casa.
+
+A folha é a mesma (`OpponentProfileSheet`): quem senta numa mesa desta casa tem um
+perfil só. Ela fala em `Opponent`, e um jogador de torneio vira um pelo `asOpponent` —
+a conversão que o chaveamento já fazia inline e que agora mora num lugar só.
+
+A SUA placa não recebe a porta em nenhuma das duas mesas: um perfil de si mesmo aberto
+por engano no meio de uma decisão cronometrada é só um toque perdido.
+
+### As duas ferramentas da mesa, e o lugar certo do balanço
+
+Duas consultas entraram nos cantos de cima das DUAS mesas — o único lugar da tela que
+não disputa com nada: o feltro é do jogo, a faixa de baixo é do polegar, e o alto tem o
+nome da mesa no meio e dois cantos vazios.
+
+**O valor das fichas** (esquerda). As fichas têm valor fixo — 1.000, 500, 100 e 25 (ver
+`CHIP_DENOMINATIONS`) —, e é por isso que um montante de milhares cabe numa faixa de
+feltro: seis douradas são seis mil, e isso se lê sem contar nada. Quem não sabe a tabela
+vê um monte colorido. O quadro mostra a **ficha da casa** (`.rvc-chip`, a mesma peça do
+pote e do montante), e não um desenho parecido — seria a única ficha do jogo que não é a
+ficha do jogo.
+
+**O extrato da sessão** (direita). Saldo grande em cima, mãos embaixo, **da primeira
+para a última**: um extrato de banco começa na mais recente porque a pergunta lá é "o
+que acabou de acontecer"; aqui a pergunta é "como cheguei a este stack", e ela se
+responde de trás para a frente. A lista rola sozinha e o saldo não — uma sessão longa
+não pode empurrar para fora da tela a única linha que a resume. Quem correu tem selo
+próprio: uma mão largada e uma perdida no showdown custam as duas fichas e não contam a
+mesma história.
+
+Ele é **derivado** do histórico que a casa já grava mão a mão (`handLog`), e não uma
+segunda lista mantida em paralelo — o segundo lugar para a mesma verdade é sempre o que
+sai de sincronia. A chave é a mesa: `matchId` no duelo, `tableId` na mesa de anel.
+
+**E é para lá que o balanço da mão foi.** A placa do desfecho da mesa de seis trazia um
+`-45` grande em cima do nome de quem levou, e era a única coisa que ela tinha a mais que
+a do duelo. Ela agora é literalmente a mesma janela: quem levou, a leitura da mão, o que
+a completa e as cartas que decidiram — inclusive o recorte de `decidingHand`, que mostra
+a COMBINAÇÃO e não a mão de cinco. O balanço não se perdeu: virou uma linha do extrato,
+onde vem com as outras mãos ao lado e o saldo da sessão em cima, em vez de aparecer e
+sumir em cinco segundos.
+
+### MESA ENCERRADA passou a ser do mesmo metal
+
+A faixa do fecho da mesa era ouro médio chapado (`--color-gold`), pelo argumento de que
+a peça não tem cifra a dar e não merecia o champagne. O argumento estava certo sobre o
+**brilho** e errado sobre a **liga**: com "VALEU PELA PARTIDA" logo acima em metal
+lapidado, um ouro fosco a dois centímetros dela não lia como discrição — lia como outra
+peça, de outra tela.
+
+Agora é o mesmo gradiente do título, recortado pelas letras, e a moldura ganhou o halo
+que lhe faltava. O que continua diferente é a **festa**: o título tem halo redondo,
+varredura rápida e partículas; a faixa tem o metal e mais nada.
+
+Uma armadilha, e ela já estava documentada no título: numa caixa com
+`background-clip: text` o fundo é pintado ANTES da sombra, e um `text-shadow` de 1px
+cobre quase toda a glifa — o metal fica embaixo, invisível. O relevo sai de
+`drop-shadow`, que age sobre o que já foi renderizado.
+
+### O resumo do lobby diz o que a mesa de cash tem
+
+A linha de resumo da sala trazia quatro leituras — tamanho, jogadores, taxa e premiação —
+e duas delas eram de torneio:
+
+- o **tamanho da mesa** ("Mesa de 6") repetia, por extenso, o denominador do `X/6` logo
+  ao lado. Duas peças para o mesmo número, e a segunda gastava a maior largura da linha;
+- a **premiação** não existe num cash: não há bolo no fim, há o que estiver na sua frente
+  quando você levantar. Anunciar um prêmio numa mesa que não paga prêmio é prometer o que
+  ela não tem.
+
+Ficaram três, e são as que decidem se vale sentar: **quem já chegou**, a **compra** (as
+fichas com que se entra) e o **blind** (o que uma volta de mesa custa). A razão entre os
+dois últimos é a profundidade da mesa, e é ela que diz que jogo se vai jogar ali.
+
+O blind vem com o **disco do dealer**, e não com uma ficha: quem paga o blind é quem
+senta à esquerda dele, e é o disco que diz de quem é a vez. Foi preciso um ícone novo
+(`dealer`) — um "D" traçado dentro do disco, sem tipografia carregada, como o resto do
+conjunto. Os outros formatos mantêm a leitura deles: o torneio tem taxa e prêmio de
+verdade.
+
+### A marca da Home virou um flush de paus, com onda
+
+O ícone acompanha o jogo, e este é o terceiro. O primeiro era um Ás sozinho, herdado do
+blackjack. O segundo foi o par fechado do Hold'em — melhor, mas ainda a silhueta de duas
+cartas que **qualquer** jogo de carta usa: de longe continuava lendo como blackjack, que
+foi exatamente o que o dono apontou.
+
+**Cinco cartas do mesmo naipe é uma imagem que só o poker tem.** Não é a mão que se
+recebe: é a que se persegue.
+
+A **onda** existe porque uma marca parada num menu é um adesivo. O gesto é o de um crupiê
+passando o dedo pelo leque para conferir as cartas: uma sobe, assenta, a seguinte sobe. É
+lento, tem respiro entre os ciclos e nunca tem duas cartas no ar pelo mesmo motivo. A
+levantada é **no eixo da carta** — o grupo animado vive dentro do grupo que gira —, então
+a da ponta sobe inclinada, como sairia de um leque de verdade; na vertical, as cinco
+subiriam paralelas e o leque perderia a perspectiva.
+
+O leque gira em torno de um pivô **muito abaixo** do quadro, e essa é a decisão de
+geometria: a 54 unidades de distância, 11° deslocam a carta 8,6 de lado e a inclinam
+quase nada. Um pivô logo abaixo das cartas daria o mesmo afastamento com 29° por carta —
+as das pontas ficariam deitadas, e um flush deitado não se lê.
+
+**Uma armadilha do framer, e ela é silenciosa:** com `initial={false}` no grupo animado,
+uma sequência de keyframes é tratada como estado INICIAL e nunca chega a correr. O leque
+nascia parado e parado ficava, sem erro nenhum. O e2e da Home passou a afirmar que o
+gesto **acontece** — em amostras ao longo de um ciclo, a carta mais levantada tem de
+mudar —, e a medição é pelo desvio de cada carta em relação ao próprio repouso: no leque
+a do meio já nasce mais alta, e uma comparação crua diria "a do meio" em todas as
+amostras.
+
+O par de cartas antigo (`BrandCard`) saiu do projeto, e com ele o balanço que a Home
+aplicava por fora: a peça tem movimento próprio agora, e as duas juntas davam um leque
+que gingava enquanto as cartas pulavam.
+
+### A ficha da sala virou de poker
+
+A folha de detalhes ainda era a do chaveamento: formato, tamanho, **taxa de entrada** e
+**premiação**. Numa mesa de cash duas delas são falsas — não há taxa (o dinheiro é a
+compra, e ela volta em fichas) nem prêmio no fim (o prêmio é o que estiver na sua frente
+quando você levantar). Uma ficha que anuncia um bolo que a mesa não paga é pior que uma
+ficha incompleta.
+
+Ficaram quatro leituras, nesta ordem: **sala** (pública/privada e o código), **mesa**
+(quantos sentam · mão após mão), **compra** (o que se leva para o feltro) e **blinds**
+(pequeno · grande, com a profundidade em blinds na dica). Saiu também o bloco
+"Jogadores", que repetia por extenso o número que a linha da mesa já dá. Os outros
+formatos mantêm a ficha deles.
+
+### As fichas passaram a dizer a verdade
+
+Este era o defeito mais grave da mesa, e ele era estrutural: **havia duas contas de
+fichas**. O pote contava fichas de valor ÚNICO — uma a cada 25 créditos, no máximo 30 —
+e o montante de cada jogador repartia por valor. As duas nunca bateram: um pote de 2.140
+desenhava trinta fichas iguais, e nenhuma delas valia 2.140/30.
+
+Agora há **uma conta só** (`chipsFor`), e ela vale para o pote e para o montante: cada
+ficha na mesa vale o que a cor dela diz, e a soma bate com a cifra ao lado. É auditável —
+o teste percorre o DOM somando as classes `rvc-chip--N` e compara com o valor da mesa.
+
+**Três fichas novas** fecham qualquer conta: **10** (jade), **5** (lilás) e **1**
+(terra). Com a menor valendo 25, um stack de 2.140 simplesmente não se escrevia em
+fichas, e a mesa arredondava antes mesmo de perguntar se o exato cabia — o desenho dizia
+um número e a cifra dizia outro. As cores ocupam a faixa fria e terrosa que faltava: o
+vinho, o azul, o ouro e o marfim já estavam tomados. O verde vem **escuro e saturado**
+porque verde é a cor do feltro — um verde claro desapareceria no pano.
+
+**O conjunto é canônico, e isso é o que garante o mínimo de fichas.** Com
+`{1, 5, 10, 25, 100, 500, 1000}` a repartição gulosa — pegar sempre a maior que couber —
+é *provadamente* a de menor número de fichas. Não é sorte: é a mesma família do sistema
+de moedas que qualquer caixa usa. Num conjunto não canônico ela falharia (com
+`{1, 10, 25}`, 30 sairia como 25+5×1, seis fichas, em vez de 10+10+10, três). O teste
+prova por exaustão contra a programação dinâmica para todo valor até 1.200 — se alguém
+acrescentar uma ficha que quebre a canonicidade, ele cai.
+
+O arredondamento continua existindo, e agora **só como último recurso**: o primeiro
+degrau é 1 (exato), e a mesa só engrossa se a repartição exata não couber no espaço — o
+mesmo gesto de um crupiê que troca as miúdas de quem está ganhando muito. O número
+escrito ao lado nunca mente; o que cede é a granularidade do desenho.
+
+**A ordem de empilhar inverteu.** Numa pilha vista de lado só a ficha do topo aparece
+inteira: com a menor no topo, um pote de 2.030 era coroado por uma ficha de 5 e lia como
+troco. A maior no topo faz a pilha ser lida pela melhor ficha dela, que é como se lê um
+monte numa mesa de verdade.
+
+O contrato antigo do pote — "dobrar a aposta dobra as fichas" — caiu junto, e a troca é
+consciente: ele existia porque o pote não sabia o valor de nada, e o preço dele era a
+mesa mentir. O teste que o guardava foi reescrito para o contrato novo, que é mais forte:
+**as fichas do pote somam o valor da mesa.**
+
+### A mesa parou de se mexer
+
+Era o defeito mais visível da mesa de seis, e o mais difícil de nomear: "as cartas e as
+fichas se movimentam". Medindo posição a posição ao longo de uma mão, ele se revelou como
+**quatro causas somadas**, cada uma mudando a altura de um bloco — e como o miolo do
+feltro é o item elástico da coluna, tudo o que está abaixo anda atrás.
+
+| O que mudava | Quanto | Por quê |
+| --- | --- | --- |
+| A pastilha da aposta | 18px por fileira | Entrava e saía do fluxo a cada rua |
+| A caixa do pote | 12px | Media a coluna que existe, não o curso inteiro |
+| A faixa do alto-falante | 8px | `min-height` de 22px com um balão de 25 |
+| A banda de lances | 3,2px | Reserva de 85px com uma barra de 88,4 |
+
+Somadas, moviam o miolo em 18px, o board em 16 e **as suas cartas em 28**.
+
+As correções seguem o mesmo princípio — *o que aparece e some não pode ocupar espaço em
+disputa* —, mas cada uma o aplica de um jeito:
+
+- **A pastilha SAIU DO FLUXO.** A primeira tentativa foi reservar o lugar dela, e estava
+  meio certa: o salto sumia, mas o assento passava a carregar a altura da pastilha o
+  tempo todo — 36px a menos de feltro num aparelho de 568px, que é onde ele não sobra.
+  Fora do fluxo ela pende sobre o pano à frente do assento, que é onde as fichas de uma
+  aposta ficam numa mesa de verdade.
+- **A caixa do pote reserva a coluna cheia**, como a do montante já fazia. O argumento
+  contrário estava escrito no código — com altura fixa sobra vazio no topo — e é
+  verdadeiro; o preço dele era pior, porque o pote cresce a cada lance.
+- **A faixa do alto-falante ganhou altura fixa**, e a altura é a do balão. Uma reserva
+  menor que o conteúdo não reserva nada.
+- **A banda de lances subiu de 5 para 5,6rem**, que é o que a barra mede de fato.
+
+Com a caixa do pote reservando o curso inteiro, o que era folga virou altura cobrada — as
+frações do miolo (`cqh`) desceram junto, e a coluna do pote passou de seis fichas para
+quatro. O pote cresce **para os lados**, que é o que ele sempre disse que faria.
+
+Medido depois: em 320×568 e 412×839, ao longo de dezenas de lances, **nenhum ponto de
+referência da mesa muda de lugar** — nem a fileira de rivais, nem o miolo, nem o pote,
+nem o board, nem as suas cartas. E o pote e o board voltaram a caber dentro do miolo no
+aparelho mais apertado. O e2e afirma isso agora.
+
+### A barra do intervalo zerava tarde
+
+A tela do desfecho fechava um segundo antes de a barra esvaziar. A causa: a barra andava
+**atrás** do contador — a cada tique o alvo passava a ser `restam/total` e a animação
+levava um segundo inteiro para chegar lá, então no último tique ela mirava 1/5 e a tela
+fechava com um quinto de barra ainda aceso.
+
+Agora é **uma varredura só**, de cheia a vazia pelos N segundos: as duas pontas são o
+mesmo instante do relógio que a gerou. É a mesma lição que o convite de mostrar a mão já
+tinha aprendido e que esta peça repetia por não tê-la herdado. O ponto de partida é
+congelado no monte — o componente re-renderiza a cada segundo, e uma duração derivada do
+`seconds` corrente reiniciaria a varredura a cada tique.
+
+Medido a cada 250ms: a barra desce linear de 0,96 a **0,012** no último quadro antes de a
+tela fechar.
+
+### A marca ganhou a sequência
+
+O flush virou um **straight flush até o rei** — 9, 10, J, Q, K —, com o índice traçado no
+canto de cada carta. O canto esquerdo é justamente o que o leque deixa de fora (cada
+carta esconde um terço da vizinha pela direita), e é por isso que as cinco se leem como
+uma sequência e não só como cinco paus.
+
+### O caixa da mesa de seis é o caixa do duelo
+
+Levantar de uma mesa de cash creditava o **stack bruto** e voltava direto para o salão. Duas
+coisas erradas nisso, e a segunda é a grave:
+
+- a sessão inteira — quantas mãos, quanto subiu, quanto desceu — terminava **sem uma linha
+  sobre ela**;
+- a **casa não cobrava nada**. No duelo a comissão incide uma vez, no caixa, e só sobre o
+  lucro: 90% dele fica com quem jogou, 10% com a casa (ver `cashOutValue`). A mesa de seis
+  passava por fora disso.
+
+Agora as duas mesas passam pela mesma porta. A conta vive numa função só — duas cópias
+divergiriam no primeiro ajuste, e divergir aqui significa **pagar valores diferentes pela
+mesma mão**. O que cada mesa traz é o par de números (compra e stack final) e para onde
+levam os dois botões: o duelo oferece NOVA MESA, a sala oferece OUTRA SALA, porque é da
+vitrine que se entra numa mesa de cash.
+
+A tela é a mesma peça (`SessionClose`, extraída do `SessionBanner`), com o mesmo título em
+metal, a mesma faixa MESA ENCERRADA e o cenário ainda em cena — o fecho não é outro lugar,
+é a mesma mesa depois de as cartas saírem.
+
+**E a mesa que acaba também abre o caixa.** Quando não há duas pessoas com ficha não há mão
+a distribuir, e antes daqui a mesa apenas destravava o botão de sair e ficava parada: quem
+estava na frente tinha de descobrir por conta própria que não ia acontecer mais nada. Agora
+ela fecha sozinha, que é o que uma sala faz.
+
+### O caixa ganhou o cenário do duelo
+
+A tela do fecho estava na câmera de CIMA, que é a da mesa em jogo — e ali a crupiê fica
+fora de quadro **por desenho**: o vão que o corpo dela ocupa volta a ser feltro. O
+resultado era um encerramento sobre um pano vazio.
+
+O duelo já resolvia isso e o código estava lá: `cameraFor` desce para o frontal assim que
+a fase vira `completed`, e a reação da crupiê sai de `resolveDealerReaction`. O caixa da
+mesa de seis passou a usar os dois — a câmera frontal traz o salão e a crupiê de volta, e
+ela reage ao desfecho da **sessão** no lugar do da mão: comemora o lucro, consola o
+prejuízo, dá de ombros no zero a zero. Numa mesa que corre até você levantar, é a sessão
+que decide se houve o que comemorar.
+
+A comissão não entra nessa conta: ela é do caixa, e quem subiu na mesa subiu —
+independentemente do que a casa cobra na porta.
+
+### A mesa aberta saiu de cena
+
+Mesa aberta é a que continua na vitrine depois de começar: quem chega senta numa cadeira
+vaga e entra na mão seguinte. Ela está **desligada** (`OPEN_TABLE_ENABLED`), e o motivo é
+honestidade, não escopo — a entrada no meio da sessão pede coisas que a mesa ainda não
+tem: cadeira que vaga e é reocupada, blind obrigatório de quem entra fora da posição, e o
+corte de sigilo para quem chega no meio de uma mão. Anunciar "Aberta" numa sala em que
+ninguém entra é a vitrine mentindo.
+
+Nada foi removido. A folha de criação não pergunta mais (o campo continua lá, atrás do
+flag), toda sala nasce fechada e a vitrine só sorteia mesas fechadas. É o mesmo padrão dos
+outros dois modos desligados, pelo mesmo motivo: um `git revert` de uma remoção é caro e
+arriscado; um booleano é uma decisão que se desfaz.
+
+Um teste guarda o flag pelos dois lados — se alguém religar a régua da folha sem religar a
+vitrine (ou o contrário), ele cai.

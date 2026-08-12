@@ -1,5 +1,7 @@
 import { createId } from '@/shared/lib/ids';
 
+import { OPEN_TABLE_ENABLED } from './availability';
+
 import type {
   ChatMessage,
   LobbyListing,
@@ -170,7 +172,9 @@ export function makeLobbyListings(): LobbyListing[] {
       /* MESAS CHEIAS EM MAIORIA, com as curtas aparecendo: é o que uma
          casa real mostra à noite — quase todo mundo quer mesa cheia, e
          quem quer jogar muitas mãos procura a de três. */
-      const size: TournamentSize = (roll < 0.16 ? 3 : roll < 0.34 ? 4 : roll < 0.58 ? 5 : 6) as TournamentSize;
+      const size: TournamentSize = (
+        roll < 0.16 ? 3 : roll < 0.34 ? 4 : roll < 0.58 ? 5 : 6
+      ) as TournamentSize;
       // Uma em cada três, e nunca a primeira: a lista abre com uma sala
       // de entrada livre em vez de uma porta trancada.
       const visibility: LobbyVisibility = index > 0 && Math.random() < 0.34 ? 'private' : 'public';
@@ -179,7 +183,11 @@ export function makeLobbyListings(): LobbyListing[] {
          vitrine só de mesas abertas seria mentira, então as fechadas
          aparecem enquanto ainda enchem — e a maioria é aberta, porque é
          a que continua na lista depois. */
-      const mode: TableMode = Math.random() < 0.7 ? 'open' : 'closed';
+      /* COM A MESA ABERTA DESLIGADA a vitrine só anuncia salas fechadas.
+         Anunciar "Aberta" numa sala em que ninguém entra seria a vitrine
+         mentindo — e o selo dela é justamente o que diz se dá para
+         sentar agora (ver `OPEN_TABLE_ENABLED`). */
+      const mode: TableMode = OPEN_TABLE_ENABLED && Math.random() < 0.7 ? 'open' : 'closed';
       return {
         id: createId(),
         name,

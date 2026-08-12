@@ -3063,12 +3063,53 @@ h2 {
    pousados na borda de baixo mesmo quando a barra é mais curta (o
    torneio não tem o botão de dobra). */
 .arena-actions {
+  position: relative;
+  /* ACIMA DO VÉU DO INTERVALO (z 11). A faixa sob o polegar é a única
+     coisa com que se interage no fim da mão — o relógio da próxima e a
+     porta —, e desfocar justamente o que se precisa tocar seria o
+     inverso do que o véu existe para fazer. */
+  z-index: 12;
   display: flex;
   width: 100%;
   min-height: var(--arena-actions-h);
   flex-direction: column;
   justify-content: flex-end;
   padding-top: 0.75rem;
+}
+
+/* O VÉU DO INTERVALO — a mesa sai de foco para o desfecho entrar nele.
+   Ver `TableVeil` para o porquê; aqui só a matéria.
+
+   `backdrop-filter` age sobre o que está PINTADO ATRÁS: tudo o que vem
+   depois na ordem de pintura fica nítido. Daí o z 11 — abaixo da placa
+   do desfecho (12) e da faixa de lances (12), acima de tudo o que é
+   feltro. Os assentos e o miolo não têm z próprio (ou têm 2), então
+   caem atrás sem precisar de regra nenhuma.
+
+   A tinta é um radial que fecha nas bordas: o miolo escurece pouco, as
+   pontas escurecem mais. É um refletor, não uma cortina — e é ela que
+   sustenta o efeito nos navegadores em que `backdrop-filter` não pega. */
+.table-veil {
+  position: absolute;
+  /* ELE SANGRA PARA FORA DA ARENA, e o de cima sangra o dobro.
+     Colado no `inset: 0` o véu tinha a caixa da arena, e a arena não é o
+     feltro: sobrava uma faixa nítida no alto da mesa e o desfoque
+     terminava numa RETA no meio do pano — a tela lia como um retângulo
+     colado por cima, e não como uma mesa fora de foco.
+     A sangria de cima é maior porque é lá que está a sobra: a arena
+     começa abaixo do topo do feltro nas duas mesas, e nas laterais ela
+     já vai de borda a borda. O que passar disso cai no trilho de mogno,
+     que é decoração — e desfocar decoração não custa nada. */
+  inset: -8rem -1.5rem -12rem;
+  z-index: 11;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(8, 2, 5, 0.12) 0%,
+    rgba(8, 2, 5, 0.34) 55%,
+    rgba(8, 2, 5, 0.52) 100%
+  );
+  backdrop-filter: blur(6px) saturate(0.82);
+  pointer-events: none;
 }
 
 /* ==================== Mesa de Texas Hold'em 1v1 (PokerArena) ==================== */
@@ -3249,6 +3290,35 @@ h2 {
   50% {
     opacity: 1;
   }
+}
+
+/* A PLACA QUE ABRE O PERFIL — a mesma peça, agora um botão de verdade.
+   Ela é `button` e não um `div` que responde a clique, e a diferença não
+   é purismo: a placa é o único alvo de toque do assento (na mesa de seis
+   ela mede ~50px), e um `div` clicável não chega ao teclado, não anuncia
+   nada ao leitor de tela e não recebe o anel de foco da casa.
+   O que a regra faz é desfazer o que o navegador põe num botão —
+   tipografia, cor e alinhamento próprios — e devolver a resposta ao
+   toque, que é a única coisa que a placa ganha por ser clicável. */
+.seat-plate--tappable {
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    filter 160ms ease,
+    scale 160ms ease;
+}
+
+@media (hover: hover) {
+  .seat-plate--tappable:hover {
+    filter: brightness(1.1);
+  }
+}
+
+.seat-plate--tappable:active {
+  scale: 0.97;
 }
 
 /* O RETRATO: o monograma do clube num medalhão de vinho com aro de ouro
@@ -3842,12 +3912,35 @@ h2 {
   margin-top: 0.5rem;
   padding-block: calc(var(--payout-fs) * 0.72);
   padding-inline: calc(var(--payout-fs) * 1.7);
+  /* A MOLDURA ACENDE JUNTO COM A PALAVRA. A liga é a mesma
+     (`--gold-liga`) — o que faltava era LUZ: uma borda de 2px de ouro
+     escuro sobre vinho quase preto, ao lado de um título que brilha, lê
+     como marrom. O halo externo dá à faixa o mesmo ar de metal sob a luz
+     do teto que o título tem, e custa uma sombra. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 232, 0.22),
+    inset 0 -8px 16px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(18, 5, 8, 0.5),
+    0 0 18px rgba(245, 183, 111, 0.28),
+    0 6px 16px rgba(10, 3, 6, 0.45);
 }
 
-/* MESA ENCERRADA em ouro MÉDIO — nunca o champagne, que é a cor de valor
-   e aqui não há valor a anunciar. Corpo de rótulo, e não de número: a
-   peça não tem cifra a dar, tem um estado a registrar. A entreletra larga
-   é o que faz o texto ler como carimbo em vez de recado. */
+/* MESA ENCERRADA NO MESMO METAL DO TÍTULO.
+   Ela já foi ouro MÉDIO chapado (`--color-gold`), pelo argumento de que a
+   peça não tem cifra a dar e não merecia o champagne. O argumento estava
+   certo sobre o BRILHO e errado sobre a LIGA: com a palavra "VALEU PELA
+   PARTIDA" logo acima em metal lapidado, um ouro fosco a dois centímetros
+   dela não lia como discrição — lia como outra peça, de outra tela.
+   Agora é o mesmo gradiente do título (ver `.result-blaze--close`),
+   recortado pelas letras. O que continua diferente é a FESTA: o título
+   tem halo, varredura rápida e partículas; a faixa tem o metal e mais
+   nada.
+
+   NADA de `text-shadow` aqui — numa caixa com `background-clip: text` o
+   fundo é pintado ANTES da sombra, e uma sombra de 1px cobre quase toda a
+   glifa: o metal fica embaixo, invisível. O relevo sai de `drop-shadow`,
+   que age sobre o que já foi renderizado. É a mesma lição que o título
+   aprendeu (ver `.result-blaze .result-blaze__word`). */
 .payout__mark {
   position: relative;
   flex: 0 0 auto;
@@ -3860,8 +3953,13 @@ h2 {
   letter-spacing: 0.2em;
   white-space: nowrap;
   text-transform: uppercase;
-  color: var(--color-gold);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  color: transparent;
+  background-image: linear-gradient(180deg, #fff4e8 0%, #fcd9a0 34%, #f5b76f 63%, #cb7349 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(42, 18, 6, 0.65)) drop-shadow(0 2px 6px rgba(20, 4, 4, 0.5));
+  text-shadow: none;
 }
 
 /* A VARREDURA — a mesma pseudo-cópia gráfica do título (`attr()`, sem
@@ -4108,8 +4206,56 @@ h2 {
   mask-position: center;
 }
 
-/* 25 — a ficha clara, de marfim. É a menor da casa e a que fecha as
-   contas quebradas. */
+/* AS TRÊS FICHAS MIÚDAS — 1, 5 e 10.
+   Elas entraram quando o pote e o montante passaram a mostrar o valor
+   EXATO: com a menor ficha valendo 25, um stack de 2.140 não se escreve
+   em fichas, e a mesa arredondava — o desenho dizia um número e a cifra
+   ao lado dizia outro. Com 1, 5 e 10 toda conta fecha, e fecha com o
+   MENOR número de fichas possível (ver `breakDown`).
+
+   As cores seguem a regra da casa: cada valor tem a sua, e nenhuma se
+   confunde com a vizinha numa pilha vista de cima. As três novas ocupam
+   a faixa fria e terrosa que faltava — o vinho, o azul, o ouro e o
+   marfim já estavam tomados. */
+
+/* 1 — a ficha de terra, a menor da casa. É a que fecha as contas
+   quebradas, e a que se vê de dez em dez numa pilha de troco. */
+.rvc-chip--1 {
+  --chip-hi: #9c7451;
+  --chip-mid: #7a5334;
+  --chip-lo: #4d3120;
+  --chip-edge: rgba(255, 240, 224, 0.62);
+  --chip-core-hi: #b0855e;
+  --chip-core-lo: #5e3d26;
+  --chip-crest: rgba(255, 240, 224, 0.82);
+}
+
+/* 5 — a ficha de lilás. Ela é a única fria-clara da mesa, e é isso que a
+   separa do azul da 500 numa pilha alta. */
+.rvc-chip--5 {
+  --chip-hi: #b49ade;
+  --chip-mid: #8d6cc0;
+  --chip-lo: #5a3f8a;
+  --chip-edge: rgba(244, 238, 255, 0.78);
+  --chip-core-hi: #c3ade8;
+  --chip-core-lo: #6b4da0;
+  --chip-crest: rgba(244, 238, 255, 0.9);
+}
+
+/* 10 — a ficha de jade. Verde é a cor do feltro, então ela vem ESCURA e
+   saturada: uma verde clara desapareceria no pano. */
+.rvc-chip--10 {
+  --chip-hi: #3f9d73;
+  --chip-mid: #237a55;
+  --chip-lo: #114634;
+  --chip-edge: rgba(232, 255, 244, 0.75);
+  --chip-core-hi: #4fae82;
+  --chip-core-lo: #18583d;
+  --chip-crest: rgba(232, 255, 244, 0.9);
+}
+
+/* 25 — a ficha clara, de marfim. É a menor das ALTAS e a que fecha as
+   contas de vinte e cinco em vinte e cinco. */
 .rvc-chip--25 {
   --chip-hi: #fffdf9;
   --chip-mid: #ece2d2;
@@ -4862,18 +5008,27 @@ h2 {
    pseudo-elemento de fogo neste componente. */
 
 /* O poço da pilha: as fichas são absolutas na base e sobem degrau a
-   degrau (7px por ficha, via transform no framer). A altura reserva o
-   curso inteiro da pilha — nada salta quando fichas entram. */
+   degrau (via transform no framer). */
 .chip-stack__pile {
   position: relative;
   flex: none;
   width: var(--chip-size);
-  /* A caixa mede a COLUNA QUE EXISTE (a ficha de baixo + um degrau por
-     ficha acima dela), não um teto fixo: com altura fixa sobrava vazio
-     no topo e o conjunto assentava alto no feltro, sem nunca estar de
-     fato centrado no que se vê. O degrau vem por style do TSX, junto do
-     mesmo número que o framer usa para mover cada ficha. */
-  height: calc(var(--chip-size) + (var(--chip-count, 1) - 1) * var(--chip-step));
+  /* A CAIXA RESERVA A COLUNA CHEIA, e não a que existe agora.
+     Ela media a coluna corrente, pelo argumento de que uma altura fixa
+     deixaria vazio no topo e o pote assentaria alto no feltro. O
+     argumento é verdadeiro e o preço dele era pior: o pote CRESCE a cada
+     lance, e com a caixa medindo o conteúdo a altura mudava a cada
+     ficha que caía — o pote subia, o board descia atrás dele e as SUAS
+     cartas iam junto. Foi medido: 12px de variação na caixa, 16 no board
+     e 28 nas cartas de baixo, ao longo de uma mão.
+     Com o curso inteiro reservado, a base da pilha fica onde está e as
+     fichas sobem para dentro de um espaço que já era delas — que é
+     exatamente o que um monte faz numa mesa de verdade. É a mesma
+     decisão que o montante de cada jogador já tinha tomado (ver
+     `.chip-rack__pile`).
+     O teto e o degrau vêm por style do TSX, junto do mesmo número que o
+     framer usa para mover cada ficha. */
+  height: calc(var(--chip-size) + (var(--chip-cap, 1) - 1) * var(--chip-step));
   display: grid;
   align-items: end;
   justify-items: center;
@@ -4922,18 +5077,27 @@ h2 {
    pseudo-elemento de fogo neste componente. */
 
 /* O poço da pilha: as fichas são absolutas na base e sobem degrau a
-   degrau (7px por ficha, via transform no framer). A altura reserva o
-   curso inteiro da pilha — nada salta quando fichas entram. */
+   degrau (via transform no framer). */
 .chip-stack__pile {
   position: relative;
   flex: none;
   width: var(--chip-size);
-  /* A caixa mede a COLUNA QUE EXISTE (a ficha de baixo + um degrau por
-     ficha acima dela), não um teto fixo: com altura fixa sobrava vazio
-     no topo e o conjunto assentava alto no feltro, sem nunca estar de
-     fato centrado no que se vê. O degrau vem por style do TSX, junto do
-     mesmo número que o framer usa para mover cada ficha. */
-  height: calc(var(--chip-size) + (var(--chip-count, 1) - 1) * var(--chip-step));
+  /* A CAIXA RESERVA A COLUNA CHEIA, e não a que existe agora.
+     Ela media a coluna corrente, pelo argumento de que uma altura fixa
+     deixaria vazio no topo e o pote assentaria alto no feltro. O
+     argumento é verdadeiro e o preço dele era pior: o pote CRESCE a cada
+     lance, e com a caixa medindo o conteúdo a altura mudava a cada
+     ficha que caía — o pote subia, o board descia atrás dele e as SUAS
+     cartas iam junto. Foi medido: 12px de variação na caixa, 16 no board
+     e 28 nas cartas de baixo, ao longo de uma mão.
+     Com o curso inteiro reservado, a base da pilha fica onde está e as
+     fichas sobem para dentro de um espaço que já era delas — que é
+     exatamente o que um monte faz numa mesa de verdade. É a mesma
+     decisão que o montante de cada jogador já tinha tomado (ver
+     `.chip-rack__pile`).
+     O teto e o degrau vêm por style do TSX, junto do mesmo número que o
+     framer usa para mover cada ficha. */
+  height: calc(var(--chip-size) + (var(--chip-cap, 1) - 1) * var(--chip-step));
   display: grid;
   align-items: end;
   justify-items: center;
@@ -8400,11 +8564,13 @@ body.is-street-cut #root {
 
 /* A regra que DESARMA a corrida. Fixa em cena, e não um aviso que passa:
    é ela que faz perder meio segundo não custar posição. */
-.seating__rule {
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: rgba(203, 169, 138, 0.72);
+/* O RELÓGIO DA ESCOLHA — a barra do intervalo entre mãos, aqui no lugar
+   dos dois avisos em texto que havia (ver o comentário em SeatingScreen).
+   Ele não ocupa a largura da fileira de cadeiras: um fio de ponta a ponta
+   lê como divisória, e o que ele é é um prazo. */
+.seating__clock {
+  width: min(100%, 15rem);
+  margin-top: 0.15rem;
 }
 
 .seating__status {
@@ -8412,7 +8578,9 @@ body.is-street-cut #root {
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.06em;
-  color: var(--color-gold);
+  /* A recusa é a única frase que sobrou aqui, e ela é uma notícia ruim:
+     veste a cor de quem perde, e não o ouro da casa. */
+  color: #ff9c88;
 }
 
 /* ============================================================
@@ -8448,7 +8616,22 @@ body.is-street-cut #root {
      gravado no pano (`.table-crest--overhead`, que se posiciona
      descontando esta banda) acompanha sozinho. O `:root` NÃO é tocado: o
      duelo continua com os 8,9rem dele. */
-  --arena-actions-h: clamp(6.4rem, 17dvh, 8.9rem);
+  /* O piso desceu de 6,4rem para 5rem quando a placa do rival passou a
+     empilhar nome e montante: as duas fileiras de rival ficaram mais
+     altas e o miolo do feltro não tinha de onde tirar — o board acabava
+     encostando nas SUAS cartas. 5rem = 80px, e a fileira de lances mede
+     76px (botão de 44px + relógio + respiro): a banda continua
+     reservando o que a barra usa, e não mais do que isso.
+     É `min-height`, e não `height` — o painel de aumento é mais alto e
+     faz a banda crescer quando abre. */
+  /* O PISO SUBIU DE 5 PARA 5,6rem porque a barra de lances MEDE 5,53rem
+     (88,4px): o relógio da vez, a fileira de quatro botões e os respiros.
+     Com o piso abaixo dela, a banda inchava 3,2px quando a sua vez
+     chegava e murchava quando passava — e como o miolo do feltro é o item
+     elástico da coluna, o pote, o board e as suas cartas andavam junto.
+     A reserva existe para isso: se ela não cobre o maior conteúdo, ela
+     não reserva nada. */
+  --arena-actions-h: clamp(5.6rem, 15dvh, 8.9rem);
 
   display: flex;
   width: 100%;
@@ -8505,7 +8688,10 @@ body.is-street-cut #root {
 .cash-screen__title {
   position: absolute;
   left: 50%;
-  max-width: calc(100% - 5rem);
+  /* A folga é a das DUAS ferramentas dos cantos (2,75rem cada) mais um
+     respiro: o nome da mesa apara com reticências antes de encostar
+     nelas, em vez de correr por baixo. */
+  max-width: calc(100% - 7rem);
   overflow: hidden;
   translate: -50%;
   font-family: var(--font-display);
@@ -8586,11 +8772,18 @@ body.is-street-cut #root {
      reduz este valor (ver .cash-lane) — perspectiva por TAMANHO, sem
      rotação nenhuma, que é o que cabe em 320px. */
   /* A CARTA DO RIVAL. Derivada da carta da casa (`--card-w`), como a do
-     duelo — o que muda é a fração, porque são CINCO mãos na metade de
-     cima em vez de uma. Ela subiu de 0,46 para 0,62 da carta cheia
+     duelo — o que muda é a fração, porque são até CINCO mãos na metade
+     de cima em vez de uma. Ela subiu de 0,46 para 0,62 da carta cheia
      quando o feltro da cena entrou no lugar do véu improvisado: com a
      mesa desenhada, sobrou largura na faixa, e uma carta de rival miúda
-     era o que mais denunciava que esta não era a mesa do duelo. */
+     era o que mais denunciava que esta não era a mesa do duelo.
+
+     A 0,62 as duas cartas ocupam o assento INTEIRO, e é por isso que
+     nada mais mora dentro dele: o montante de fichas sai pela borda de
+     FORA da faixa e o disco do dealer sobe para a linha da placa (ver
+     `.cash-seat--chips-*` e `.cash-seat__head`). Encolher a carta para
+     abrir vão interno já foi tentado, e o que se ganhava em espaço se
+     perdia na leitura — que é o que a carta existe para dar. */
   --cash-card-w: clamp(1.9rem, calc(var(--card-w) * 0.62), 2.9rem);
   --cash-gap: clamp(0.2rem, 1vw, 0.42rem);
 
@@ -8632,18 +8825,105 @@ body.is-street-cut #root {
 }
 
 .cash-lane {
-  display: flex;
-  width: calc(100% - var(--lane-depth) * 10%);
-  justify-content: center;
-  gap: var(--cash-gap);
-  /* Os assentos das PONTAS não encostam na borda: o montante de fichas
-     deles mora no vão externo, e sem esta faixa a pilha do rival da
-     ponta saía da tela. */
-  padding-inline: 0.9rem;
+  /* QUEM APERTA A FAIXA É A CONTAGEM, não a profundidade.
+     A conta que manda, no aparelho mais estreito (272px de feltro): três
+     pares de carta cheios (186px) mais os dois corredores de ficha das
+     pontas (75px) mais os vãos entre assentos dão 271px. Não sobra o
+     suficiente, e a faixa de TRÊS é a única em que isso acontece —
+     esteja ela no fundo (mesa de 6) ou na frente (mesa de 4).
+     Daí `--lane-crowd` pesar o dobro de `--lane-depth`: um recua a
+     carta porque não cabe, o outro porque está longe. Antes só existia
+     o segundo, e a mesa de 4 — que tem a faixa de três NA FRENTE — era
+     a que estourava. */
+  --lane-crowd: calc((var(--lane-cols) - 2) * 0.1);
+  /* O TETO DE ALTURA é o que faz a mesa caber num aparelho baixo, e ele
+     mora AQUI porque é aqui que a altura é gasta: cada pixel de carta de
+     rival custa 1,4 de altura, uma vez por fileira. Num aparelho de
+     568px as duas fileiras da mesa de 6 comiam 179px e o miolo ficava
+     com 54 — menos do que o pote e o board precisam no menor tamanho
+     legível, e os dois transbordavam por cima das cartas dos rivais e
+     das suas. Era assim antes desta mudança também: o defeito é antigo,
+     e só aparecia nas mesas de fileira DUPLA.
+     Daí dividir por `--lanes`: quem tem uma fileira gasta o dobro do que
+     quem tem duas, porque tem metade das bocas. Em aparelho normal o
+     teto não morde — a 720px ele vale 32,4 contra os 32,7 da conta de
+     largura — e só entra em cena quando a tela é de fato baixa. */
   --cash-card-w: calc(
-    clamp(1.9rem, calc(var(--card-w) * 0.62), 2.9rem) * (1 - var(--lane-depth) * 0.08)
+    min(clamp(1.9rem, calc(var(--card-w) * 0.62), 2.9rem), calc(9dvh / var(--lanes))) *
+      (1 - var(--lane-crowd) - var(--lane-depth) * 0.04)
   );
+  /* A FICHA DO RIVAL, na escala da faixa. Fica AQUI, e não no
+     `.chip-rack` de dentro, porque três medidas dependem dela: o
+     tamanho do disco, o corredor que a pilha ocupa nas bordas e o
+     encaixe da pilha de quem está no meio. Uma custom property só
+     desce, nunca sobe — declarada na ficha, as outras duas não a
+     alcançariam. */
+  --cash-chip: clamp(0.6rem, calc(var(--cash-card-w) * 0.5), 1.05rem);
+  /* O AFASTAMENTO DA PILHA À CARTA nos assentos das pontas.
+     Encostada na carta, a pilha lia como parte da mão — as fichas de uma
+     mesa de verdade ficam à frente de quem as tem, não em cima da
+     carta. Um terço de ficha é o que separa sem soltar: mais que isso e
+     a pilha passa a parecer de ninguém, no meio do feltro.
+     Não vale para quem está no MEIO da faixa: lá a pilha desce, e na
+     vertical ela já está separada pelo vão da coluna do assento. */
+  --cash-rack-gap: calc(var(--cash-chip) * 0.35);
+  /* O CORREDOR DO MONTANTE, reservado nas duas bordas da faixa.
+     A pilha tem duas colunas de ficha com um vão de 0,14 entre elas
+     (ver `.chip-rack__piles`) — 2,14 fichas —, mais o afastamento acima.
+     Os assentos das pontas desenham o montante deles PARA FORA, e sem a
+     reserva a pilha do rival da ponta saía pela borda do feltro. */
+  --cash-rack-w: calc(var(--cash-chip) * 2.55);
+  /* O CORPO DA PLACA DO RIVAL, e o disco que anda ao lado dela.
+     Os dois moram aqui pelo mesmo motivo da ficha: `.seat-plate` e
+     `.dealer-puck` declaram `--plate-fs` e `--dealer-puck-size` em si
+     mesmos, e o valor do elemento vence o herdado — quem quer que os
+     dois conversem precisa de um terceiro token, acima de ambos.
+
+     A LETRA É UMA FRAÇÃO DO ASSENTO, e não uma medida de tela. É a
+     única formulação que não pode cortar "Helena" com reticências: a
+     placa é o assento menos a fenda do disco, então uma letra medida em
+     `vw` podia crescer enquanto o assento encolhia — e ele encolhe por
+     dois motivos independentes, a faixa cheia (`--lane-crowd`) e a tela
+     baixa (o teto de `dvh` acima). Amarrada ao assento, ela acompanha os
+     dois de graça.
+     Os limites do `clamp` são as bordas da legibilidade, não a regra: o
+     piso é o menor corpo em que Oswald condensado ainda se lê, e o teto
+     impede a placa de virar faixa num tablet. */
+  --cash-plate-fs: clamp(0.46rem, calc(var(--cash-seat-w) * 0.15), 0.72rem);
+  /* A LARGURA DO ASSENTO, num token só. Ela é a das duas cartas, e três
+     peças precisam dela: o próprio assento, a placa (que é o assento
+     menos a fenda do disco) e o cálculo de quanto sobra de corredor nas
+     bordas. Repetida em cada uma, sairia de sincronia na primeira vez
+     que alguém mexesse no vão entre as duas cartas. */
+  --cash-seat-w: calc(var(--cash-card-w) * 2 + 0.12rem);
+  /* O DISCO É 1,05 DO CORPO DA LETRA: um selo ao lado do nome, e não uma
+     peça que dispute a placa. Cada pixel que ele toma sai da largura do
+     nome, que é a leitura que a placa existe para dar — e a conta é
+     apertada: no pior aparelho da suíte (320x568) a placa da faixa de
+     três mede 36px e o corpo do texto pede 28, sendo "Helena" o apelido
+     mais longo do elenco. */
+  --cash-puck: calc(var(--cash-plate-fs) * 1.05);
+
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  padding-inline: var(--cash-rack-w);
+  /* O VÃO ENTRE ASSENTOS é o que faz seis cartas lidas como TRÊS PARES.
+     Ele mede o triplo do vão de dentro do par (0,12rem), e sem essa
+     diferença a fileira de cima virava uma tira contínua de seis cartas
+     em que não se via de quem era cada mão.
+     É um vão próprio, e não o `--cash-gap` da coluna: aquele separa as
+     faixas na VERTICAL, onde o espaço é o mais escasso da tela. */
+  gap: clamp(0.28rem, 1.6vw, 0.46rem);
 }
+
+/* A PROFUNDIDADE É DITA PELA CARTA, e só por ela.
+   A faixa do fundo também estreitava 10% da largura, e isso agora
+   trabalha contra: os assentos passaram a ter a largura do CONTEÚDO, e
+   toda a sobra da faixa é o corredor por onde os montantes das pontas
+   saem. Estreitar a faixa fechava justamente esse corredor — e a carta
+   menor, que já recua 4% por faixa de profundidade, dá a mesma leitura
+   de distância sem cobrar nada dele. */
 
 /* A curva: numa faixa de três, os assentos das pontas descem um fio — as
    cadeiras laterais de uma mesa oval ficam mais perto de você que a da
@@ -8653,10 +8933,18 @@ body.is-street-cut #root {
   translate: 0 5%;
 }
 
+/* O ASSENTO TEM A LARGURA DAS DUAS CARTAS. Nem mais, nem menos.
+   Antes ele tomava a fração igual da faixa (`flex: 0 1 (100%/cols)`) e
+   as cartas se serviam dessa fração antes dos vãos — o que sobrava para
+   o montante era o resto, e numa faixa de três o resto media 3,9px. A
+   pilha era então desenhada por cima do vizinho.
+   Com a largura vinda da carta, a conta se inverte: o assento é exato, e
+   toda a sobra da faixa vira corredor nas bordas, que é para onde os
+   montantes das pontas saem. */
 .cash-seat {
   display: flex;
-  flex: 0 1 calc((100% - (var(--lane-cols) - 1) * var(--cash-gap)) / var(--lane-cols));
-  min-width: 0;
+  width: var(--cash-seat-w);
+  flex: none;
   flex-direction: column;
   align-items: center;
   gap: 0.15rem;
@@ -8700,25 +8988,130 @@ body.is-street-cut #root {
      (montante) + 1,41 (respiro) + 4px de moldura — o que fecha em ~70px
      a 7,4px de corpo. Antes, com medalhão e selos, o mesmo assento só
      comportava 5,4px. */
-  --plate-fs: clamp(0.46rem, 2.3vw, 0.6rem);
+  /* A LETRA CRESCEU 26% — de 0,46rem para 0,58rem no aparelho mais
+     estreito. Não é um ajuste de gosto: é o troco de empilhar o nome e o
+     montante (abaixo). Disputando uma linha, a placa precisava da
+     largura da SOMA dos dois e o corpo tinha de encolher até caber;
+     empilhados, ela precisa da largura do MAIOR, e sobra para a letra
+     ficar legível numa mesa em que se lê o nome vinte vezes por mão. */
+  --plate-fs: var(--cash-plate-fs);
 
   max-width: 100%;
-  /* Os selos quebram linha em vez de espremer o nome — numa mesa de seis
-     um assento estreito com SB e ALL-IN comprimia o nome até zero, e a
-     placa deixava de responder a única pergunta que ela existe para
-     responder: QUEM senta ali. */
-  flex-wrap: wrap;
   justify-content: center;
 }
 
-.cash-seat__plate .seat-plate__line {
-  flex-wrap: wrap;
-  row-gap: calc(var(--plate-fs) * 0.2);
+/* A CABEÇA DO ASSENTO: a placa CENTRADA no assento, e o disco à direita
+   dela.
+   As colunas laterais são `1fr` — iguais por definição —, e é isso que
+   centra a placa exatamente entre as duas cartas, sem número mágico
+   nenhum. Antes a cabeça era uma linha flex com a placa elástica e o
+   disco no fim: a placa ocupava tudo MENOS o disco, e o centro dela caía
+   meio disco à esquerda do centro das cartas. Com o nome centrado
+   dentro de uma placa descentrada, o defeito só ficou mais visível.
+
+   `minmax(0, 1fr)` e não `1fr`: o mínimo de uma coluna `1fr` é o
+   conteúdo dela, então a coluna da direita se recusava a ficar menor
+   que o disco e empurrava a placa 6px para a esquerda — o mesmo defeito
+   com outra causa. Com o mínimo em zero as duas colunas voltam a ser
+   iguais de verdade, e o disco transborda a sua em vez de alargá-la. */
+.cash-seat__head {
+  display: grid;
+  width: 100%;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 }
 
-/* O nome não precisa mais de teto: sem o medalhão e os selos, a placa
-   comporta o mais longo do elenco ("Helena", 6 caracteres) inteiro. Um
-   `max-width` aqui só voltaria a cortá-lo com reticências. */
+/* A PLACA TEM LARGURA FIXA, e é o assento menos a fenda do disco.
+   Antes ela era do tamanho do conteúdo: um apelido curto com stack de
+   dois dígitos dava uma placa pequena ao lado de uma grande, e a
+   fileira lia como peças de jogos diferentes. Pior, a largura mudava
+   SOZINHA durante a mão, a cada ficha ganha ou perdida.
+   Fixa, ela vira moldura: o que muda dentro é o texto, e o texto se
+   centra. A largura vem do token do assento e não de `100%` porque
+   `100%` numa coluna `auto` de grid seria circular. */
+.cash-seat__head .cash-seat__plate {
+  min-width: 0;
+  /* A COLUNA VAI DECLARADA. O disco reivindica a 3 pelo nome, e a
+     colocação automática do grid preenche a partir da 1 — sem esta
+     linha a placa ia parar na coluna da ESQUERDA, encostada na borda do
+     assento e espremida ao tamanho do texto. Era o mesmo sintoma que
+     esta regra existe para corrigir, com outra causa. */
+  width: calc(var(--cash-seat-w) - var(--cash-puck) - var(--cash-plate-fs) * 0.28);
+  grid-column: 2;
+}
+
+/* O DISCO fica na coluna da direita, encostado na placa, e TRANSBORDA
+   para o vão entre assentos — que é o único lugar de onde tirar a
+   largura dele sem tirá-la do nome.
+   A conta que garante que ele não encosta no vizinho: a coluna da
+   direita mede meia fenda, o disco mede uma, então ele sai meia fenda
+   (~6px) para fora do assento; o vão entre assentos mede 5px e a placa
+   do vizinho começa outra meia fenda para dentro do assento dele. */
+.cash-seat__puck {
+  display: flex;
+  width: var(--cash-puck);
+  height: var(--cash-puck);
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  margin-left: calc(var(--cash-plate-fs) * 0.28);
+  grid-column: 3;
+  justify-self: start;
+}
+
+/* NOME EM CIMA, MONTANTE EMBAIXO — a decisão que destrava a placa.
+   Antes a linha tinha `flex-wrap: wrap` para o nome não ser espremido a
+   zero, e o resultado era pior que o problema: o flexbox QUEBRA A LINHA
+   ANTES DE ENCOLHER, então o corte com reticências nunca chegava a
+   disparar e o montante caía para uma segunda fileira desalinhada, com o
+   fio divisor pendurado. A placa ficava mais alta que as vizinhas e
+   desalinhava a fileira inteira — e bastava um apelido comum com um
+   stack comum para acontecer.
+   Empilhar de propósito troca um acidente por um desenho: as duas
+   leituras ficam centradas uma sobre a outra, com altura previsível em
+   todos os assentos. */
+.cash-seat .seat-plate__line {
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  row-gap: calc(var(--plate-fs) * 0.08);
+}
+
+/* Empilhado, o fio vertical e o respiro que separavam o montante do nome
+   perdem a função — eles existiam para dividir DUAS peças na mesma
+   linha. */
+.cash-seat .seat-plate__stack {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
+/* O NOME e o selo ALL-IN andam juntos na primeira linha: o selo é raro,
+   e uma placa de três andares seria mais alta que a das vizinhas
+   justamente na mão em que ele aparece. */
+.cash-seat__ident {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: calc(var(--plate-fs) * 0.35);
+}
+
+/* Empilhada, a placa já tem presença por ter duas linhas: o respiro
+   vertical generoso que a moldura pedia quando ela era uma linha só
+   passou a ser altura gasta duas vezes por fileira.
+   O respiro LATERAL vira simétrico: o da placa do duelo fecha mais à
+   esquerda porque o medalhão traz respiro redondo próprio, e o rival não
+   tem medalhão — ali a assimetria só tirava o nome do centro da
+   moldura. */
+.cash-seat .seat-plate {
+  padding-block: calc(var(--plate-fs) * 0.24);
+  padding-inline: calc(var(--plate-fs) * 0.3);
+}
+
+/* O nome não precisa de teto: empilhado, ele só disputa espaço consigo
+   mesmo, e a placa comporta o mais longo do elenco ("Helena") inteiro
+   com folga. O corte com reticências continua armado como rede — se um
+   dia entrar um apelido de dez letras, ele apara em vez de quebrar. */
 
 /* O SEU assento joga na escala do duelo, número por número. */
 .cash-seat__plate--mine {
@@ -8766,25 +9159,65 @@ body.is-street-cut #root {
    dizer numa mesa de seis é "quem está na frente", e isso se lê pela
    ALTURA RELATIVA, não pelo tamanho absoluto do disco. */
 .cash-seat .chip-rack {
-  --chip-size: clamp(0.6rem, calc(var(--cash-card-w) * 0.5), 1.05rem);
+  --chip-size: var(--cash-chip);
 }
 
 /* O SEU montante joga na escala do duelo, e a ausência de override aqui
    é a decisão: a sua carta é a carta cheia da casa (`--hole-card-w`), e
    a ficha ao lado dela tem de ser a mesma peça do duelo. */
 
-/* Nos RIVAIS o que mora no vão ENCOSTA nas cartas: numa faixa de três o
-   vão `1fr` é largo o bastante para o disco boiar no meio dele e parecer
-   de ninguém. O SEU assento (`.cash-you`, que não carrega `.cash-seat`)
-   herda o `center` do duelo. */
-.cash-seat .cash-seat__gutter:first-child {
-  justify-content: flex-end;
-  padding-right: 0.2rem;
+/* ---- Por onde o montante do rival sai ----
+   As duas cartas ocupam o assento inteiro, então os vãos da linha da mão
+   são FENDAS de largura zero. Um vão de largura zero não é um vão morto:
+   é uma dobradiça. Com `flex-end` a pilha que mora nele é desenhada para
+   a ESQUERDA da fenda; com `flex-start`, para a DIREITA. Nos dois casos
+   ela sai do assento — e, como o lado vem do lugar na faixa, ela sai
+   sempre para a borda do feltro, nunca para cima de um vizinho.
+
+   O corredor que a recebe é a reserva das bordas da faixa
+   (`--cash-rack-w` em `.cash-lane`).
+
+   O SEU assento (`.cash-you`, que não carrega `.cash-seat`) não entra
+   aqui: lá o vão é meia tela e o montante cabe dentro dele. */
+.cash-seat .cash-seat__line {
+  grid-template-columns: 0 auto 0;
 }
 
-.cash-seat .cash-seat__gutter:last-child {
+.cash-seat .cash-seat__gutter {
+  width: 0;
+}
+
+.cash-seat--chips-left .cash-seat__gutter:first-child {
+  justify-content: flex-end;
+}
+
+.cash-seat--chips-right .cash-seat__gutter:last-child {
   justify-content: flex-start;
-  padding-left: 0.2rem;
+}
+
+/* O afastamento vai na PILHA e não no vão: o vão tem largura zero, e
+   um respiro numa caixa de largura zero é ambíguo — a margem da peça
+   que sai por ela não é. */
+.cash-seat--chips-left .chip-rack {
+  margin-right: var(--cash-rack-gap);
+}
+
+.cash-seat--chips-right .chip-rack {
+  margin-left: var(--cash-rack-gap);
+}
+
+/* QUEM ESTÁ NO MEIO DA FAIXA não tem borda para onde mandar o montante:
+   dos dois lados dele há um vizinho. Então a pilha desce para debaixo
+   das próprias cartas, onde o espaço é só dele.
+   A pilha ENCOSTA na carta e não sobe por cima dela. Uma tentativa de
+   subi-la meia ficha (`margin-top` negativo), para colar como uma pilha
+   real cola na mão de quem a tem, cobria a borda de baixo das duas
+   cartas — e a única coisa que este assento precisava era não ter nada
+   por cima de carta nenhuma. */
+.cash-seat__below {
+  display: flex;
+  width: 100%;
+  justify-content: center;
 }
 
 .cash-seat__cards {
@@ -8812,6 +9245,31 @@ body.is-street-cut #root {
   color: var(--color-gold-bright);
 }
 
+/* O LUGAR DA APOSTA NÃO TEM ALTURA. Ver `BetSpot`: a pastilha pende
+   sobre o pano à frente do assento, que é onde as fichas de uma aposta
+   ficam numa mesa de verdade — e assim ela não empurra nada quando entra
+   nem quando a mesa recolhe.
+   A alternativa era reservar a altura dela, e o preço era carregar 36px
+   de pastilha vazia por fileira num aparelho de 568px. */
+.cash-bet-slot {
+  position: relative;
+  display: block;
+  height: 0;
+}
+
+.cash-bet-slot .cash-bet {
+  position: absolute;
+  top: 0.1rem;
+  left: 50%;
+  translate: -50% 0;
+}
+
+/* Vazia ela fica INVISÍVEL, e não removida: `visibility` guarda a peça
+   para a entrada dela não ser um salto. */
+.cash-bet--empty {
+  visibility: hidden;
+}
+
 .cash-bet__chip {
   width: 0.4rem;
   height: 0.4rem;
@@ -8821,8 +9279,8 @@ body.is-street-cut #root {
   box-shadow: 0 0 0 1px rgba(14, 4, 8, 0.6);
 }
 
-/* O DISCO DO DEALER entra na escala do ASSENTO onde mora: deriva da
-   CARTA da faixa e encolhe junto com a perspectiva.
+/* O DISCO DO DEALER entra na escala da PLACA, que é onde ele passou a
+   morar — um selo ao lado do nome, e não uma peça no feltro.
    A regra antiga escrevia numa variável MORTA (`--puck-size`); o nome
    que `.dealer-puck` lê é `--dealer-puck-size`, e por isso o disco saía
    nos 30px do duelo ao lado de cartas de rival menores que ele.
@@ -8830,7 +9288,7 @@ body.is-street-cut #root {
    duelo, e ali o disco tem de ser o do duelo. `.cash-you` não carrega
    `.cash-seat`, então este seletor pega só os rivais. */
 .cash-seat .dealer-puck {
-  --dealer-puck-size: clamp(0.95rem, calc(var(--cash-card-w) * 0.48), 1.45rem);
+  --dealer-puck-size: var(--cash-puck);
 }
 
 /* ---- O MEIO: as cinco comunitárias e o que há em jogo ---- */
@@ -8843,6 +9301,12 @@ body.is-street-cut #root {
   z-index: 2;
   display: flex;
   width: 100%;
+  /* O MIOLO É UM CONTÊINER DE CONSULTA, e é ele que dita o tamanho do
+     pote e do board (ver abaixo). Pode sê-lo com segurança porque a
+     altura dele NÃO vem do conteúdo: `flex: 1` com base 0% quer dizer
+     que ela é o que sobra da coluna depois das fileiras de rival e da
+     sua mão. */
+  container: cash-middle / size;
   /* O ITEM ELÁSTICO da coluna — os mesmos quatro valores de
      `.poker-center`. É aqui que toda a sobra da mesa vai parar. */
   flex: 1;
@@ -8850,8 +9314,48 @@ body.is-street-cut #root {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  padding-block: 0.35rem;
+  gap: clamp(0.15rem, 0.8dvh, 0.4rem);
+  padding-block: clamp(0.1rem, 0.6dvh, 0.35rem);
+}
+
+/* O POTE E O BOARD ACOMPANHAM A ALTURA DA TELA.
+   Eles nasceram na escala do duelo, que tem DOIS assentos e meia tela de
+   feltro sobrando. Numa mesa de seis há duas fileiras de rival, e desde
+   que a placa passou a empilhar nome e montante elas ficaram mais altas
+   — o miolo foi espremido a 54px com 110px de conteúdo dentro, e o
+   excesso vazou nas duas direções: o pote por cima das cartas da segunda
+   fileira e o board por baixo, em cima das SUAS.
+   O guard de `dvh` é a mesma técnica que `--card-w` já usa: num aparelho
+   alto as peças ficam no tamanho do duelo; num de 568px elas cedem o que
+   a mesa não tem. Escopado na cash — o duelo não é tocado. */
+/* O TETO DE `vw` SAIU; O DA ALTURA VIROU MEDIDA DO PRÓPRIO MIOLO.
+   O board caía a 9vw — 28px a 320px, um terço da sua carta — quando o
+   que faltava não era largura. Na horizontal a proporção volta a ser a
+   da casa: `--board-card-w` é 0,78 da carta cheia no `:root`, e é essa
+   fração que diz "um pouco menor que a sua" em TODA a casa; repeti-la
+   aqui com outro número era ter duas verdades sobre a mesma coisa.
+
+   O teto de altura era `dvh`, e `dvh` é o palpite errado: o que aperta
+   não é a tela ser baixa, é o miolo ser pouco — e o miolo é o que sobra
+   depois de DUAS fileiras de rival, que crescem com a LARGURA. Num
+   aparelho baixo e largo (360x640) as duas coisas conspiram, e nenhuma
+   conta em `dvh` prevê isso: o pote saía por cima da segunda fileira e
+   o board por baixo, em cima das suas cartas.
+   `cqh` mede a caixa que de fato manda. 26% da altura do miolo para a
+   carta do board dá ~36% dela em altura (a carta é 1,4 mais alta que
+   larga), e os 16% do pote fecham a conta com a placa do valor, o vão e
+   o respiro. As frações desceram quando a caixa do pote passou a
+   reservar a coluna cheia: o que era folga virou altura cobrada. */
+.cash-arena__middle .chip-stack {
+  --chip-size: clamp(0.8rem, min(8.5vw, 16cqh), 2.8rem);
+}
+
+.cash-arena .board {
+  /* SEM TETO PRÓPRIO. O da casa já é a fração da sua carta, e um teto
+     em `rem` por cima dele segurava o board em 46px num aparelho de
+     412px onde a conta pedia 53 — a mesa larga era justamente onde a
+     fileira virada tinha espaço de sobra. O piso fica, como rede. */
+  --board-card-w: max(1.25rem, min(calc(var(--card-w) * 0.78), 26cqh));
 }
 
 /* O POTE herda a ficha de `.chip-stack--felt` — a MESMA do duelo, 35px.
@@ -8968,11 +9472,20 @@ body.is-street-cut #root {
   z-index: 4;
   display: flex;
   width: 100%;
-  min-height: 1.5rem;
+  /* A FAIXA TEM ALTURA FIXA, e a altura é a do BALÃO — não um piso menor
+     que ele. Era `min-height` de 22px com um balão de 25: a faixa
+     inchava 8px quando alguém falava e murchava quando o balão saía, e
+     como o miolo do feltro é o item elástico da coluna, TUDO se mexia
+     atrás — o pote, o board e as suas cartas, oito pixels a cada lance
+     de bot. Medido.
+     A conta é a do balão: o corpo da letra (0,66rem) pela entrelinha,
+     mais o respiro de cima e de baixo (0,3rem cada) e o fio da borda.
+     Escrita assim, ela acompanha o balão se ele mudar. */
+  height: calc(0.66rem * 1.35 + 0.6rem + 2px + clamp(0.1rem, 0.5dvh, 0.3rem));
   flex: none;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding-top: 0.3rem;
+  padding-top: clamp(0.1rem, 0.5dvh, 0.3rem);
   pointer-events: none;
 }
 
@@ -8983,93 +9496,27 @@ body.is-street-cut #root {
 
 /* ---- A PLACA DO DESFECHO ---- */
 
-/* Ela ocupa o lugar da barra de lances, e é isso que se quer: com a mão
-   fechada não há lance a fazer, e o lugar sob o polegar passa a ser o da
-   notícia. A altura mínima é a da barra, para a mesa não pular quando
-   uma troca pela outra. */
-.cash-verdict {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.55rem 0.75rem;
-  border-radius: 1rem;
-  background: linear-gradient(180deg, rgba(48, 12, 20, 0.94), rgba(22, 5, 10, 0.96));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 244, 232, 0.12),
-    inset 0 0 0 1px rgba(252, 217, 160, 0.28),
-    0 8px 26px rgba(8, 2, 5, 0.55);
-  text-align: center;
-}
+/* ELA É A PLACA DO DUELO (`.winner-plate`), e só isso.
+   Aqui morava uma peça própria — moldura, cor de desfecho e fileira de
+   cartas —, parecida de longe e diferente de perto. "Parecida" foi
+   exatamente o que o dono da mesa apontou como defeito: a mesa de seis
+   tinha um fim de mão de outro jogo.
+   O que sobrou neste bloco é o que a mesa de ANEL acrescenta à moldura e
+   o duelo não tem: o balanço do seu stack e a divisão do pote. */
 
-/* A COR É DA SUA SORTE, não da do vencedor. Numa mesa de seis "a Zara
-   levou" é notícia de terceiro; o que se procura na tela é se sobrou ou
-   faltou ficha na SUA frente. */
-.cash-verdict--win {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 244, 232, 0.16),
-    inset 0 0 0 1px rgba(252, 217, 160, 0.6),
-    0 8px 26px rgba(8, 2, 5, 0.55);
-}
-
-.cash-verdict--lose {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 244, 232, 0.08),
-    inset 0 0 0 1px rgba(220, 90, 90, 0.4),
-    0 8px 26px rgba(8, 2, 5, 0.55);
-}
-
-.cash-verdict__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: center;
-  gap: 0.15rem 0.5rem;
-}
-
-.cash-verdict__delta {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-family: var(--font-display);
-  font-size: 1.35rem;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  color: var(--color-lavender);
-}
-
-.cash-verdict--win .cash-verdict__delta {
-  color: var(--color-gold-bright);
-}
-
-.cash-verdict--lose .cash-verdict__delta {
-  color: var(--color-opponent-soft, #f0a0a0);
-}
-
-.cash-verdict__who {
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  color: rgba(255, 244, 232, 0.82);
-}
-
-/* AS CARTAS QUE DECIDIRAM, na escala da PLACA — não na do feltro.
-   A variável da arena (`--cash-card-w`) não alcança aqui: a placa vive
-   fora dela, e sem escala própria as cinco cartas saíam em tamanho
-   cheio e transbordavam o rodapé. */
-.cash-verdict__cards {
-  --verdict-card-w: clamp(1.4rem, min(8vw, 4dvh), 2.1rem);
-
-  display: flex;
-  gap: 0.18rem;
-}
+/* O BALANÇO DA MÃO SAIU DA PLACA e virou uma linha do histórico da mesa
+   (ver `TableTools`), que é onde ele vale mais: lá ele vem com as outras
+   mãos ao lado e com o saldo da sessão em cima, em vez de aparecer e
+   sumir em cinco segundos. Na placa ele era a única coisa que a mesa de
+   seis tinha a mais que o duelo — e o pedido era que as duas fossem a
+   mesma janela. */
 
 .cash-verdict__split {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.15rem 0.6rem;
-  font-size: 0.6rem;
+  gap: 0.1rem 0.5rem;
+  font-size: 0.58rem;
   color: rgba(203, 169, 138, 0.85);
 }
 
@@ -9077,42 +9524,237 @@ body.is-street-cut #root {
   color: var(--color-gold);
 }
 
-/* O CONVITE DE ABRIR A MÃO mora DENTRO da placa. Dividir em duas peças
-   faria a segunda cobrir a primeira nos cinco segundos em que as duas
-   precisam ser lidas. */
-.cash-verdict__show {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding-top: 0.35rem;
-  border-top: 1px solid rgba(252, 217, 160, 0.18);
-}
-
-.cash-verdict__ask {
-  font-size: 0.66rem;
-  color: rgba(255, 244, 232, 0.8);
-}
-
-.cash-verdict__ask strong {
-  color: var(--color-ivory);
-}
-
-/* O relógio de cinco segundos: o silêncio vale por NÃO MOSTRO, e por
-   isso ele precisa ser visto correndo. */
-.cash-verdict__timer {
-  font-weight: 900;
-  color: var(--color-gold);
-}
-
-.cash-verdict__answers {
-  display: flex;
-  gap: 0.4rem;
-}
-
 .cash-verdict__shownflag {
-  font-size: 0.6rem;
+  font-size: 0.58rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: rgba(147, 197, 253, 0.85);
+}
+
+/* ==================== As ferramentas da mesa ====================
+
+   Duas consultas, nos dois cantos de cima: o valor das fichas à
+   esquerda, o extrato da sessão à direita. Ver `TableTools` para o
+   porquê de cada uma. */
+
+.table-tools {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* O BOTÃO É DISCRETO POR DESENHO, e grande por acessibilidade: o disco
+   visível mede 2rem, o alvo de toque 2,75rem. A peça é pequena porque
+   não deve chamar atenção — não porque deva ser difícil de acertar.
+   Vinho translúcido com um fio de ouro: a mesma matéria das plaquinhas
+   da casa, no menor volume em que ela ainda se reconhece. */
+.table-tool {
+  position: relative;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: none;
+  place-items: center;
+  border-radius: 9999px;
+  color: rgba(252, 217, 160, 0.72);
+  transition:
+    color 160ms ease,
+    scale 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.table-tool::before {
+  content: '';
+  position: absolute;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: rgba(30, 8, 14, 0.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(252, 217, 160, 0.28),
+    0 2px 8px rgba(6, 2, 4, 0.45);
+}
+
+.table-tool > * {
+  position: relative;
+}
+
+@media (hover: hover) {
+  .table-tool:hover {
+    color: var(--color-gold-bright);
+  }
+}
+
+.table-tool:active {
+  scale: 0.92;
+}
+
+/* ---- O quadro do valor das fichas ---- */
+
+.chip-table {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem 0.75rem;
+}
+
+/* A FICHA É A FICHA DA CASA (`.rvc-chip`), e não um desenho parecido —
+   seria a única ficha do jogo que não é a ficha do jogo. O que muda aqui
+   é só o posicionamento: no montante ela é absoluta para empilhar, e
+   numa tabela ela precisa ocupar o próprio lugar. */
+.chip-table__row {
+  --chip-size: 2.1rem;
+
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 244, 232, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.12);
+}
+
+.chip-table__row .rvc-chip {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  flex: none;
+  rotate: none;
+}
+
+.chip-table__value {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--color-gold-bright);
+}
+
+.chip-table__note {
+  margin-top: 0.75rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: rgba(203, 169, 138, 0.85);
+}
+
+/* ---- O extrato da mesa ---- */
+
+/* O SALDO VEM ANTES, e grande: é a única linha que resume a sessão
+   inteira, e é ela que a pessoa abriu o painel para ver. A lista embaixo
+   existe para explicá-la. */
+.hand-log__sum {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  margin-bottom: 0.85rem;
+  padding: 0.7rem 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(48, 12, 20, 0.9), rgba(22, 5, 10, 0.94));
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.18);
+}
+
+.hand-log__sum-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-lavender);
+}
+
+.hand-log__sum--win .hand-log__sum-value {
+  color: var(--color-gold-bright);
+}
+
+.hand-log__sum--lose .hand-log__sum-value {
+  color: var(--color-opponent-soft, #f0a0a0);
+}
+
+.hand-log__sum--win {
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.42);
+}
+
+.hand-log__sum--lose {
+  box-shadow: inset 0 0 0 1px rgba(220, 90, 90, 0.38);
+}
+
+.hand-log__sum-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(203, 169, 138, 0.8);
+}
+
+/* A LISTA ROLA, e o saldo NÃO: uma sessão longa não pode empurrar para
+   fora da tela a única linha que a resume. O teto é em `dvh` para o
+   painel caber com o teclado aberto e num aparelho baixo. */
+.hand-log {
+  display: flex;
+  max-height: min(46dvh, 22rem);
+  flex-direction: column;
+  gap: 0.3rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.hand-log__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.42rem 0.7rem;
+  border-radius: 0.7rem;
+  background: rgba(255, 244, 232, 0.035);
+  font-size: 0.82rem;
+}
+
+/* O NÚMERO DA MÃO em corpo miúdo e tinta apagada: ele é a régua da
+   lista, não o assunto dela. */
+.hand-log__no {
+  min-width: 1.6rem;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: rgba(203, 169, 138, 0.6);
+}
+
+/* QUEM CORREU tem selo. Uma mão largada e uma perdida no showdown custam
+   as duas fichas e não contam a mesma história — sem o selo, as duas
+   viram o mesmo número negativo. */
+.hand-log__flag {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(220, 90, 90, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(220, 90, 90, 0.3);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f0a0a0;
+}
+
+.hand-log__delta {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: rgba(255, 244, 232, 0.7);
+}
+
+.hand-log__row.is-win .hand-log__delta {
+  color: var(--color-gold-bright);
+}
+
+.hand-log__row.is-lose .hand-log__delta {
+  color: var(--color-opponent-soft, #f0a0a0);
+}
+
+.hand-log__empty {
+  padding: 1.1rem 0.5rem;
+  font-size: 0.78rem;
+  text-align: center;
+  color: rgba(203, 169, 138, 0.8);
 }

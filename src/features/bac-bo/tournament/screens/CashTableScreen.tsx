@@ -5,12 +5,17 @@ import { Button } from '@/shared/components/Button';
 import { Icon } from '@/shared/components/Icon';
 import { formatCredits } from '@/shared/lib/format';
 
+import { OpponentProfileSheet } from '../../components/OpponentProfileSheet';
+import { HandoverClock } from '../../components/poker/HandoverClock';
+import { TableTools } from '../../components/table/TableTools';
 import { StreetAnnounce } from '../../components/poker/StreetAnnounce';
 import { TableScene } from '../../scene/TableScene';
+import { asOpponent } from '../seatOrder';
+import type { TournamentPlayer } from '../types';
 import { useTournamentStore } from '../tournamentStore';
 import { CashActions } from './CashActions';
 import { CashArena } from './CashArena';
-import { CashVerdictPlate } from './CashVerdictPlate';
+import { CashShowPrompt } from './CashShowPrompt';
 
 /**
  * A MESA DE CASH DE 6 em cena.
@@ -36,6 +41,7 @@ export function CashTableScreen() {
   const view = useTournamentStore((s) => s.cashTable);
   const youSeat = useTournamentStore((s) => s.cashSeat);
   const lobbyName = useTournamentStore((s) => s.lobbyName);
+  const lobbyCode = useTournamentStore((s) => s.lobbyCode);
   const legal = useTournamentStore((s) => s.cashLegal);
   const toCall = useTournamentStore((s) => s.cashToCall);
   const raise = useTournamentStore((s) => s.cashRaise);
@@ -43,6 +49,8 @@ export function CashTableScreen() {
   const verdict = useTournamentStore((s) => s.cashVerdict);
   const streetCut = useTournamentStore((s) => s.cashStreetCut);
   const clock = useTournamentStore((s) => s.cashClock);
+  const phase = useTournamentStore((s) => s.cashPhase);
+  const handover = useTournamentStore((s) => s.cashHandover);
   const show = useTournamentStore((s) => s.cashShow);
   const shown = useTournamentStore((s) => s.cashShown);
   const canLeave = useTournamentStore((s) => s.cashCanLeave);
@@ -51,13 +59,20 @@ export function CashTableScreen() {
   const answerShow = useTournamentStore((s) => s.cashAnswerShow);
   const leaveCashTable = useTournamentStore((s) => s.leaveCashTable);
   const [leaving, setLeaving] = useState(false);
+  /* O PERFIL do rival em que se tocou. Estado LOCAL de interface: a mesa
+     não tem — nem deve ter — uma fase "olhando o perfil de alguém". */
+  const [profile, setProfile] = useState<TournamentPlayer | null>(null);
   const reduced = useReducedMotion() ?? false;
 
   if (!view || youSeat < 0) return null;
 
   const meu = view.seats[youSeat];
   const fichas = (meu?.stack ?? 0) + (meu?.bet ?? 0);
-  const suaVez = view.toAct === youSeat && legal.length > 0;
+  const suaVez = phase === 'hand' && view.toAct === youSeat && legal.length > 0;
+  /* VOCÊ CORREU E A MÃO CONTINUA. É um estado sem volta dentro da mão
+     corrente, e o único em que não há lance nenhum a fazer — a mesa segue
+     sem você até fechar o pote. */
+  const correu = meu?.folded ?? false;
 
   return (
     <main className="cash-screen" data-testid="cash-screen">
@@ -85,24 +100,36 @@ export function CashTableScreen() {
           O nome fica CENTRADO: o botão de levantar é âncora à direita, e
           com o nome à esquerda o cabeçalho lia como duas peças soltas em
           vez de uma faixa. */}
+      {/* O BOTÃO DE BANDEIRA SAIU DAQUI. Ele era a saída da mesa num
+          ícone de 2rem no canto, e tinha dois problemas: a bandeira não
+          diz "levantar" para ninguém, e o canto superior direito não é
+          onde o olho de quem quer sair vai parar.
+          A saída não sumiu — ela ficou onde uma decisão de mesa se toma,
+          que é a faixa sob o polegar: na barra de lances enquanto a vez é
+          sua, na espera depois que você corre, e em tamanho de lance na
+          janela entre as mãos. Três lugares, todos escritos por extenso. */}
+      {/* AS DUAS FERRAMENTAS ficam nos cantos, e o nome da mesa no meio.
+          Elas são a MESMA peça do duelo: o valor das fichas à esquerda,
+          o extrato da sessão à direita. */}
       <header className="cash-screen__head">
+        <TableTools table={lobbyCode || lobbyName} />
         <h1 className="cash-screen__title" data-testid="cash-room-name">
           {lobbyName}
         </h1>
-        <button
-          type="button"
-          className="cash-screen__leave"
-          onClick={() => setLeaving(true)}
-          data-testid="cash-leave"
-          aria-label="Levantar da mesa"
-        >
-          <Icon name="flag" size={16} />
-        </button>
       </header>
 
       <TableScene reaction="idle" camera="overhead">
         <div className="cash-screen__stage">
-          <CashArena view={view} youSeat={youSeat} call={call} highlight={verdict?.highlight} />
+          <CashArena
+            view={view}
+            youSeat={youSeat}
+            call={call}
+            highlight={verdict?.highlight}
+            phase={phase}
+            verdict={verdict}
+            shown={shown}
+            onOpenProfile={setProfile}
+          />
 
           {/* O RODAPÉ RESERVA A MESMA ALTURA EM TODAS AS FASES.
               `.arena-actions` é a banda do duelo (8,9rem): a barra de
@@ -119,15 +146,52 @@ export function CashTableScreen() {
               polegar passa a ser o da notícia. */}
           <div className="arena-actions">
             <AnimatePresence mode="wait">
-              {verdict ? (
-                <CashVerdictPlate
-                  key="verdict"
-                  verdict={verdict}
-                  show={show}
-                  shown={shown}
-                  onAnswerShow={answerShow}
-                  instant={reduced}
-                />
+              {show.open ? (
+                /* O CONVITE DE ABRIR A MÃO vem ANTES de tudo e segura a
+                   cena: enquanto ele está no ar o embate espera, e é essa
+                   pausa que faz a pergunta valer alguma coisa. */
+                <CashShowPrompt key="show" prompt={show} onAnswer={answerShow} instant={reduced} />
+              ) : phase === 'settle' ? (
+                /* DURANTE O EMBATE A BARRA SE CALA. A cena é a notícia, e
+                   ela ocupa o feltro inteiro por dois ou três segundos;
+                   qualquer coisa escrita aqui embaixo disputaria o olho
+                   com as duas placas que estão se medindo. O lugar segue
+                   reservado — é o que impede a mesa de subir e descer no
+                   momento em que se está lendo o desfecho. É o mesmo
+                   silêncio do duelo nesta batida. */
+                <span key="settle" aria-hidden="true" />
+              ) : phase === 'handover' ? (
+                /* O INTERVALO ENTRE AS MÃOS: o relógio da próxima e a
+                   porta ao lado dele, exatamente como no duelo. Zerado, a
+                   mesa distribui sozinha — uma sessão que exigisse um
+                   toque a cada mão para continuar seria uma sessão que se
+                   joga com o dedo, e não com a cabeça.
+                   No intervalo a porta é a ÚNICA decisão que existe, e por
+                   isso ocupa a barra inteira. */
+                <motion.div
+                  key="handover"
+                  className="action-stack action-stack--wide"
+                  initial={reduced ? false : { opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={reduced ? { duration: 0 } : { duration: 0.25 }}
+                >
+                  <HandoverClock
+                    seconds={handover.seconds}
+                    total={handover.total}
+                    instant={reduced}
+                  />
+                  <Button
+                    variant="danger"
+                    size="md"
+                    fullWidth
+                    onClick={() => setLeaving(true)}
+                    disabled={!canLeave}
+                    title={canLeave ? 'Levantar da mesa' : 'Disponível a partir da 2ª mão'}
+                    data-testid="cash-leave"
+                  >
+                    <Icon name="close" /> LEVANTAR DA MESA
+                  </Button>
+                </motion.div>
               ) : suaVez ? (
                 <CashActions
                   key="actions"
@@ -146,23 +210,40 @@ export function CashTableScreen() {
                  outro: uma mesa que sobe e desce a cada lance de bot faria
                  as cartas dançarem justamente quando se tenta lê-las. */
                 <div key="wait" className="cash-screen__wait" data-testid="cash-wait">
-                  <span>{broke ? 'Você ficou sem fichas' : 'Aguardando a mesa'}</span>
-                  {/* SEM FICHAS, A SAÍDA É A ÚNICA JOGADA — e por isso ela
+                  <span>
+                    {broke
+                      ? 'Você ficou sem fichas'
+                      : correu
+                        ? 'Você correu esta mão'
+                        : 'Aguardando a mesa'}
+                  </span>
+                  {/* A SAÍDA É A ÚNICA JOGADA QUE SOBROU — e por isso ela
                       vem em vermelho e do tamanho de um lance.
-                      Quem quebra não recebe carta, não tem vez e nunca
-                      mais vê a barra de lances: o LEVANTAR que mora nela
-                      fica inalcançável, e a mesa vira uma sala trancada
-                      com a pessoa dentro. A porta do cabeçalho continua
-                      lá, mas é um ícone de 2rem no canto — não é onde o
-                      olho de quem acabou de quebrar vai parar. */}
-                  {broke && (
+                      São dois estados sem volta dentro da mão corrente:
+
+                      - SEM FICHAS você não recebe carta, não tem vez e
+                        nunca mais vê a barra de lances — a mesa virava uma
+                        sala trancada com a pessoa dentro;
+                      - DEPOIS DE CORRER a mão continua sem você. Não há
+                        lance a fazer, não há decisão a tomar, e a mesa
+                        ainda pode levar meio minuto para fechar o pote.
+                        Ficar olhando não é uma escolha; é a ausência de
+                        uma.
+
+                      Nos dois casos a única decisão possível é sair, e ela
+                      precisa estar onde o polegar já está. */}
+                  {(broke || correu) && (
                     <Button
                       variant="danger"
                       size="md"
                       onClick={() => setLeaving(true)}
+                      disabled={!broke && !canLeave}
+                      title={
+                        broke || canLeave ? 'Levantar da mesa' : 'Disponível a partir da 2ª mão'
+                      }
                       data-testid="cash-leave-broke"
                     >
-                      <Icon name="flag" /> LEVANTAR DA MESA
+                      <Icon name="close" /> LEVANTAR DA MESA
                     </Button>
                   )}
                 </div>
@@ -171,6 +252,15 @@ export function CashTableScreen() {
           </div>
         </div>
       </TableScene>
+
+      {/* O PERFIL DE QUEM SE TOCOU, por cima de tudo. É a MESMA folha do
+          duelo: quem senta numa mesa desta casa tem um perfil só, e ele
+          se abre pela placa do nome nas duas mesas. */}
+      <OpponentProfileSheet
+        open={profile !== null}
+        opponent={asOpponent(profile ?? { id: 'ninguem', name: '—', avatar: '—', isYou: false })}
+        onClose={() => setProfile(null)}
+      />
 
       <AnimatePresence>
         {leaving && (

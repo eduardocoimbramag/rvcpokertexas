@@ -150,7 +150,10 @@ describe('vitrine — a mesa de cash anuncia a economia dela', () => {
        no lobby na mesa aberta". Um sem o outro não descreve mesa
        nenhuma — a compra diz quanto se arrisca, o blind diz quanto
        tempo aquilo dura. */
-    useTournamentStore.setState({ ...initialTournament, stage: 'browse', lobbies: [cashLobby] }, true);
+    useTournamentStore.setState(
+      { ...initialTournament, stage: 'browse', lobbies: [cashLobby] },
+      true,
+    );
     render(<LobbyBrowseScreen onBack={() => undefined} />);
 
     const stakes = screen.getByTestId('lobby-stakes-cash-1');
@@ -159,7 +162,10 @@ describe('vitrine — a mesa de cash anuncia a economia dela', () => {
   });
 
   it('a mesa ABERTA leva selo; a fechada não', () => {
-    useTournamentStore.setState({ ...initialTournament, stage: 'browse', lobbies: [cashLobby] }, true);
+    useTournamentStore.setState(
+      { ...initialTournament, stage: 'browse', lobbies: [cashLobby] },
+      true,
+    );
     const { unmount } = render(<LobbyBrowseScreen onBack={() => undefined} />);
     expect(screen.getByTestId('lobby-open-cash-1')).toHaveTextContent(/aberta/i);
     unmount();
@@ -173,7 +179,10 @@ describe('vitrine — a mesa de cash anuncia a economia dela', () => {
   });
 
   it('o rótulo acessível diz a mesma coisa que a tinta', () => {
-    useTournamentStore.setState({ ...initialTournament, stage: 'browse', lobbies: [cashLobby] }, true);
+    useTournamentStore.setState(
+      { ...initialTournament, stage: 'browse', lobbies: [cashLobby] },
+      true,
+    );
     render(<LobbyBrowseScreen onBack={() => undefined} />);
 
     const card = screen.getByTestId('lobby-cash-1');

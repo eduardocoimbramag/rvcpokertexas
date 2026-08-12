@@ -5,7 +5,7 @@ import { CryptoRng, randomInt } from '@/shared/lib/random';
 
 import { TIMINGS } from '../animations/timings';
 import { ACTION_SECONDS, SHOW_CARDS_SECONDS } from '../store/gameStore';
-import { MIN_STAKE, afterHouseEdge } from '../engine/credits';
+import { MIN_STAKE, afterHouseEdge, cashOutValue } from '../engine/credits';
 import { audioManager } from '../services/AudioManager';
 import type { Match, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
@@ -30,7 +30,8 @@ import {
   systemMessage,
   you,
 } from './simulation';
-import { categoryLevel, readHand } from '../engine/poker/handRank';
+import type { HandCategory } from '../engine/poker/handRank';
+import { categoryLevel, categoryStrength, decidingHand, readHand } from '../engine/poker/handRank';
 import { botShowsHand, timeoutAction } from '../engine/poker/rules';
 import type { PokerAction, Street } from '../engine/poker/types';
 import type { Card } from '../engine/types';
@@ -38,7 +39,7 @@ import type { CashTableView } from './cashTable';
 import { dealDurationMs } from './cashTable';
 import type { CashHandResult } from './cashEngine';
 import { CashTableEngine } from './cashEngine';
-import { seatOf } from './seatOrder';
+import { asOpponent, seatOf } from './seatOrder';
 import type { TableRoundVerdict, TableStanding, TableWins } from './tableRules';
 import { awardTableWins, judgeTableRound } from './tableRules';
 import type {
@@ -70,10 +71,35 @@ import {
    fonte de qualidade para isso. */
 const TABLE_RNG = new CryptoRng();
 
-/* Quanto o desfecho fica em cena antes de a mesa recolher e distribuir a
-   seguinte. Uma mão que fecha e já vira outra tira de quem jogou a única
-   coisa que ele queria saber: quem ganhou, e com o quê. */
-const HAND_OVER_MS = TIMINGS.settleMs + TIMINGS.handoverCloseMs;
+/* O EMBATE do fim da mão, em cena por cima do feltro. É o mesmo beat do
+   duelo, e por isso o mesmo número: `settleMs` quando as mãos se
+   compararam de verdade, `foldSettleMs` quando o pote morreu por
+   desistência — ali não houve comparação, e a cena é comprimida. */
+const CLASH_MS = TIMINGS.settleMs;
+const FOLD_CLASH_MS = TIMINGS.foldSettleMs;
+
+/**
+ * O INTERVALO ENTRE AS MÃOS, em segundos, com o relógio em cena.
+ *
+ * O duelo dá 10 (e 5 depois de uma desistência). A mesa de anel dá 5 nos
+ * dois casos, e a diferença é de ritmo, não de desenho: no duelo o
+ * intervalo é o único respiro de uma sessão de duas pessoas, aqui uma mão
+ * de seis já leva o dobro do tempo para correr. Dez segundos entre cada
+ * uma seriam mais tempo parado do que jogando.
+ */
+const CASH_HANDOVER_SECONDS = 5;
+
+/**
+ * O RELÓGIO DA ESCOLHA DE CADEIRA.
+ *
+ * Dez segundos, e no fim a mesa senta você onde sobrar e começa. Ele
+ * existe porque a tela anterior não tinha fim: quem não clicasse ficava
+ * ali para sempre, e a mesa — que já tem cinco pessoas esperando — ficava
+ * junto. O sorteio no fim não é castigo: a cadeira não decide nada além
+ * de quem fala depois de você, e o botão do dealer é sorteado de qualquer
+ * forma (ver `openTableIfFull`).
+ */
+export const SEATING_SECONDS = 10;
 
 export type TournamentStage =
   | 'closed'
@@ -87,6 +113,8 @@ export type TournamentStage =
   | 'seating'
   /** Poker cash: a mesa de 6 montada, com fichas, pote e board. */
   | 'cash'
+  /** Poker cash: o CAIXA — o que se levou da mesa, depois de levantar. */
+  | 'cashout'
   | 'champion';
 
 /** O lance que a mesa acabou de anunciar, para o alto-falante. */
@@ -105,18 +133,86 @@ export interface CashMoveCall {
   timedOut: boolean;
 }
 
+/**
+ * O EMBATE DA MESA DE ANEL, já reduzido a dois lados.
+ *
+ * A cena do duelo compara DUAS mãos, e uma mesa de seis pode fechar com
+ * cinco vivas. A tradução é a que a mesa faz sozinha na cabeça de quem
+ * joga: de um lado você, do outro QUEM LEVOU O POTE — e, quando quem
+ * levou foi você, a melhor mão que sobrou contra a sua.
+ *
+ * Não é um resumo pobre da mão: é a única comparação que decidiu o
+ * dinheiro. As outras três mãos que foram ao showdown perderam para a
+ * mesma placa, e enfileirá-las viraria uma tabela.
+ */
+export interface CashClash {
+  /** O nome do outro lado — o seu é sempre "Você". */
+  rivalName: string;
+  /** A leitura de cada lado; `null` quando não há o que ler. */
+  yourRank: ClashRank | null;
+  rivalRank: ClashRank | null;
+  /** Quem levou: `win` você, `lose` ele, `tie` o pote se dividiu. */
+  outcome: 'win' | 'lose' | 'tie';
+  /** Você largou a mão nesta rodada. */
+  youFolded: boolean;
+  /** O outro lado largou — o pote foi entregue. */
+  rivalFolded: boolean;
+  /** A mão foi comparada de verdade. */
+  showdown: boolean;
+}
+
+/** A leitura de uma mão, no mínimo que a placa do embate precisa. */
+export interface ClashRank {
+  category: HandCategory;
+  label: string;
+  detail: string;
+}
+
 /** O desfecho de uma mão, pronto para a placa. */
 export interface CashVerdict {
   /** Quem levou alguma coisa, por cadeira. */
   winners: readonly { seat: number; name: string; won: number; isYou: boolean }[];
   /** A leitura da melhor mão, quando houve showdown. */
   label: string | null;
-  /** As cartas que decidiram — a mesa as acende no feltro. */
+  /**
+   * O que COMPLETA a leitura ("Reis com Ases"). É a linha de baixo da
+   * placa do desfecho, e ela existe aqui porque a placa da mesa de anel
+   * é a mesma do duelo — e a do duelo sempre teve esta linha.
+   */
+  detail: string | null;
+  /** As cinco cartas que decidiram — a mesa as acende no feltro. */
   highlight: readonly Card[];
+  /**
+   * AS CARTAS QUE RESPONDEM "POR QUÊ" — a combinação, e nada além dela.
+   *
+   * Não é a mão de cinco: um par de Reis são DUAS cartas, e as outras
+   * três só estão na mão porque uma mão de poker tem cinco. Exibidas
+   * como KK937, o olho procura a combinação dentro do monte. É o mesmo
+   * recorte que o duelo faz (ver `decidingHand`) — e a placa das duas
+   * mesas é a mesma peça.
+   */
+  deciding: readonly Card[];
   showdown: boolean;
   /** O que a mão fez com o SEU stack, com sinal. */
   netChange: number;
+  /** Os dois lados do embate, para a cena do fim da mão. */
+  clash: CashClash;
 }
+
+/**
+ * EM QUE PONTO DO FIM DA MÃO a mesa está.
+ *
+ * São as mesmas três batidas do duelo, e por isso os mesmos nomes:
+ *
+ * - `hand`: a mão corre;
+ * - `settle`: o EMBATE em cena, por cima do feltro;
+ * - `handover`: a placa do desfecho, o relógio da próxima e a porta.
+ *
+ * Antes havia só uma pausa cega de 5,6s entre uma mão e a seguinte — o
+ * desfecho aparecia num canto e sumia. A fase existe porque cada uma
+ * destas batidas mostra uma coisa diferente, e a tela precisa saber qual.
+ */
+export type CashPhase = 'hand' | 'settle' | 'handover';
 
 /**
  * O CONVITE PARA ABRIR A MÃO que ninguém pagou para ver.
@@ -269,6 +365,11 @@ export interface TournamentState {
   /** A última recusa, para a tela poder dizer por que não deu. */
   claimError: string | null;
   /**
+   * Segundos até a mesa sentar quem faltar e começar. `0` fora da escolha.
+   * Ver `SEATING_SECONDS`.
+   */
+  seatingClock: number;
+  /**
    * O INSTANTE DA MESA DE CASH — quem senta onde, com quanto, o que pôs,
    * o que a mesa abriu (ver `cashTable.ts`). `null` fora do formato.
    *
@@ -289,6 +390,22 @@ export interface TournamentState {
   cashCall: CashMoveCall | null;
   /** O desfecho da mão, enquanto a mesa recolhe. */
   cashVerdict: CashVerdict | null;
+  /** Em que batida do fim da mão a mesa está (ver `CashPhase`). */
+  cashPhase: CashPhase;
+  /**
+   * O CAIXA DA MESA, depois de levantar: a compra e o stack com que se
+   * saiu. É deles que a tela do fecho tira tudo — inclusive a comissão
+   * da casa, que incide uma vez e só sobre o lucro (ver `cashOutValue`).
+   * `null` fora do fecho.
+   */
+  cashOut: { buyIn: number; finalStack: number } | null;
+  /**
+   * O relógio do intervalo entre as mãos. `seconds` corre até zero e a
+   * mesa distribui; `total` é de quanto ele partiu — a barra se mede por
+   * ele, e um total fixo faria a barra nascer pela metade quando o
+   * intervalo é mais curto.
+   */
+  cashHandover: { seconds: number; total: number };
   /**
    * A rua que a mesa está carimbando no letreiro; `null` fora do beat.
    * É o mesmo corte de cena do duelo (ver StreetAnnounce).
@@ -602,6 +719,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       const view = engine.beginHand();
       set({
         stage: 'cash',
+        seatingClock: 0,
         cashSeat: eu,
         cashTable: view,
         cashCall: null,
@@ -614,6 +732,89 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       // Letreiro → distribuição → palavra, nesta ordem (ver `openHand`).
       openHand(view);
     }, 1200);
+  };
+
+  /**
+   * O TEMPO VENCEU NA ESCOLHA DE CADEIRA: a mesa senta quem faltar.
+   *
+   * Primeiro VOCÊ, numa cadeira sorteada entre as livres — a promessa que
+   * o relógio faz. Depois os bots que ainda não chegaram, todos de uma
+   * vez: a corrida acabou, e continuar a encená-la de um em um faria a
+   * mesa demorar mais dez segundos depois de anunciar que ia começar.
+   *
+   * Sortear a cadeira não tira nada de ninguém: a cadeira só decide quem
+   * fala depois de você, e o botão do dealer — que é o que vale posição —
+   * é sorteado de qualquer forma quando a mesa abre.
+   */
+  const seatEveryoneNow = (): void => {
+    const cur = get();
+    if (cur.stage !== 'seating') return;
+
+    const next = [...cur.seats];
+    const vagas = (): number[] =>
+      next.map((seat, i) => (seat === null ? i : -1)).filter((i) => i >= 0);
+    const avisos: string[] = [];
+
+    if (!next.some((seat) => seat?.isYou)) {
+      const livres = vagas();
+      const alvo = livres[randomInt(TABLE_RNG, 0, livres.length - 1)];
+      if (alvo === undefined) return;
+      next[alvo] = you();
+      avisos.push(`O tempo acabou: você sentou na cadeira ${alvo + 1}.`);
+    }
+
+    const restantes = vagas();
+    if (restantes.length > 0) {
+      const ocupados = next.filter((p): p is TournamentPlayer => p !== null);
+      const bots = makeBots(
+        restantes.length,
+        ocupados.map((p) => p.name),
+      );
+      restantes.forEach((seat, i) => {
+        const bot = bots[i];
+        if (bot) next[seat] = bot;
+      });
+    }
+
+    set({
+      seats: next,
+      /* Um pedido em voo morre aqui: `claimSeat` compara o `claiming` ao
+         voltar e desiste sozinho se ele mudou. */
+      claiming: null,
+      claimError: null,
+      seatingClock: 0,
+      chat: [...cur.chat, ...avisos.map((texto) => systemMessage(texto))],
+    });
+    openTableIfFull();
+  };
+
+  /**
+   * O RELÓGIO DA ESCOLHA DE CADEIRA — dez segundos, e a mesa começa.
+   *
+   * Ele existe porque a tela anterior não tinha fim: quem não clicasse
+   * ficava ali para sempre, e as outras cinco pessoas junto. O que ele
+   * substituiu foram dois avisos em texto (o do sorteio do botão e a
+   * conta de cadeiras livres) que diziam o que a tela já mostra — e
+   * nenhum deles dizia a única coisa que faltava, que é quando isto
+   * acaba.
+   */
+  const startSeatingClock = (): void => {
+    set({ seatingClock: SEATING_SECONDS });
+    const tick = (): void => {
+      schedule(() => {
+        const cur = get();
+        if (cur.stage !== 'seating') return;
+        const restam = cur.seatingClock - 1;
+        if (restam > 0) {
+          set({ seatingClock: restam });
+          tick();
+          return;
+        }
+        set({ seatingClock: 0 });
+        seatEveryoneNow();
+      }, 1000);
+    };
+    tick();
   };
 
   /* ---------------- O RITMO DA MESA DE CASH ----------------
@@ -939,6 +1140,85 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
   };
 
   /**
+   * OS DOIS LADOS DO EMBATE, escolhidos a partir da mesa inteira.
+   *
+   * Uma mesa de seis pode fechar com cinco mãos vivas, e a cena do duelo
+   * compara duas. A redução não é uma perda: a comparação que decidiu o
+   * dinheiro é uma só, e as outras perderam todas para a mesma placa.
+   * Enfileirar as cinco viraria uma tabela — e tabela não é cena.
+   *
+   * Quem é o outro lado, nesta ordem:
+   *
+   * 1. você NÃO levou → quem levou;
+   * 2. você levou com mais alguém → o outro dono do pote;
+   * 3. você levou sozinho → a melhor mão que se mediu contra a sua.
+   *
+   * O SIGILO ATRAVESSA AQUI. A leitura de um rival só entra quando ela é
+   * pública: ou a mão foi ao showdown, ou ele escolheu abrir. Fora
+   * disso a placa dele vai fechada — e vai fechada porque o store não
+   * sabe, e não porque a tela decidiu não contar.
+   */
+  const buildClash = (
+    settlement: CashHandResult['settlement'],
+    view: CashTableView,
+    eu: number,
+  ): CashClash => {
+    const traduz = (rank: {
+      category: HandCategory;
+      label: string;
+      detail: string;
+    }): ClashRank => ({
+      category: rank.category,
+      label: rank.label,
+      detail: rank.detail,
+    });
+
+    /* A SUA leitura você tem sempre — são as suas cartas. Fora do
+       showdown a mesa não a calcula, então ela sai daqui. */
+    const suaPronta = settlement.ranks.get(eu);
+    const suaMao = engine?.holeOf(eu) ?? null;
+    const yourRank = suaPronta
+      ? traduz(suaPronta)
+      : suaMao
+        ? traduz(readHand(suaMao, view.board))
+        : null;
+
+    const venceu = settlement.winners.includes(eu);
+    const outros = settlement.winners.filter((seat) => seat !== eu);
+
+    /* A melhor mão alheia que se mediu contra a sua — só existe se houve
+       showdown, que é quando `ranks` tem mais de uma leitura. */
+    const melhorRival = [...settlement.ranks.entries()]
+      .filter(([seat]) => seat !== eu)
+      .sort(([, a], [, b]) => categoryStrength(b.category) - categoryStrength(a.category))[0];
+
+    const rivalSeat = !venceu
+      ? (settlement.winners[0] ?? melhorRival?.[0])
+      : (outros[0] ?? melhorRival?.[0]);
+
+    const assento = rivalSeat === undefined ? undefined : view.seats[rivalSeat];
+    /* A leitura do rival é PÚBLICA ou não existe: showdown, ou ele abriu
+       (as cartas dele estão no view, ver `revealSeat`). */
+    const rivalPronta = rivalSeat === undefined ? undefined : settlement.ranks.get(rivalSeat);
+    const [uma, outra] = assento?.cards.filter((c): c is Card => c !== null) ?? [];
+    const rivalRank = rivalPronta
+      ? traduz(rivalPronta)
+      : uma && outra
+        ? traduz(readHand([uma, outra], view.board))
+        : null;
+
+    return {
+      rivalName: assento?.player.name ?? 'A mesa',
+      yourRank,
+      rivalRank,
+      outcome: venceu ? (outros.length > 0 ? 'tie' : 'win') : 'lose',
+      youFolded: view.seats[eu]?.folded ?? false,
+      rivalFolded: assento?.folded ?? false,
+      showdown: settlement.showdown,
+    };
+  };
+
+  /**
    * FECHA A MÃO: reparte, anuncia e distribui a seguinte.
    *
    * O anúncio fica em cena o tempo de ser lido antes de a mesa recolher.
@@ -964,65 +1244,49 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     }));
     const melhor = settlement.ranks.get(settlement.winners[0] ?? -1);
 
-    set({
-      cashTable: view,
-      cashLegal: [],
-      cashRaise: null,
-      cashCall: null,
-      cashVerdict: {
-        winners,
-        label: settlement.showdown ? (melhor?.label ?? null) : null,
-        /* AS CARTAS QUE DECIDIRAM acendem no feltro — é o crupiê
-           apontando o que levou o pote. Sem showdown não há o que
-           apontar: ninguém pagou para ver. */
-        highlight: settlement.showdown ? [...(melhor?.cards ?? [])] : [],
-        showdown: settlement.showdown,
-        netChange: fim.netChange,
-      },
-    });
-    /* O SOM DO DESFECHO, do jeito do duelo: o que se ouve é a SUA
-       sorte, não a de quem levou. */
-    audioManager.playSfx(fim.netChange > 0 ? 'win' : fim.netChange < 0 ? 'lose' : 'tie');
-    publishBroke();
-    recordCashHand(fim, view);
-
     /* O CONVITE PARA ABRIR A MÃO que ninguém pagou para ver.
        Só quando a mão morre por desistência, e só para QUEM LEVOU o
        pote: numa mesa de seis, perguntar aos cinco que correram seria
        cinco balões por mão, e a mesa passaria mais tempo perguntando do
        que jogando. */
     const levouSemShowdown = !settlement.showdown && settlement.winners.includes(eu);
-    if (levouSemShowdown) askToShow();
-    else revealBotHand(settlement, view, eu);
 
-    schedule(() => {
-      const cur = engine;
-      if (!cur || get().stage !== 'cash') return;
-      /* Menos de dois com ficha: não há mão a distribuir. A mesa não
-         "acaba" num cash — ela fica sem gente, e é isso que ela diz. */
-      if (cur.seatedWithChips() < 2) {
-        /* A mesa ficou sem quem jogue. A saída abre para todo mundo —
-           inclusive para quem ainda tem fichas: não há mão a distribuir,
-           e uma mesa parada com o botão de sair fechado é uma sala
-           trancada. */
-        set({ cashShow: { open: false, seconds: 0 }, cashCanLeave: true });
-        return;
-      }
-      const nova = cur.beginHand();
-      publishBroke();
-      set({
-        cashTable: nova,
-        cashVerdict: null,
-        cashCall: null,
-        cashShown: false,
-        cashShow: { open: false, seconds: 0 },
-        /* A SAÍDA ABRE NA SEGUNDA MÃO. Quem senta, joga ao menos uma —
-           sentar e levantar antes da primeira carta seria ocupar a
-           cadeira de outra pessoa sem jogar. */
-        cashCanLeave: true,
-      });
-      openHand(nova);
-    }, HAND_OVER_MS);
+    /* O RIVAL DECIDE ANTES DE A PLACA SER MONTADA. A leitura dele só
+       entra no veredito se ela for pública, e "ele abriu" é justamente o
+       que a torna pública — perguntar depois faria a placa do embate
+       nascer fechada e virar aberta um quadro adiante. */
+    if (!levouSemShowdown) revealBotHand(settlement, view, eu);
+    const mesa = eng.view();
+
+    set({
+      cashTable: mesa,
+      cashLegal: [],
+      cashRaise: null,
+      cashCall: null,
+      cashVerdict: {
+        winners,
+        label: settlement.showdown ? (melhor?.label ?? null) : null,
+        detail: settlement.showdown ? (melhor?.detail ?? null) : null,
+        /* AS CARTAS QUE DECIDIRAM acendem no feltro — é o crupiê
+           apontando o que levou o pote. Sem showdown não há o que
+           apontar: ninguém pagou para ver. */
+        highlight: settlement.showdown ? [...(melhor?.cards ?? [])] : [],
+        deciding: settlement.showdown && melhor ? [...decidingHand(melhor)] : [],
+        showdown: settlement.showdown,
+        netChange: fim.netChange,
+        clash: buildClash(settlement, mesa, eu),
+      },
+    });
+    /* O SOM DO DESFECHO, do jeito do duelo: o que se ouve é a SUA
+       sorte, não a de quem levou. */
+    audioManager.playSfx(fim.netChange > 0 ? 'win' : fim.netChange < 0 ? 'lose' : 'tie');
+    publishBroke();
+    recordCashHand(fim, mesa);
+    /* O CONVITE SEGURA A CENA: sem ele, o embate entra na hora. Com ele,
+       o embate espera a resposta — a mão que se escolheu guardar não pode
+       aparecer aberta na placa da cena seguinte. */
+    if (levouSemShowdown) askToShow();
+    else startSettle();
   };
 
   /**
@@ -1030,6 +1294,11 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
    *
    * O silêncio vale por NÃO MOSTRO, que é o que uma sala de verdade faz
    * com quem não diz nada: as cartas vão para o descarte de bruços.
+   *
+   * ELE SEGURA A CENA. O embate só entra depois que a pergunta morre, e é
+   * isso que faz a pergunta valer alguma coisa: respondê-la com as cartas
+   * já viradas na tela seria escolher uma porta aberta. É a mesma pausa
+   * do duelo (ver `settling` em PokerArena).
    */
   const askToShow = (): void => {
     set({ cashShow: { open: true, seconds: SHOW_CARDS_SECONDS } });
@@ -1040,6 +1309,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         const restam = cur.cashShow.seconds - 1;
         if (restam <= 0) {
           set({ cashShow: { open: false, seconds: 0 } });
+          startSettle();
           return;
         }
         set({ cashShow: { open: true, seconds: restam } });
@@ -1047,6 +1317,157 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       }, 1000);
     };
     tick();
+  };
+
+  /**
+   * O EMBATE EM CENA — a primeira das três batidas do fim da mão.
+   *
+   * As duas placas entram das bordas, batem no meio do feltro e a
+   * perdedora é jogada para fora. É a MESMA peça do duelo (`ClashStage`),
+   * com os dois lados escolhidos por `buildClash`.
+   */
+  const startSettle = (): void => {
+    const cur = get();
+    if (cur.stage !== 'cash') return;
+    /* Sem comparação, cena comprimida: quem correu perdeu por ter
+       largado, não por ter carta pior. */
+    const brief = !(cur.cashVerdict?.showdown ?? false);
+    set({ cashPhase: 'settle' });
+    schedule(startHandover, brief ? FOLD_CLASH_MS : CLASH_MS);
+  };
+
+  /**
+   * A JANELA DO INTERVALO — a segunda batida.
+   *
+   * A placa de quem levou o pote, o relógio da próxima mão e a porta,
+   * exatamente como no duelo. Zerado o relógio, a mesa distribui sozinha:
+   * uma sessão que exigisse um toque a cada mão para continuar seria uma
+   * sessão que se joga com o dedo, não com a cabeça.
+   */
+  const startHandover = (): void => {
+    if (get().stage !== 'cash') return;
+    set({
+      cashPhase: 'handover',
+      cashHandover: { seconds: CASH_HANDOVER_SECONDS, total: CASH_HANDOVER_SECONDS },
+    });
+    const tick = (): void => {
+      schedule(() => {
+        const cur = get();
+        if (cur.stage !== 'cash' || cur.cashPhase !== 'handover') return;
+        const restam = cur.cashHandover.seconds - 1;
+        if (restam > 0) {
+          set({ cashHandover: { seconds: restam, total: cur.cashHandover.total } });
+          tick();
+          return;
+        }
+        set({ cashHandover: { seconds: 0, total: cur.cashHandover.total } });
+        dealNextCashHand();
+      }, 1000);
+    };
+    tick();
+  };
+
+  /**
+   * O CAIXA DA MESA DE SEIS — a MESMA porta de saída do duelo.
+   *
+   * Levantar é um direito e não custa nada: as fichas que estão na sua
+   * frente são suas. O que a casa cobra é a COMISSÃO, uma vez só, no
+   * caixa, e só sobre o LUCRO — nunca sobre a compra que você trouxe
+   * (ver `cashOutValue`). É a mesma conta do 1v1, na mesma função: duas
+   * cópias divergiriam no primeiro ajuste, e divergir aqui significa
+   * pagar valores diferentes pela mesma mão.
+   *
+   * A mesa não some depois disso: ela abre o FECHO, que é a tela que diz
+   * o que a sessão fez com você. Antes daqui, levantar creditava o stack
+   * bruto e voltava direto para o salão — a sessão inteira terminava sem
+   * uma linha sobre ela.
+   */
+  const closeCashTable = (): void => {
+    const s = get();
+    if (s.stage !== 'cash') return;
+    const finalStack = engine?.yourStack() ?? 0;
+    const buyIn = s.buyIn;
+
+    const levou = cashOutValue(buyIn, finalStack);
+    if (levou > 0) useGameStore.getState().applyBalanceDelta(levou);
+
+    engine = null;
+    clearTimers();
+    set({
+      stage: 'cashout',
+      cashOut: { buyIn, finalStack },
+      /* A SALA MORRE COM A MESA. Ela é fechada — ninguém entra depois de
+         começar —, então membros, cadeiras e conversa não sobrevivem ao
+         fecho: o que sobra em cena é o caixa. */
+      members: [],
+      readyIds: [],
+      bannedNames: [],
+      chat: [],
+      seats: [],
+      claiming: null,
+      claimError: null,
+      seatingClock: 0,
+      bracket: null,
+      tableSeries: null,
+      activeMatch: null,
+      simulating: false,
+      feePaid: false,
+      cashTable: null,
+      cashLegal: [],
+      cashToCall: 0,
+      cashRaise: null,
+      cashCall: null,
+      cashVerdict: null,
+      cashPhase: 'hand',
+      cashHandover: { seconds: 0, total: CASH_HANDOVER_SECONDS },
+      cashStreetCut: null,
+      cashClock: { open: false, seconds: 0 },
+      cashShow: { open: false, seconds: 0 },
+      cashShown: false,
+      cashCanLeave: false,
+      cashBroke: false,
+    });
+    /* O SOM DO CAIXA, do jeito do duelo: fanfarra para quem sai no lucro,
+       e nada de derrota para quem só encerrou — não se perde uma sessão
+       por levantar dela. */
+    if (finalStack > buyIn) {
+      audioManager.playSfx('win');
+      audioManager.playSfx('applause');
+    }
+  };
+
+  /** A terceira batida: a mesa recolhe e distribui de novo. */
+  const dealNextCashHand = (): void => {
+    const cur = engine;
+    if (!cur || get().stage !== 'cash') return;
+    /* Menos de dois com ficha: não há mão a distribuir. A mesa não
+       "acaba" num cash — ela fica sem gente, e é isso que ela diz. */
+    if (cur.seatedWithChips() < 2) {
+      /* A MESA ACABOU: não há duas pessoas com ficha, e sem isso não há
+         mão a distribuir. Ela não fica parada esperando um toque — abre
+         o caixa sozinha, que é o que uma sala faz quando fecha.
+         Antes daqui a mesa só destravava o botão de sair e ficava ali,
+         e quem estava na frente tinha de descobrir por conta própria que
+         não ia acontecer mais nada. */
+      set({ cashShow: { open: false, seconds: 0 }, cashCanLeave: true });
+      closeCashTable();
+      return;
+    }
+    const nova = cur.beginHand();
+    publishBroke();
+    set({
+      cashTable: nova,
+      cashVerdict: null,
+      cashPhase: 'hand',
+      cashCall: null,
+      cashShown: false,
+      cashShow: { open: false, seconds: 0 },
+      /* A SAÍDA ABRE NA SEGUNDA MÃO. Quem senta, joga ao menos uma —
+         sentar e levantar antes da primeira carta seria ocupar a cadeira
+         de outra pessoa sem jogar. */
+      cashCanLeave: true,
+    });
+    openHand(nova);
   };
 
   /**
@@ -1185,6 +1606,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     seats: [],
     claiming: null,
     claimError: null,
+    seatingClock: 0,
     cashTable: null,
     cashSeat: -1,
     cashLegal: [],
@@ -1192,6 +1614,9 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     cashRaise: null,
     cashCall: null,
     cashVerdict: null,
+    cashPhase: 'hand',
+    cashOut: null,
+    cashHandover: { seconds: 0, total: CASH_HANDOVER_SECONDS },
     cashStreetCut: null,
     cashClock: { open: false, seconds: 0 },
     cashShow: { open: false, seconds: 0 },
@@ -1421,6 +1846,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
           prizePaid: false,
         });
         raceForSeats();
+        startSeatingClock();
         return;
       }
 
@@ -1507,51 +1933,14 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         cashShown: show,
         cashTable: engine?.view() ?? s.cashTable,
       });
+      /* Respondida a pergunta, a cena continua de onde parou. As duas
+         saídas do convite — responder e deixar vencer — levam ao mesmo
+         lugar, senão responder rápido pularia o embate. */
+      startSettle();
     },
 
     leaveCashTable: () => {
-      /* LEVANTAR DA MESA é um direito e não custa nada — é a diferença
-         entre cash e torneio, e foi assim que a mesa fechada foi definida:
-         "ninguém entra depois de começar. Você sai quando quiser".
-         As fichas que sobraram voltam ao saldo. Hoje isso é a compra
-         inteira porque ainda não há mão para perder; quando a engine
-         entrar, é o stack vivo do assento — e a conta é a mesma. */
-      /* Sai com o STACK VIVO — o que está na sua frente agora, e não a
-         compra. É o que muda quando a mesa passa a jogar de verdade: as
-         fichas mudam de dono a cada mão, e levantar devolve o que sobrou
-         delas. */
-      const fichas = engine?.yourStack() ?? 0;
-      if (fichas > 0) useGameStore.getState().applyBalanceDelta(fichas);
-      engine = null;
-      clearTimers();
-      set({
-        stage: 'closed',
-        members: [],
-        readyIds: [],
-        bannedNames: [],
-        chat: [],
-        seats: [],
-        claiming: null,
-        claimError: null,
-        cashTable: null,
-        cashSeat: -1,
-        cashLegal: [],
-        cashToCall: 0,
-        cashRaise: null,
-        cashCall: null,
-        cashVerdict: null,
-        cashStreetCut: null,
-        cashClock: { open: false, seconds: 0 },
-        cashShow: { open: false, seconds: 0 },
-        cashShown: false,
-        cashCanLeave: false,
-        cashBroke: false,
-        bracket: null,
-        tableSeries: null,
-        activeMatch: null,
-        simulating: false,
-        feePaid: false,
-      });
+      closeCashTable();
     },
 
     releaseSeat: () => {
@@ -1573,7 +1962,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       // mão de blackjack de verdade contra o dealer da casa.
       const match: Match = {
         id: bm.id,
-        opponent: { id: opponent.id, name: opponent.name, avatar: opponent.avatar, rating: 1000 },
+        opponent: asOpponent(opponent),
         stake: 0,
         createdAt: Date.now(),
       };

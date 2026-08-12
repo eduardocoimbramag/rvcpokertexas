@@ -1194,9 +1194,7 @@ describe('ShowCardsPrompt — abrir a mão a quem correu', () => {
        a pessoa lia a explicação e perdia a decisão. */
     render(<ShowCardsPrompt prompt={prompt} opponentName="Luna" onAnswer={vi.fn()} instant />);
     expect(screen.getByTestId('show-prompt-lead')).toHaveTextContent('Luna correu');
-    expect(screen.getByTestId('show-prompt')).toHaveTextContent(
-      'Deseja mostrar sua mão para ele?',
-    );
+    expect(screen.getByTestId('show-prompt')).toHaveTextContent('Deseja mostrar sua mão para ele?');
     /* A leitura da mão saiu: a placa do assento a traz em cena o tempo
        todo, a dois dedos do balão. */
     expect(screen.queryByTestId('show-prompt-hand')).not.toBeInTheDocument();
@@ -1238,5 +1236,55 @@ describe('ShowCardsPrompt — abrir a mão a quem correu', () => {
       />,
     );
     expect(screen.getByTestId('show-cards-no')).toHaveTextContent('3s');
+  });
+});
+
+describe('o intervalo entre as mãos tira a mesa de foco', () => {
+  /* Quando a tela tem UMA notícia a dar, tudo o que não é ela vira
+     ruído — é o mesmo argumento do corte de cena do letreiro de rua. O
+     véu desfoca o FUNDO e não a tela: a placa do desfecho, o relógio da
+     próxima mão e a porta ficam nítidos, porque são pintados depois. */
+  it('o véu entra COM a placa do desfecho, e não antes', () => {
+    renderArena({ phase: 'handover', result: result(), handoverSeconds: 7 });
+
+    expect(screen.getByTestId('table-veil')).toBeInTheDocument();
+    expect(screen.getByTestId('winner-plate')).toBeInTheDocument();
+    expect(screen.getByTestId('handover-clock')).toHaveTextContent('Próxima mão em 7s');
+  });
+
+  it('com a mão viva não há véu nenhum', () => {
+    renderArena();
+    expect(screen.queryByTestId('table-veil')).toBeNull();
+  });
+
+  it('no EMBATE também não: a cena já ocupa o feltro inteiro', () => {
+    renderArena({ phase: 'settle', result: result() });
+    expect(screen.getByTestId('showdown-clash')).toBeInTheDocument();
+    expect(screen.queryByTestId('table-veil')).toBeNull();
+  });
+});
+
+describe('a placa do rival abre o perfil dele', () => {
+  /* A porta já existia no medalhão do desfecho; ela passou a existir
+     DURANTE a mão, que é quando se quer saber com quem se está jogando.
+     E é um `button` de verdade: um `div` clicável não chega ao teclado
+     nem ao leitor de tela. */
+  it('a placa do rival é um botão, e o toque abre o perfil', async () => {
+    const user = userEvent.setup();
+    renderArena();
+
+    const placa = screen.getByTestId('seat-opponent');
+    expect(placa.tagName).toBe('BUTTON');
+    expect(placa).toHaveAccessibleName('Ver o perfil de Luna');
+
+    await user.click(placa);
+    expect(await screen.findByTestId('opponent-profile')).toBeInTheDocument();
+  });
+
+  it('a SUA placa não é porta nenhuma', () => {
+    /* Um perfil de si mesmo aberto por engano no meio de uma decisão
+       cronometrada é só um toque perdido. */
+    renderArena();
+    expect(screen.getByTestId('seat-player').tagName).toBe('DIV');
   });
 });

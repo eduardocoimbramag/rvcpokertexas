@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { cashOutValue } from '../engine/credits';
+import { OPEN_TABLE_ENABLED } from '../tournament/availability';
+import { makeLobbyListings } from '../tournament/simulation';
 import { useGameStore } from '../store/gameStore';
 import {
   freeSeats,
@@ -10,7 +13,7 @@ import {
   seatOf,
   seatsFromPov,
 } from '../tournament/seatOrder';
-import { useTournamentStore } from '../tournament/tournamentStore';
+import { SEATING_SECONDS, useTournamentStore } from '../tournament/tournamentStore';
 import type { TournamentPlayer } from '../tournament/types';
 import { CASH_SEATS } from '../tournament/types';
 
@@ -204,11 +207,45 @@ describe('a corrida pelas cadeiras', () => {
     readyRoom();
     useTournamentStore.getState().startTournament();
 
-    // Tempo de sobra para todos: se não houvesse a trava, encheria.
-    vi.advanceTimersByTime(60_000);
+    /* Tempo de sobra para os bots, e MENOS que o relógio da escolha: se
+       não houvesse a trava, a mesa encheria aqui. Passado o relógio a
+       mesa senta você e enche de propósito — é outra regra, e ela tem
+       teste próprio abaixo. */
+    vi.advanceTimersByTime(SEATING_SECONDS * 1000 - 1500);
     const s = useTournamentStore.getState();
     expect(s.seats.some((seat) => seat?.isYou)).toBe(false);
     expect(freeSeats(s.seats)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('o RELÓGIO senta você e abre a mesa quando o tempo acaba', async () => {
+    /* A tela da escolha não tinha fim: quem não clicasse ficava ali para
+       sempre, e as outras cinco pessoas junto. O relógio é o que a
+       termina — e o sorteio no fim não custa nada, porque a cadeira só
+       decide quem fala depois de você e o botão do dealer é sorteado de
+       qualquer forma. */
+    readyRoom();
+    useTournamentStore.getState().startTournament();
+    expect(useTournamentStore.getState().seatingClock).toBe(SEATING_SECONDS);
+
+    await vi.advanceTimersByTimeAsync(SEATING_SECONDS * 1000);
+    const sentado = useTournamentStore.getState();
+    expect(sentado.seats.some((seat) => seat?.isYou)).toBe(true);
+    expect(freeSeats(sentado.seats)).toBe(0);
+
+    // E a mesa abre sozinha logo depois: a partida começa sem mais um toque.
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(useTournamentStore.getState().stage).toBe('cash');
+  });
+
+  it('quem JÁ SENTOU não é movido pelo relógio', async () => {
+    /* O sorteio é para quem não escolheu. Trocar a cadeira de quem
+       escolheu seria desfazer a única decisão que esta tela oferece. */
+    readyRoom();
+    useTournamentStore.getState().startTournament();
+    await useTournamentStore.getState().claimSeat(2);
+
+    await vi.advanceTimersByTimeAsync(SEATING_SECONDS * 1000);
+    expect(useTournamentStore.getState().seats[2]?.isYou).toBe(true);
   });
 
   it('sentado, a mesa enche até o fim', async () => {
@@ -259,6 +296,25 @@ describe('a economia da mesa de cash', () => {
     await vi.advanceTimersByTimeAsync(240_000);
   }
 
+  /**
+   * Avança o relógio simulado ATÉ a condição valer, em rodadas.
+   *
+   * Uma corrida única de quatro minutos basta com a suíte parada, e
+   * piscava com ela inteira em paralelo: `advanceTimersByTimeAsync`
+   * drena as promessas pendentes a cada salto, e sob disputa de CPU a
+   * cadeia da mesa podia terminar a corrida no meio de uma mão — o teste
+   * então media um instante em que a segunda mão ainda não tinha
+   * começado, e falhava por tempo em vez de por defeito.
+   * O teto existe para que uma condição que nunca vale falhe rápido, com
+   * a asserção do próprio teste, e não por estouro de prazo.
+   */
+  async function avancaAte(condicao: () => boolean, rodadas = 4) {
+    for (let i = 0; i < rodadas; i += 1) {
+      if (condicao()) return;
+      await vi.advanceTimersByTimeAsync(120_000);
+    }
+  }
+
   it('a COMPRA sai do saldo quando a mesa abre', async () => {
     /* E não no START do lobby: é aqui que as fichas passam a existir na
        sua frente. Sem este débito, levantar creditaria um stack que
@@ -290,7 +346,11 @@ describe('a economia da mesa de cash', () => {
     expect(rival?.cards.every((c) => c === null)).toBe(true);
   });
 
-  it('levantar devolve as fichas VIVAS — nem uma a mais', async () => {
+  it('levantar passa pelo CAIXA, com a comissão da casa', async () => {
+    /* A mesma porta de saída do duelo, e a mesma conta: a comissão
+       incide UMA vez, no caixa, e só sobre o LUCRO — nunca sobre a
+       compra que a pessoa trouxe (ver `cashOutValue`). Antes daqui o
+       cash creditava o stack bruto e a casa não cobrava nada. */
     await abreMesa(1000);
     const antes = useGameStore.getState().balance;
     const meu = useTournamentStore.getState().cashTable?.seats[0];
@@ -298,9 +358,20 @@ describe('a economia da mesa de cash', () => {
 
     useTournamentStore.getState().leaveCashTable();
 
-    expect(useGameStore.getState().balance).toBe(antes + fichas);
-    expect(useTournamentStore.getState().stage).toBe('closed');
+    expect(useGameStore.getState().balance).toBe(antes + cashOutValue(1000, fichas));
+    // E a mesa não some: ela abre o FECHO, que diz o que a sessão fez.
+    expect(useTournamentStore.getState().stage).toBe('cashout');
+    expect(useTournamentStore.getState().cashOut).toEqual({ buyIn: 1000, finalStack: fichas });
     expect(useTournamentStore.getState().cashTable).toBeNull();
+  });
+
+  it('a comissão é 10% do LUCRO, e zero quando não houve lucro', () => {
+    /* A conta é a do duelo, na mesma função — duas cópias divergiriam no
+       primeiro ajuste, e divergir aqui é pagar valores diferentes pela
+       mesma mão. */
+    expect(cashOutValue(1000, 2000)).toBe(1900);
+    expect(cashOutValue(1000, 1000)).toBe(1000);
+    expect(cashOutValue(1000, 400)).toBe(400);
   });
 
   it('levantar DUAS vezes não paga duas vezes', async () => {
@@ -334,7 +405,7 @@ describe('a economia da mesa de cash', () => {
     await abreMesa();
     // Na primeira mão a porta está em cena e FECHADA.
     expect(useTournamentStore.getState().cashCanLeave).toBe(false);
-    await jogaAlgumasMaos();
+    await avancaAte(() => useTournamentStore.getState().cashCanLeave);
     expect(useTournamentStore.getState().cashCanLeave).toBe(true);
   });
 
@@ -413,5 +484,22 @@ describe('a economia da mesa de cash', () => {
     );
     useTournamentStore.getState().startTournament();
     expect(useTournamentStore.getState().stage).toBe('lobby');
+  });
+});
+
+describe('a mesa aberta está desligada', () => {
+  /* Mesa aberta é a que continua na vitrine depois de começar. Ela
+     existe inteira no projeto; o que saiu foi a porta — e a vitrine, que
+     anunciava "Aberta" numa sala em que ninguém entra.
+     Este teste é a rede do flag: se alguém religar a régua sem religar a
+     vitrine (ou o contrário), ele cai. */
+  it('a vitrine não anuncia sala aberta enquanto o flag estiver desligado', () => {
+    const salas = Array.from({ length: 40 }, () => makeLobbyListings()).flat();
+    expect(salas.length).toBeGreaterThan(0);
+    if (OPEN_TABLE_ENABLED) {
+      expect(salas.some((l) => l.mode === 'open')).toBe(true);
+    } else {
+      expect(salas.every((l) => l.mode === 'closed')).toBe(true);
+    }
   });
 });

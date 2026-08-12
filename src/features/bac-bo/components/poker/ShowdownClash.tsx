@@ -5,8 +5,71 @@ import { Icon } from '@/shared/components/Icon';
 
 import { TIMINGS } from '../../animations/timings';
 import { CATEGORY_NAME, categoryLevel } from '../../engine/poker/handRank';
-import type { HandRankSummary, PokerResult } from '../../engine/poker/types';
+import type { HandCategory } from '../../engine/poker/handRank';
+import type { PokerResult } from '../../engine/poker/types';
 import type { Duelist } from '../../engine/types';
+
+/**
+ * UM DOS DOIS LADOS DO EMBATE, já traduzido.
+ *
+ * A encenação não conhece duelo nem mesa de seis: ela recebe dois lados e
+ * bate um contra o outro. É o que permite a mesa de anel usar EXATAMENTE
+ * a mesma cena — lá o "rival" é quem levou o pote (ou a melhor mão alheia
+ * quando quem levou foi você), e escolher esse alguém é trabalho de quem
+ * traduz, não de quem desenha.
+ */
+/**
+ * O QUE A PLACA DO EMBATE PRECISA SABER de uma mão, e nada além.
+ *
+ * Não são as cinco cartas: elas não entram nesta cena — a placa diz a
+ * CATEGORIA e o que a completa, e é a `WinnerPlateFrame` que abre as
+ * cartas depois. Pedir a mão inteira aqui obrigaria a mesa de anel a
+ * carregar cinco cartas por lado só para desenhar duas palavras.
+ */
+export interface ClashRankView {
+  category: HandCategory;
+  detail: string;
+}
+
+export interface ClashSide {
+  /** De que borda a placa entra: `player` sobe, `opponent` desce. */
+  side: Duelist;
+  name: string;
+  /** A leitura da mão. `null` quando não há o que ler (mão guardada). */
+  rank: ClashRankView | null;
+  /** Esta placa levou o pote. */
+  won: boolean;
+  /** Este lado largou a mão. */
+  folded: boolean;
+  /** Este lado não abriu as cartas: a placa entra fechada. */
+  concealed: boolean;
+  /** A carta que decidiu, quando as duas mãos leram igual. */
+  decidedBy?: string;
+}
+
+export interface ClashStageProps {
+  /** O lado que desce da borda de cima. */
+  top: ClashSide;
+  /** O lado que sobe da borda de baixo — o seu, nas duas mesas. */
+  bottom: ClashSide;
+  /** Houve empate: as duas placas travam e nenhuma cede. */
+  tie: boolean;
+  /**
+   * Há cartas virando antes do embate. Sem elas a cena não espera: a
+   * espera inicial existe só porque o embate divide o showdown com a
+   * virada das fechadas alheias.
+   */
+  reveal: boolean;
+  /**
+   * Cena COMPRIMIDA: não houve comparação. Quem correu perdeu por ter
+   * largado, não por ter carta pior — há uma notícia a dar, não duas mãos
+   * a ler.
+   */
+  brief: boolean;
+  /** Para o `data-outcome`, que os testes leem. */
+  outcome: string;
+  instant: boolean;
+}
 
 export interface ShowdownClashProps {
   /** Resultado da mão. Só há embate quando ela foi ao showdown. */
@@ -105,80 +168,72 @@ const SPARKS = 14;
  * o detalhe fica logo abaixo dela: quando as forças empatam, é ele que
  * decide, e é para ele que o olho tem de ir.
  */
-export function ShowdownClash({
-  result,
-  opponentName,
-  cardsShown,
-  instant,
-}: ShowdownClashProps) {
+export function ShowdownClash({ result, opponentName, cardsShown, instant }: ShowdownClashProps) {
   const { playerRank, opponentRank, outcome, foldedBy } = result;
-  const tie = outcome === 'tie';
   /* CADA LADO GUARDA A SUA. Num SHOWDOWN não há o que guardar — as duas
      mãos foram pagas para serem vistas —, mas numa desistência os dois
      escolhem: você no balão do convite, ele na cabeça dele (ver
      `botShowsHand`). Enquanto só você escolhia, a leitura da mesa corria
      num sentido só. */
   const byFold = !result.showdown;
-  const youHid = byFold && !cardsShown;
-  const heHid = byFold && !result.opponentShown;
-  /* Sem carta nenhuma a virar, a cena não espera pela virada — e sem
-     comparação, ela é comprimida. */
-  const { total, marks } = beats(!byFold || result.opponentShown, byFold);
+
+  return (
+    <ClashStage
+      top={{
+        side: 'opponent',
+        name: opponentName,
+        rank: opponentRank,
+        won: outcome === 'lose',
+        folded: foldedBy === 'opponent',
+        concealed: byFold && !result.opponentShown,
+        ...(outcome === 'lose' && result.decidedBy ? { decidedBy: result.decidedBy } : {}),
+      }}
+      bottom={{
+        side: 'player',
+        name: 'Você',
+        rank: playerRank,
+        won: outcome === 'win',
+        folded: foldedBy === 'player',
+        concealed: byFold && !cardsShown,
+        ...(outcome === 'win' && result.decidedBy ? { decidedBy: result.decidedBy } : {}),
+      }}
+      tie={outcome === 'tie'}
+      /* Sem carta nenhuma a virar, a cena não espera pela virada — e sem
+         comparação, ela é comprimida. */
+      reveal={!byFold || result.opponentShown}
+      brief={byFold}
+      outcome={outcome}
+      instant={instant}
+    />
+  );
+}
+
+/**
+ * A ENCENAÇÃO DO EMBATE, sem saber de que mesa vieram os dois lados.
+ *
+ * Ela nasceu dentro do `ShowdownClash` e saiu de lá quando a mesa de seis
+ * passou a ter o mesmo beat: o embate é a mesma cena nas duas mesas, e o
+ * que muda é só quem sobe de cada borda. Duplicá-la para a mesa de anel
+ * teria dado duas coreografias que divergem na primeira vez que alguém
+ * mexer numa das duas.
+ */
+export function ClashStage({ top, bottom, tie, reveal, brief, outcome, instant }: ClashStageProps) {
+  const { total, marks } = beats(reveal, brief);
 
   return (
     // aria-hidden: o embate é a ENCENAÇÃO de um veredito que o leitor de
     // tela já recebeu por extenso (ver o aria-live do App). Narrá-lo de
     // novo, em pedaços, só atrasaria quem ouve.
     <div className="clash" data-testid="showdown-clash" data-outcome={outcome} aria-hidden="true">
-      <ClashPlate
-        side="opponent"
-        name={opponentName}
-        rank={opponentRank}
-        won={outcome === 'lose'}
-        tie={tie}
-        folded={foldedBy === 'opponent'}
-        concealed={heHid}
-        decidedBy={outcome === 'lose' ? result.decidedBy : undefined}
-        total={total}
-        marks={marks}
-        instant={instant}
-      />
-
+      <ClashPlate {...top} tie={tie} total={total} marks={marks} instant={instant} />
       <ClashImpact tie={tie} total={total} marks={marks} instant={instant} />
-
-      <ClashPlate
-        side="player"
-        name="Você"
-        rank={playerRank}
-        won={outcome === 'win'}
-        tie={tie}
-        folded={foldedBy === 'player'}
-        concealed={youHid}
-        decidedBy={outcome === 'win' ? result.decidedBy : undefined}
-        total={total}
-        marks={marks}
-        instant={instant}
-      />
+      <ClashPlate {...bottom} tie={tie} total={total} marks={marks} instant={instant} />
     </div>
   );
 }
 
-interface ClashPlateProps {
-  side: Duelist;
-  name: string;
-  rank: HandRankSummary;
-  /** Esta placa levou o pote. */
-  won: boolean;
+interface ClashPlateProps extends ClashSide {
   tie: boolean;
-  /** Este lado largou a mão — o pote foi dele para o outro sem disputa. */
-  folded: boolean;
-  /** Este lado escolheu não abrir a mão: a placa entra fechada. */
-  concealed?: boolean;
-  /**
-   * A carta que decidiu, quando as duas mãos leram igual. Só a placa
-   * VENCEDORA a recebe: é ela que tem o que explicar.
-   */
-  decidedBy?: string;
   /** Duração da cena inteira, em segundos (ver `beats`). */
   total: number;
   /** As cinco marcas da coreografia, em frações de 0 a 1. */
@@ -203,15 +258,18 @@ function ClashPlate({
   const player = side === 'player';
   /** De que borda a placa entra: a sua sobe, a do rival desce. */
   const from = player ? 132 : -132;
-  const level = categoryLevel(rank.category);
+  /* SEM LEITURA É MÃO GUARDADA. Numa mesa de anel quem correu cedo pode
+     não ter leitura nenhuma — a mesa nunca chegou a ler a mão dele —, e
+     uma placa sem categoria é exatamente uma placa fechada. */
+  const oculta = concealed || rank === null;
   const face = (
     <PlateFace
       name={name}
       rank={rank}
-      level={level}
+      level={rank ? categoryLevel(rank.category) : 0}
       won={won}
       folded={folded}
-      concealed={concealed}
+      concealed={oculta}
       decidedBy={decidedBy}
     />
   );
@@ -276,7 +334,7 @@ function PlateFace({
   decidedBy,
 }: {
   name: string;
-  rank: HandRankSummary;
+  rank: ClashRankView | null;
   level: number;
   won: boolean;
   folded: boolean;
@@ -294,7 +352,7 @@ function PlateFace({
             escrevê-las aqui contaria exatamente o que se escolheu não
             contar, e a placa desfaria a jogada da tela anterior. */}
         <span className="clash-plate__category">
-          {concealed ? 'Mão guardada' : CATEGORY_NAME[rank.category]}
+          {concealed || !rank ? 'Mão guardada' : CATEGORY_NAME[rank.category]}
         </span>
         {/* Três coisas podem ocupar esta linha, nesta ordem de urgência:
             que este lado LARGOU a mão (a notícia da rodada, e o que
@@ -309,7 +367,7 @@ function PlateFace({
             decidiu no {decidedBy}
           </span>
         ) : (
-          rank.detail && <span className="clash-plate__detail">{rank.detail}</span>
+          rank?.detail && <span className="clash-plate__detail">{rank.detail}</span>
         )}
       </span>
       <span className="clash-plate__force" title="Força da mão, de 1 a 9">

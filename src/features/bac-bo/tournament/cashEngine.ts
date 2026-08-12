@@ -288,6 +288,20 @@ export class CashTableEngine {
     const hand = this.hand;
     const showdown = (hand?.done ?? false) && (hand ? livesIn(hand).length > 1 : false);
     const mineCards = hand?.seats[this.youSeat]?.cards ?? null;
+    /* A MÃO FECHOU: o dinheiro já mudou de dono.
+       Enquanto a mão corre, o stack de um assento é o que sobrou na
+       frente dele e a aposta é o que ele empurrou nesta rua — duas
+       leituras separadas, e é assim que uma mesa mostra. Fechado o pote,
+       `settle` reparte e as duas viram uma só: `this.stacks` já é o
+       montante final, e não há mais ficha nenhuma à frente de ninguém.
+       Ler o assento da mão aqui congelava a mesa no instante ANTERIOR ao
+       pagamento — os stacks pré-pote e as apostas ainda no feltro — pelos
+       oito segundos do desfecho, e só então tudo pulava de uma vez. */
+    /* E o marco é o PAGAMENTO, não o fim da mão: entre a última carta e
+       `settle` há um instante em que a mão está fechada e o pote ainda
+       não foi repartido — ler `this.stacks` ali daria o montante de antes
+       dos blinds. `lastResult` é o que separa os dois. */
+    const pago = (hand?.done ?? false) && this.lastResult !== null;
 
     const seats: CashSeatView[] = this.players.map((player, seatIndex) => {
       const s = hand?.seats[seatIndex];
@@ -306,8 +320,8 @@ export class CashTableEngine {
           avatar: '·',
           isYou: false,
         },
-        stack: s?.stack ?? this.stacks[seatIndex] ?? 0,
-        bet: s?.committed ?? 0,
+        stack: (pago ? this.stacks[seatIndex] : s?.stack) ?? this.stacks[seatIndex] ?? 0,
+        bet: pago ? 0 : (s?.committed ?? 0),
         cards: vago || !s?.cards ? [] : abre ? [...s.cards] : [null, null],
         folded: vago || (s?.folded ?? false),
         allIn: s?.allIn ?? false,

@@ -8,7 +8,7 @@ import { audioManager } from '../services/AudioManager';
 import { useGameStore } from '../store/gameStore';
 import { TOURNAMENT_ENABLED, TOURNAMENT_SOON_HINT } from '../tournament/availability';
 import { BalancePill } from './BalancePill';
-import { BrandCard } from './BrandCard';
+import { BrandFlush } from './BrandFlush';
 
 /**
  * Os andares do logotipo, de cima para baixo. "ARENA" é a linha de ouro
@@ -84,13 +84,14 @@ export function HomeScreen({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
-        <motion.span
-          aria-hidden="true"
-          animate={{ rotate: [0, -8, 8, 0] }}
-          transition={{ repeat: Infinity, repeatDelay: 3, duration: 0.8 }}
-        >
-          <BrandCard size={80} />
-        </motion.span>
+        {/* O LEQUE NÃO BALANÇA MAIS. O par de cartas girava de lado a
+            lado a cada três segundos, e era o movimento certo para uma
+            peça sem movimento próprio. O flush tem o dele — a onda que
+            sobe uma carta por vez (ver `BrandFlush`) —, e as duas juntas
+            davam um leque que gingava enquanto as cartas pulavam. */}
+        <span aria-hidden="true">
+          <BrandFlush size={148} />
+        </span>
         {/* Logotipo em três andares. Cada linha DISTRIBUI as próprias
             letras na largura do bloco (que é a da linha mais larga), então
             as três terminam exatamente alinhadas nas duas bordas — o

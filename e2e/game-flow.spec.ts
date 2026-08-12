@@ -185,6 +185,33 @@ test('da Home à mesa: o duelo abre sem nada a combinar', async ({ page }) => {
   // então quem responde por ela é o NOME ACESSÍVEL do título.
   await expect(page.getByRole('heading', { name: 'Poker Arena' })).toBeVisible();
 
+  /* A MARCA É O FLUSH DE PAUS, e ele tem uma ONDA: as cinco cartas
+     sobem uma de cada vez, em dominó. O que se afirma aqui não é o
+     desenho — é que o gesto ACONTECE: em amostras ao longo de um ciclo,
+     a carta mais levantada tem de mudar.
+     Vale a asserção porque o modo de falhar é silencioso: com
+     `initial={false}` no grupo animado, o framer trata a sequência de
+     keyframes como estado inicial e o leque nasce — e fica — parado. */
+  const leque = page.locator('[data-card]');
+  await expect(leque).toHaveCount(5);
+  const amostras: number[][] = [];
+  for (let i = 0; i < 9; i += 1) {
+    amostras.push(
+      await leque.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top)),
+    );
+    await page.waitForTimeout(150);
+  }
+  /* O DESVIO de cada carta, e não a altura absoluta: no leque a do meio
+     já nasce mais alta que as das pontas, e uma comparação crua diria
+     "a do meio" em todas as amostras. O repouso de cada uma é o maior
+     `top` que ela teve na janela observada. */
+  const repouso = amostras.reduce((max, a) => a.map((v, i) => Math.max(v, max[i] ?? v)));
+  const lider = amostras.map((a) => {
+    const subiu = a.map((v, i) => (repouso[i] ?? v) - v);
+    return subiu.indexOf(Math.max(...subiu));
+  });
+  expect(new Set(lider).size).toBeGreaterThan(2);
+
   await forceOutcome(page, 'win');
   // JOGAR leva à MESA, e a nada mais: o tutorial não intercepta ninguém.
   await page.getByTestId('play-button').click();

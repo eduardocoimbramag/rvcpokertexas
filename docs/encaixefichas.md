@@ -294,3 +294,153 @@ Consequência para a escolha: uma solução aplicada só à mesa de 6 deixa a de
 As soluções 1, 2, 3, 5 e 7 valem para as duas, e não pioram as mesas de 3 e 5 (nelas
 sobra largura de qualquer jeito). A 6 muda a geometria de todas — inclusive das que hoje
 estão certas.
+
+---
+
+# 4. O que foi construído — a solução 8, que não estava na lista
+
+> Esta seção fecha o documento. Ela é o registro do que entrou no jogo, e ela
+> **substitui a recomendação da seção 3**. As sete soluções continuam escritas
+> acima porque a análise delas é o que levou até aqui — em particular a conta
+> que mostra que nenhuma calibração resolvia com margem.
+
+## A ideia que faltava
+
+As sete soluções aceitam sem discutir uma premissa da montagem antiga: **o lado
+da pilha é fixo**. Ela sempre saía à esquerda do assento, para todo mundo. Com o
+lado fixo, o vizinho da esquerda está sempre no caminho, e só resta disputar
+pixels — encolher a ficha, encolher a carta, recortar o assento.
+
+A solução 8 troca a premissa: **o lado da pilha vem do lugar na faixa.**
+
+| Lugar na faixa | Para onde a pilha vai | Quem está no caminho |
+| --- | --- | --- |
+| Assento da esquerda | Para a **esquerda**, na borda do feltro | ninguém |
+| Assento do meio (só na faixa de três) | Para **baixo**, sob as próprias cartas | ninguém |
+| Assento da direita | Para a **direita**, na borda do feltro | ninguém |
+
+Não sobra sobreposição para calibrar porque não existe sobreposição possível: as
+pilhas das pontas apontam para fora da faixa, e a do meio desce para um espaço
+que é só dele. É a diferença entre **fazer caber** e **não ter o que caber**.
+
+## Como o espaço passou a ser repartido
+
+Três mudanças de geometria sustentam a ideia:
+
+1. **O assento tem a largura das duas cartas, e nada mais.** Antes ele tomava a
+   fração igual da faixa (`flex: 0 1 (100%/colunas)`), e as cartas se serviam
+   dessa fração antes dos vãos — daí os 3,9 px de sobra medidos na seção 1. Com
+   a largura vinda da carta, a conta se inverte: o assento é exato e **toda a
+   sobra da faixa vira corredor nas bordas**.
+2. **Os vãos da linha da mão viraram fendas de largura zero.** Uma fenda de
+   largura zero não é um vão morto: é uma dobradiça. Com `justify-content:
+   flex-end` a pilha é desenhada para a esquerda dela; com `flex-start`, para a
+   direita.
+3. **A faixa reserva o corredor nas duas bordas** (`--cash-rack-w`), medido em
+   fichas: duas colunas mais o vão entre elas dão 2,14 fichas, e a reserva é
+   2,3.
+
+## O que isso permitiu desfazer
+
+A ficha e a carta do rival **voltaram ao tamanho anterior** — a carta a 0,62 da
+carta da casa, a ficha a 0,5 da carta. As soluções 5 e 7, que tinham sido
+aplicadas, foram revertidas: elas pagavam com leitura um problema que a
+geometria resolve de graça.
+
+## O que ainda cobra, e quanto
+
+A faixa de **três** continua sendo a única que aperta, e agora a conta é
+explícita: três pares de carta cheios (186 px) mais os dois corredores (75 px)
+mais os vãos passam de 272 px, que é o feltro num aparelho de 320. Por isso a
+carta recua numa faixa de três — **8%**, contra 4% por faixa de profundidade
+(`--lane-crowd` e `--lane-depth`).
+
+Isto corrige de passagem um defeito que a seção "Uma nota sobre as outras mesas"
+antecipou: a mesa de **4** tem a faixa de três **na frente**, onde a
+profundidade não cobrava nada — era a única mesa em que a pilha de duas colunas
+ainda alcançava o trilho de mogno.
+
+## Medido no navegador, depois de pronto
+
+Cinco configurações, com uma mão em andamento:
+
+| Mesa | Tela | Invasão de pilha em carta | Pilha fora do feltro | Apelido cortado |
+| --- | --- | --- | --- | --- |
+| 6 | 320 | nenhuma | nenhuma | nenhum |
+| 6 | 412 | nenhuma | nenhuma | nenhum |
+| 5 | 320 | nenhuma | nenhuma | nenhum |
+| 4 | 320 | nenhuma | nenhuma | nenhum |
+| 3 | 320 | nenhuma | nenhuma | nenhum |
+
+O pior caso real medido — pilha de duas colunas no assento da direita da mesa de
+4 a 320 px — para a **5 px** da borda do feltro.
+
+## O que mudou junto, e por quê
+
+- **O disco do dealer saiu do vão e subiu para o lado da placa.** O vão virou o
+  corredor da pilha, e o disco não é um atributo da mão que está na mesa: é de
+  quem senta ali. A fenda dele é reservada em **todo** assento, com botão ou
+  sem, senão a placa de quem tem o botão seria a única estreita e a
+  irregularidade mudaria de assento a cada mão.
+- **A placa passou a ter largura fixa** — o que sobra do assento depois da fenda
+  do disco. Ver `quebralinhanick.md`: a placa empilhada resolveu a quebra de
+  linha, e a largura fixa resolve o resto do mesmo problema, que era a moldura
+  mudar de tamanho sozinha conforme o apelido e o montante.
+- **O vão entre assentos triplicou** (de 0,12 rem interno para ~0,34 rem
+  externo). Sem essa diferença, seis cartas na fileira de cima liam como uma
+  tira contínua e não como três pares.
+
+## Ajuste posterior: o afastamento, a placa centrada e o miolo
+
+Três correções entraram depois da primeira medição, e uma delas descobriu um
+defeito antigo.
+
+**A pilha das pontas ganhou respiro.** Encostada na carta, ela lia como parte da
+mão. Um terço de ficha (~5px a 320px) separa sem soltar — mais que isso e a
+pilha passa a parecer de ninguém, no meio do feltro. O corredor reservado nas
+bordas cresceu junto, de 2,3 para 2,55 fichas. Quem está no meio da faixa não
+recebe o afastamento: lá a pilha desce, e na vertical o vão da coluna do assento
+já a separa.
+
+**A placa voltou ao centro das duas cartas.** Ela estava ~6px à esquerda, e a
+causa era a montagem: a cabeça do assento era uma linha flex com a placa
+elástica e o disco no fim, então a placa ocupava tudo *menos* o disco e o centro
+dela caía meio disco à esquerda. Virou um grid de três colunas com as laterais
+iguais. Duas armadilhas apareceram no caminho, e valem registro:
+
+- `1fr` não serve — o mínimo de uma coluna `1fr` é o conteúdo dela, e a coluna da
+  direita se recusava a ficar menor que o disco. `minmax(0, 1fr)` resolve.
+- com o disco reivindicando a coluna 3 pelo nome, a colocação automática do grid
+  mandou a placa para a coluna 1. A placa precisa declarar a sua.
+
+**O board e o pote saíram do palpite.** O board estava a 9vw — 28px a 320px, um
+terço da sua carta — quando o que faltava não era largura. Na horizontal ele
+voltou à fração da casa (`--board-card-w` = 0,78 da carta cheia no `:root`), que
+é a mesma frase em toda a casa: *um pouco menor que a sua*.
+
+Na vertical, o teto era `dvh`, e `dvh` é o palpite errado. O que aperta não é a
+tela ser baixa: é o **miolo** ser pouco — e o miolo é o que sobra depois de duas
+fileiras de rival, que crescem com a **largura**. Num aparelho baixo e largo as
+duas coisas conspiram, e nenhuma conta em `dvh` prevê isso. O miolo virou um
+contêiner de consulta e as duas peças passaram a medir-se nele (`cqh`).
+
+### O defeito antigo que isso revelou
+
+Medindo em 320×568 — o aparelho mais estreito **e** mais baixo da suíte — o pote
+saía por cima da segunda fileira de rival e o board por cima das suas cartas, em
+**9px**. Não era regressão: com os valores anteriores o mesmo aparelho pedia 75px
+de conteúdo num miolo de 55. O defeito existia e ninguém o via porque o e2e só
+afirmava ausência de rolagem **horizontal**.
+
+Ele só aparece nas mesas de fileira DUPLA (5 e 6). A correção é o teto de altura
+da carta de rival dividido pelo número de fileiras (`9dvh / --lanes`): quem tem
+uma fileira gasta o dobro em carta, porque tem metade das bocas. Em aparelho
+normal o teto não morde — a 720px vale 32,4 contra os 32,7 da conta de largura.
+
+### Medido de novo, sete configurações
+
+320×568, 360×640, 412×640 e 412×839, mesas de 3 a 6, duas passagens cada:
+nenhuma invasão de pilha em carta, nenhuma pilha fora do feltro, nenhum disco
+sobre a placa do vizinho, nenhum transbordo vertical do pote ou do board, 29
+apelidos e nenhum cortado, e o desvio da placa em relação ao centro das cartas
+igual a **zero** em todos os assentos.

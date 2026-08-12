@@ -179,8 +179,15 @@ describe('o lance', () => {
   it('NUNCA desiste quando passar é de graça', () => {
     /* Jogar a mão fora podendo continuar sem pagar nada não é lance —
        é um bug que devolveria potes de graça à mesa. */
-    for (const força of [['7h', '2d'], ['As', 'Ad']] as const) {
-      const r = rates({ hole: hole(força[0], força[1]), toCall: 0, legalActions: ['check', 'raise'] });
+    for (const força of [
+      ['7h', '2d'],
+      ['As', 'Ad'],
+    ] as const) {
+      const r = rates({
+        hole: hole(força[0], força[1]),
+        toCall: 0,
+        legalActions: ['check', 'raise'],
+      });
       expect(r.fold).toBe(0);
     }
   });

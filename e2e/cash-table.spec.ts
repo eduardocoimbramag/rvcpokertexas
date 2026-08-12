@@ -58,8 +58,12 @@ test('a folha de criação abre no cash com mesa aberta/fechada, compra e blind'
   /* NÃO HÁ MAIS ESCOLHA DE FORMATO: a folha é de poker, e o que ela
      pergunta é quantas pessoas sentam. */
   await expect(page.getByTestId('create-format-cash')).toHaveCount(0);
-  await expect(page.getByTestId('create-mode-open')).toBeVisible();
-  await expect(page.getByTestId('create-mode-closed')).toBeVisible();
+  /* A MESA ABERTA ESTÁ DESLIGADA: a folha não pergunta mais a entrada, e
+     toda sala nasce fechada. O campo continua no projeto atrás do flag
+     (ver `OPEN_TABLE_ENABLED`) — quando ele voltar, este par de
+     asserções volta com ele. */
+  await expect(page.getByTestId('create-mode-open')).toHaveCount(0);
+  await expect(page.getByTestId('create-mode-closed')).toHaveCount(0);
   await expect(page.getByTestId('create-buyin')).toHaveValue('1000');
   await expect(page.getByTestId('create-blind')).toHaveValue('20');
   await expect(page.getByTestId('create-depth')).toHaveText(/50 blinds/);
@@ -103,10 +107,10 @@ for (const vp of [
     await expect(start).toBeEnabled({ timeout: 60_000 });
     await start.click();
 
-    // Seis cadeiras, todas vazias, e o aviso que desarma a corrida.
+    // Seis cadeiras, todas vazias, e o relógio que dá fim à escolha.
     await expect(page.getByTestId('seating-screen')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[data-testid^="seat-claim-"]')).toHaveCount(6);
-    await expect(page.getByTestId('seating-rule')).toContainText('sorteado depois');
+    await expect(page.getByTestId('seating-clock')).toContainText(/Escolha em \d+s/);
     await expect(page.getByTestId('seating-stakes')).toContainText('Compra');
 
     // Senta na 4: a cadeira mostra ícone e nome, e o botão vira "Trocar".
@@ -159,6 +163,23 @@ for (const vp of [
     await expect(page.getByTestId('cash-room-name')).toHaveText('Mesa Do Teste');
     await expect(page.getByTestId('cash-stakes')).toHaveCount(0);
 
+    /* AS DUAS FERRAMENTAS nos cantos de cima — as MESMAS do duelo. Uma
+       responde "quanto vale esta ficha?", a outra "como cheguei até
+       aqui?". Nenhuma decide mão nenhuma, e por isso as duas são
+       discretas: ícone sem rótulo, num disco de vinho. */
+    await page.getByTestId('table-chips').click();
+    await expect(page.getByTestId('chip-table')).toBeVisible();
+    await expect(page.getByTestId('chip-table')).toContainText('1.000');
+    await page.keyboard.press('Escape');
+
+    await page.getByTestId('table-history').click();
+    /* A mesa acabou de abrir: o saldo existe (zerado) e a lista ainda
+       não — a primeira mão está correndo. */
+    await expect(page.getByTestId('hand-log-net')).toBeVisible();
+    await expect(page.getByTestId('hand-log-empty')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('hand-log-net')).toHaveCount(0);
+
     /* Dois blinds no feltro, e mais nenhum: numa mesa de 3 ou mais o
        botão não paga nada. */
     await expect(page.locator('[data-testid^="cash-bet-"]')).toHaveCount(2);
@@ -183,11 +204,41 @@ for (const vp of [
     );
     expect(overflow).toBeLessThanOrEqual(0);
 
-    // Levantar devolve as fichas e fecha a mesa.
-    await page.getByTestId('cash-leave').click();
-    await expect(page.getByTestId('cash-leave-prompt')).toBeVisible();
+    /* LEVANTAR devolve as fichas e fecha a mesa.
+       A porta mora na faixa sob o polegar, e não num ícone de canto: o
+       botão de bandeira do cabeçalho saiu de cena porque uma bandeira
+       não diz "levantar" para ninguém. O caminho mais curto até ela é
+       correr a mão — quem correu não tem mais nada a fazer, e é
+       exatamente aí que a saída aparece escrita por extenso. */
+    const correr = page.getByTestId('cash-fold');
+    await expect(correr).toBeVisible({ timeout: 120_000 });
+    await correr.click();
+
+    const porta = page.getByTestId('cash-leave-broke');
+    await expect(porta).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('cash-wait')).toContainText('Você correu');
     await page.screenshot({ path: `test-results/f2-levantar-${vp.name}.png` });
+
+    await porta.click();
+    await expect(page.getByTestId('cash-leave-prompt')).toBeVisible();
     await page.getByTestId('cash-leave-confirm').click();
+
+    /* LEVANTAR ABRE O CAIXA, e não a porta de saída: é a MESMA tela do
+       duelo, com a mesma comissão da casa sobre o lucro. Antes daqui a
+       sessão inteira terminava sem uma linha sobre ela — e sem a
+       comissão que o 1v1 cobra. */
+    await expect(page.getByTestId('cashout-screen')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('result-title')).toHaveText(/PARTIDA/);
+    await expect(page.getByTestId('session-payout')).toBeVisible();
+    // O carimbo do fecho entra com o beat da casa (~1s): esperar por ele
+    // é esperar a peça, não um tempo arbitrário.
+    await expect(page.getByTestId('payout-closed')).toBeVisible({ timeout: 5000 });
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: `test-results/f2-caixa-${vp.name}.png` });
+
+    // E daqui saem os dois caminhos da casa: outra sala, ou o início.
+    await expect(page.getByTestId('play-again')).toContainText('OUTRA SALA');
+    await page.getByTestId('go-home').click();
     await expect(page.getByTestId('tournament-button')).toBeVisible({ timeout: 10_000 });
   });
 
@@ -219,12 +270,35 @@ for (const vp of [
     await expect(correr).toBeVisible({ timeout: 120_000 });
     await correr.click();
 
-    /* A PLACA DO DESFECHO ocupa o lugar da barra de lances — com a mão
-       fechada não há lance a fazer, e o lugar sob o polegar passa a ser
-       o da notícia. */
-    await expect(page.getByTestId('cash-verdict')).toBeVisible({ timeout: 180_000 });
-    await expect(page.getByTestId('cash-verdict-delta')).toBeVisible();
+    /* O EMBATE encena a comparação antes de qualquer placa: é a MESMA
+       cena do duelo, com as duas mãos entrando das bordas e batendo no
+       meio do feltro. Antes dela o fim de uma mão de seis era uma
+       plaquinha no rodapé.
+       Ele é um beat curto (2 a 3 s) e a mesa pode fechar a mão a qualquer
+       instante dos três minutos seguintes — por isso a espera é pela
+       JANELA, que fica em cena, e o embate é conferido pelo caminho: se
+       ele aparecer, tem de ter as duas placas. */
+    const embate = page.getByTestId('showdown-clash');
+    const desfecho = page.getByTestId('cash-verdict');
+    await expect(embate.or(desfecho).first()).toBeVisible({ timeout: 180_000 });
+    if (await embate.isVisible().catch(() => false)) {
+      await expect(page.getByTestId('clash-player')).toBeVisible();
+      await expect(page.getByTestId('clash-opponent')).toBeVisible();
+      await page.screenshot({ path: `test-results/f4-embate-${vp.name}.png` });
+    }
+
+    /* A JANELA DO INTERVALO é a do duelo: a placa de quem levou, o
+       relógio da próxima mão e a porta. */
+    await expect(desfecho).toBeVisible({ timeout: 180_000 });
+    await expect(desfecho).toHaveClass(/winner-plate/);
     await expect(page.getByTestId('cash-verdict-who')).not.toBeEmpty();
+    /* O BALANÇO DA MÃO não mora mais na placa: ela é a janela do duelo, e
+       a do duelo diz quem levou e com o quê. O balanço virou uma linha do
+       extrato da mesa, que é onde ele vem com as outras mãos ao lado. */
+    await expect(page.getByTestId('cash-verdict-delta')).toHaveCount(0);
+    await expect(page.getByTestId('winner-hand')).not.toBeEmpty();
+    await expect(page.getByTestId('handover-clock')).toContainText(/Próxima mão em \d+s/);
+    await expect(page.getByTestId('cash-leave')).toContainText('LEVANTAR DA MESA');
     await page.screenshot({ path: `test-results/f4-desfecho-${vp.name}.png` });
   });
 
@@ -260,12 +334,47 @@ for (const vp of [
 
     await page.screenshot({ path: `test-results/f4-sua-vez-${vp.name}.png` });
 
+    const desfecho = page.getByTestId('cash-verdict');
+
+    /* A MESA NÃO SE MEXE ENQUANTO A MÃO CORRE.
+       Era o defeito mais visível da mesa de seis, e ele tinha três
+       causas somadas: a pastilha da aposta entrando e saindo do fluxo a
+       cada rua, a caixa do pote medindo a coluna que existe em vez do
+       curso inteiro, e a faixa do alto-falante com piso menor que o
+       balão. Cada uma delas mudava a altura de um bloco, e como o miolo
+       do feltro é o item elástico da coluna, TUDO andava atrás — o pote,
+       o board e as suas cartas.
+       O que se afirma aqui é o que se mediu: ao longo de vários lances,
+       nenhum dos pontos de referência da mesa muda de lugar. */
+    const marcos = () =>
+      page.evaluate(() => {
+        const y = (sel: string) => {
+          const el = document.querySelector(sel);
+          return el ? Math.round(el.getBoundingClientRect().top) : -1;
+        };
+        return [
+          y('.cash-lane'),
+          y('.cash-arena__middle'),
+          y('.cash-arena .board'),
+          y('.cash-seat__cards--mine'),
+        ].join('/');
+      });
+    const fixo = await marcos();
+    for (let i = 0; i < 5; i += 1) {
+      const pagar = page.getByTestId('cash-pay');
+      const passar = page.getByTestId('cash-check');
+      if (await pagar.isVisible().catch(() => false)) await pagar.click();
+      else if (await passar.isVisible().catch(() => false)) await passar.click();
+      await page.waitForTimeout(1200);
+      if ((await desfecho.count()) > 0) break;
+      expect(await marcos(), `amostra ${i}`).toBe(fixo);
+    }
+
     /* JOGA A MÃO INTEIRA, barato: paga quando há o que pagar, passa
        quando não há. O que se prova aqui não é estratégia — é que a mesa
        ANDA: a vez volta, o lance é aceito, a rua fecha e a mão seguinte
        começa. É o caminho que nenhum teste de unidade alcança, porque
        ele depende dos timers dos bots. */
-    const desfecho = page.getByTestId('cash-verdict');
     for (let lance = 0; lance < 80; lance += 1) {
       if (await desfecho.isVisible().catch(() => false)) break;
       const pagar = page.getByTestId('cash-pay');
@@ -331,9 +440,16 @@ for (const lugares of [3, 4, 5, 6] as const) {
     await page.getByTestId('create-name').fill(`Mesa de ${lugares}`);
     await page.getByTestId('create-confirm').click();
 
-    // A sala anuncia o tamanho que foi escolhido.
+    /* A FICHA DA SALA É DE POKER, e diz o tamanho na linha da MESA.
+       Havia um bloco "Jogadores" logo abaixo repetindo o mesmo número
+       por extenso; ele saiu junto com a taxa e a premiação, que são de
+       torneio e numa mesa de cash simplesmente não existem. */
     await page.getByTestId('lobby-settings').click();
-    await expect(page.getByTestId('settings-size')).toContainText(`${lugares} jogadores`);
+    await expect(page.getByTestId('settings-format')).toContainText(`Mesa de ${lugares}`);
+    await expect(page.getByTestId('settings-buyin')).toBeVisible();
+    await expect(page.getByTestId('settings-blind')).toBeVisible();
+    await expect(page.getByTestId('settings-fee')).toHaveCount(0);
+    await expect(page.getByTestId('settings-pot')).toHaveCount(0);
     await page.keyboard.press('Escape');
 
     const start = page.getByTestId('start-tournament');
@@ -389,7 +505,6 @@ test('a sala privada guarda a senha, e a ficha guarda o tamanho', async ({ page 
 
   await page.getByTestId('lobby-settings').click();
   await expect(page.getByTestId('settings-code')).toContainText('Privada');
-  await expect(page.getByTestId('settings-size')).toContainText('5 jogadores');
   await expect(page.getByTestId('settings-password')).toContainText('4821');
   // A ficha da MESA diz o tamanho por extenso, e não um formato.
   await expect(page.getByTestId('settings-format')).toContainText('Mesa de 5');

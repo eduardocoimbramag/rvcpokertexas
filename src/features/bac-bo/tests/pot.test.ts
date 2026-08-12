@@ -1,55 +1,95 @@
 import { describe, expect, it } from 'vitest';
 
-import { CHIP_MAX, CHIP_UNIT, potChips, potColumns } from '../components/table/pot';
-import { MIN_STAKE, TABLE_ANTE } from '../engine/credits';
+import {
+  CHIP_DENOMINATIONS,
+  CHIP_MAX,
+  RACK_MAX_CHIPS,
+  chipCount,
+  chipsFor,
+  flatChips,
+  potColumns,
+  rackChips,
+} from '../components/table/pot';
+
+const soma = (groups: readonly { value: number; count: number }[]) =>
+  groups.reduce((total, g) => total + g.value * g.count, 0);
 
 /**
- * O pote é a única peça da mesa cujo VALOR é lido em quantidade, não em
- * número. Se a conta deixar de ser proporcional, nada quebra e nenhum
- * teste de layout falha — o jogador só deixa de sentir que dobrou a
- * aposta. Por isso o contrato mora aqui, escrito como regra.
+ * A CONTA DE FICHAS é a única peça da mesa em que o desenho PROMETE um
+ * número. Se ela deixar de ser exata, nada quebra e nenhum teste de
+ * layout falha — o monte no meio do feltro simplesmente passa a dizer
+ * uma coisa enquanto a cifra embaixo dele diz outra. Foi o que
+ * aconteceu: o pote contava fichas de valor único e o montante repartia
+ * por valor, e as duas contas nunca bateram.
  */
-describe('pot — quantas fichas o valor da mesa vale', () => {
-  it('DOBRAR A APOSTA DOBRA AS FICHAS — é o contrato da peça', () => {
-    // A conta anterior era afim (2 + stake/50): dobrar 100 levava de 4
-    // para 6 fichas, e o gesto de dobrar mal aparecia na mesa.
-    for (const stake of [25, 50, 100, 150, 175]) {
-      expect(potChips(stake * 2), `dobro de ${stake}`).toBe(potChips(stake) * 2);
+describe('as fichas dizem o valor que está na mesa', () => {
+  it('A REPARTIÇÃO É EXATA — é o contrato da peça', () => {
+    /* Qualquer número, e o número que o dono viu no print (2.140). Com a
+       menor ficha valendo 25 isto era impossível. */
+    for (const amount of [1, 2, 3, 7, 13, 24, 25, 26, 99, 140, 2140, 4877, 9999]) {
+      expect(soma(chipsFor(amount, 99)), `${amount}`).toBe(amount);
     }
   });
 
-  it('a aposta padrão da casa põe quatro fichas na mesa', () => {
-    expect(potChips(TABLE_ANTE)).toBe(4);
-    expect(potChips(TABLE_ANTE * 2)).toBe(8);
+  it('e é a de MENOR número de fichas possível', () => {
+    /* O conjunto da casa é canônico: a gulosa é ótima. A prova por
+       exaustão contra a programação dinâmica, para todo valor até 1.200
+       — se alguém acrescentar uma ficha que quebre a canonicidade, este
+       teste cai. */
+    const valores = [...CHIP_DENOMINATIONS];
+    const otimo = [0, ...Array<number>(1200).fill(Number.POSITIVE_INFINITY)];
+    for (let n = 1; n <= 1200; n += 1) {
+      for (const v of valores) {
+        if (v <= n) otimo[n] = Math.min(otimo[n] ?? Infinity, (otimo[n - v] ?? Infinity) + 1);
+      }
+    }
+    for (let n = 1; n <= 1200; n += 1) {
+      expect(chipCount(chipsFor(n, 99)), `${n}`).toBe(otimo[n]);
+    }
   });
 
-  it('a aposta mínima ainda é dinheiro na mesa: nunca some', () => {
-    expect(potChips(MIN_STAKE)).toBe(1);
-    expect(potChips(1)).toBe(1);
+  it('a repartição achatada empilha da MENOR para a MAIOR', () => {
+    /* Numa pilha vista de lado só a ficha do topo aparece inteira: com a
+       menor no topo, um pote de 2.030 era coroado por uma de 5 e lia
+       como troco. */
+    const fichas = flatChips(chipsFor(1236, 99));
+    expect(fichas).toEqual([1, 10, 25, 100, 100, 1000]);
+    expect(fichas).toEqual([...fichas].sort((a, b) => a - b));
   });
 
-  it('sem valor na mesa não há pote (o torneio joga com stake 0)', () => {
-    expect(potChips(0)).toBe(0);
-    expect(potChips(-50)).toBe(0);
-    expect(potChips(Number.NaN)).toBe(0);
+  it('só ENGROSSA quando o exato não cabe — e nunca antes', () => {
+    /* Um stack de 2.140 cabe em 10 fichas: o desenho é exato. Um de
+       999.999 não cabe em teto nenhum, e aí a mesa troca as miúdas por
+       fichas de valor maior, que é o que um crupiê faz. */
+    expect(soma(chipsFor(2140, RACK_MAX_CHIPS))).toBe(2140);
+    expect(chipCount(chipsFor(2140, RACK_MAX_CHIPS))).toBeLessThanOrEqual(RACK_MAX_CHIPS);
+    expect(chipCount(chipsFor(999_999, RACK_MAX_CHIPS))).toBeLessThanOrEqual(RACK_MAX_CHIPS);
   });
 
-  it('satura no teto, e o teto está fora do alcance de quem joga', () => {
-    expect(potChips(CHIP_UNIT * CHIP_MAX)).toBe(CHIP_MAX);
-    expect(potChips(999_999)).toBe(CHIP_MAX);
-    // O dobro exato vale até 375 — bem acima da aposta padrão de 100.
-    const ultimoExato = (CHIP_MAX / 2) * CHIP_UNIT;
-    expect(potChips(ultimoExato * 2)).toBe(potChips(ultimoExato) * 2);
+  it('quem tem pouco não some da mesa', () => {
+    expect(chipsFor(1, RACK_MAX_CHIPS)).toEqual([{ value: 1, count: 1 }]);
+    expect(chipCount(chipsFor(1, RACK_MAX_CHIPS))).toBe(1);
+  });
+
+  it('sem valor não há ficha (o torneio joga com stake 0)', () => {
+    expect(chipsFor(0, CHIP_MAX)).toEqual([]);
+    expect(chipsFor(-50, CHIP_MAX)).toEqual([]);
+    expect(chipsFor(Number.NaN, CHIP_MAX)).toEqual([]);
+  });
+
+  it('o montante é a mesma conta, no espaço da faixa da mão', () => {
+    expect(rackChips(2140)).toEqual(chipsFor(2140, RACK_MAX_CHIPS));
+    expect(chipCount(rackChips(9999))).toBeLessThanOrEqual(RACK_MAX_CHIPS);
   });
 });
 
 describe('pot — as colunas do monte', () => {
-  const soma = (c: number[]) => c.reduce((total, n) => total + n, 0);
+  const somaColunas = (c: number[]) => c.reduce((total, n) => total + n, 0);
 
   it('reparte tudo o que existe, sem perder nem inventar ficha', () => {
     for (let count = 0; count <= CHIP_MAX; count += 1) {
       for (const perColumn of [6, 8]) {
-        expect(soma(potColumns(count, perColumn)), `${count}/${perColumn}`).toBe(count);
+        expect(somaColunas(potColumns(count, perColumn)), `${count}/${perColumn}`).toBe(count);
       }
     }
   });

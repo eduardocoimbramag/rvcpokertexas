@@ -14,6 +14,18 @@ export interface SessionBannerProps {
   session: PokerSession;
 }
 
+export interface SessionCloseProps {
+  /** O que se levou para o feltro. */
+  buyIn: number;
+  /** O que sobrou dele quando a mesa fechou. */
+  finalStack: number;
+  /** O CTA principal: outra mesa do mesmo tipo. */
+  onPlayAgain: () => void;
+  /** O rótulo dele. O duelo diz "NOVA MESA"; a sala, "OUTRA SALA". */
+  playAgainLabel?: string;
+  onHome: () => void;
+}
+
 /** A curva de entrada da casa: sai rápido e assenta devagar. */
 const EASE: [number, number, number, number] = [0.16, 0.8, 0.3, 1];
 
@@ -49,12 +61,42 @@ const EASE: [number, number, number, number] = [0.16, 0.8, 0.3, 1];
 export function SessionBanner({ session }: SessionBannerProps) {
   const playAgain = useGameStore((state) => state.playAgain);
   const goHome = useGameStore((state) => state.goHome);
+
+  return (
+    <SessionClose
+      buyIn={session.buyIn}
+      finalStack={session.stacks.player}
+      onPlayAgain={playAgain}
+      onHome={goHome}
+    />
+  );
+}
+
+/**
+ * O CAIXA, sem saber de que mesa se levantou.
+ *
+ * Ele nasceu dentro do `SessionBanner` e saiu de lá quando a mesa de seis
+ * passou a ter o mesmo fecho. A conta é a MESMA nas duas — a comissão da
+ * casa incide uma vez, no caixa, e só sobre o lucro (ver `cashOutValue`)
+ * —, e é justamente por ser a mesma que ela não pode viver em dois
+ * lugares: duas cópias divergem no primeiro ajuste, e aqui divergir
+ * significa pagar valores diferentes pela mesma mão.
+ *
+ * O que cada mesa traz é só o par de números e para onde levam os dois
+ * botões.
+ */
+export function SessionClose({
+  buyIn,
+  finalStack,
+  onPlayAgain,
+  playAgainLabel = 'NOVA MESA',
+  onHome,
+}: SessionCloseProps) {
   const balance = useGameStore((state) => state.balance);
   const refillCredits = useGameStore((state) => state.refillCredits);
   const reducedMotion = useReducedMotion() ?? false;
 
-  const finalStack = session.stacks.player;
-  const profit = finalStack - session.buyIn;
+  const profit = finalStack - buyIn;
 
   /* O LÍQUIDO manda no desfecho, e não o bruto. `afterHouseEdge` arredonda
      para baixo: um lucro de 1 ficha vira 0, e a tela carimbaria festa com
@@ -169,11 +211,11 @@ export function SessionBanner({ session }: SessionBannerProps) {
           <Icon name="chip" /> RECARREGAR CRÉDITOS
         </Button>
       ) : (
-        <Button onClick={playAgain} size="md" fullWidth data-testid="play-again">
-          <Icon name="club" /> NOVA MESA
+        <Button onClick={onPlayAgain} size="md" fullWidth data-testid="play-again">
+          <Icon name="club" /> {playAgainLabel}
         </Button>
       )}
-      <Button variant="secondary" onClick={goHome} size="md" fullWidth data-testid="go-home">
+      <Button variant="secondary" onClick={onHome} size="md" fullWidth data-testid="go-home">
         INÍCIO
       </Button>
     </ResultStage>

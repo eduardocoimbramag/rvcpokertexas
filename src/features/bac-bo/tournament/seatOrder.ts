@@ -1,3 +1,4 @@
+import type { Opponent } from '../engine/types';
 import type { TournamentPlayer } from './types';
 import { CASH_SEATS } from './types';
 
@@ -103,3 +104,23 @@ export function freeSeats(seats: readonly (TournamentPlayer | null)[]): number {
 export function seatOf(seats: readonly (TournamentPlayer | null)[], playerId: string): number {
   return seats.findIndex((seat) => seat?.id === playerId);
 }
+
+/**
+ * QUEM SENTA NA MESA, visto como ADVERSÁRIO da casa.
+ *
+ * O perfil do rival (`OpponentProfileSheet`) é a mesma peça em toda a
+ * casa, e ela fala em `Opponent` — que é o que o duelo produz. Um
+ * jogador de torneio tem os três campos que importam (id, nome, retrato)
+ * e não tem rating: aqui ele é fixo, e é a mesma convenção que o
+ * chaveamento já usava ao montar uma partida.
+ *
+ * O rating não é um dado inventado sobre a pessoa: o perfil desta casa é
+ * ILUSTRATIVO por desenho (ver `opponentProfile`), e o que varia entre um
+ * rival e outro sai do id — não dele.
+ */
+export function asOpponent(player: TournamentPlayer): Opponent {
+  return { id: player.id, name: player.name, avatar: player.avatar, rating: TABLE_RATING };
+}
+
+/** O rating de quem senta numa mesa de torneio ou de cash. */
+export const TABLE_RATING = 1000;

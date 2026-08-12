@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { BracketScreen } from './screens/BracketScreen';
+import { CashOutScreen } from './screens/CashOutScreen';
 import { CashTableScreen } from './screens/CashTableScreen';
 import { ChampionScreen } from './screens/ChampionScreen';
 import { LobbyBrowseScreen } from './screens/LobbyBrowseScreen';
@@ -51,6 +52,9 @@ export function TournamentApp({ onExit }: TournamentAppProps) {
         {stage === 'seating' && <SeatingScreen />}
         {/* Poker cash: a mesa de 6 montada. */}
         {stage === 'cash' && <CashTableScreen />}
+        {/* Poker cash: o CAIXA — a MESMA tela de fecho do duelo, com a
+            mesma comissão da casa (ver `CashOutScreen`). */}
+        {stage === 'cashout' && <CashOutScreen />}
         {stage === 'champion' && <ChampionScreen />}
       </motion.div>
     </AnimatePresence>

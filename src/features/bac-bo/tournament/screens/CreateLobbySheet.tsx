@@ -7,6 +7,7 @@ import { Sheet } from '@/shared/components/Sheet';
 import { formatCredits } from '@/shared/lib/format';
 
 import { AmountStepper } from '../../components/AmountStepper';
+import { OPEN_TABLE_ENABLED } from '../availability';
 import { MIN_STAKE } from '../../engine/credits';
 import { useGameStore } from '../../store/gameStore';
 import { randomLobbyPassword, suggestLobbyName } from '../simulation';
@@ -60,7 +61,10 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
      inteiros no projeto, atrás de `BRACKET_ENABLED`. */
   const format: TournamentFormat = 'cash';
   const [size, setSize] = useState<TournamentSize>(defaultSizeFor('cash'));
-  const [mode, setMode] = useState<TableMode>('open');
+  /* Com a mesa aberta desligada, toda sala nasce FECHADA — e o estado
+     inicial diz isso, para a folha não criar uma sala aberta sem nunca
+     ter perguntado (ver `OPEN_TABLE_ENABLED`). */
+  const [mode, setMode] = useState<TableMode>(OPEN_TABLE_ENABLED ? 'open' : 'closed');
   // Buy-in e blind são texto enquanto se digita, como a taxa: o campo
   // precisa poder ficar vazio no meio da edição.
   const [buyInDraft, setBuyInDraft] = useState(String(CASH_DEFAULT_BUY_IN));
@@ -224,8 +228,12 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
             DEPOIS de a partida começar, e por isso vem antes do dinheiro:
             é ela que diz se a sala continua na vitrine.
             Só existe no cash: um torneio sempre fecha ao iniciar, porque
-            o chaveamento já foi montado com quem estava lá. */}
-        {cash && (
+            o chaveamento já foi montado com quem estava lá.
+            HOJE ELA NÃO É PERGUNTADA: a mesa aberta está desligada e toda
+            sala nasce fechada (ver `OPEN_TABLE_ENABLED`). O campo fica
+            aqui inteiro, atrás do flag — a régua volta com uma edição de
+            um caractere. */}
+        {cash && OPEN_TABLE_ENABLED && (
           <Field label="Entrada na mesa">
             <div className="seg seg--full" role="group" aria-label="Mesa aberta ou fechada">
               {TABLE_MODES.map((option) => (
