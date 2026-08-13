@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SettingsSheet } from '../components/SettingsSheet';
 import { AmbientLayer } from '../scene/ambient/AmbientLayer';
 import { TableScene } from '../scene/TableScene';
+import { Dealer } from '../scene/dealer/Dealer';
 import { DEALER_REACTIONS } from '../scene/dealer/DealerController';
-import { SvgRigDealer } from '../scene/dealer/SvgRigDealer';
 import { resolveDealerReaction } from '../scene/dealer/useDealerReaction';
 import { resolveSceneQuality } from '../scene/sceneQuality';
 import type { GamePhase } from '../store/gameStore';
@@ -74,15 +74,27 @@ describe('resolveSceneQuality', () => {
   });
 });
 
-describe('SvgRigDealer', () => {
+describe('Dealer (fachada)', () => {
   it.each(DEALER_REACTIONS)('renderiza a reação "%s" sem quebrar', (reaction) => {
-    render(<SvgRigDealer reaction={reaction} />);
+    render(<Dealer reaction={reaction} />);
     expect(screen.getByTestId('dealer')).toHaveAttribute('data-reaction', reaction);
   });
 
   it('em qualidade baixa permanece renderizável (poses estáticas)', () => {
-    render(<SvgRigDealer reaction="celebrate" quality="low" />);
+    render(<Dealer reaction="celebrate" quality="low" />);
     expect(screen.getByTestId('dealer')).toBeInTheDocument();
+  });
+
+  it('variant "none" tira a crupiê de cena', () => {
+    render(<Dealer reaction="idle" variant="none" />);
+    expect(screen.queryByTestId('dealer')).not.toBeInTheDocument();
+  });
+
+  it('o rig ANTIGO continua montável, mas não é o padrão', () => {
+    // `variant="svg"` é a arte aposentada (public/dealer/): o jogo nunca
+    // a pede, e o teste existe para o dia em que alguém pedir.
+    render(<Dealer reaction="idle" variant="svg" />);
+    expect(screen.getByTestId('dealer')).not.toHaveAttribute('data-face');
   });
 });
 

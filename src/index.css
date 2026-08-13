@@ -686,11 +686,14 @@ h2 {
   overflow: visible;
 }
 
-/* Dealer em rig SVG (modelo em camadas, recorte cintura para cima). */
+/* Dealer em rig SVG (modelo em camadas, recorte cintura para cima).
+   A proporção 1:2 é a MESMA desde o primeiro rig: a arte nova
+   (viewBox 440×880, docs/animacaodealer.md) foi enquadrada para entrar
+   no lugar da antiga (720×1440) sem que a cena mudasse uma linha. */
 .dealer-rig {
   position: relative;
   height: 100%;
-  aspect-ratio: 720 / 1440;
+  aspect-ratio: 440 / 880;
   /* Luz quente sutil por trás da figura, casando com o spotlight da cena. */
   filter: drop-shadow(0 0 22px rgba(245, 183, 111, 0.12));
 }

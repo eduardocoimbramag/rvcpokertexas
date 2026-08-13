@@ -22,14 +22,16 @@ export type DealerReaction = (typeof DEALER_REACTIONS)[number];
 
 /**
  * Implementações disponíveis do dealer:
- * - `svg`: rig SVG em camadas (modelo em public/dealer/) — ativa.
- * - `rive`: reservado para uma futura arte riggada.
+ * - `nova`: rig da arte nova (public/dealernova/) — ATIVA.
+ * - `svg`: rig da arte antiga (public/dealer/) — aposentado, mantido
+ *   apenas como referência histórica do primeiro rig.
+ * - `none`: sem crupiê em cena.
  */
-export type DealerVariant = 'svg' | 'rive' | 'none';
+export type DealerVariant = 'nova' | 'svg' | 'none';
 
 export interface DealerProps {
   reaction: DealerReaction;
-  /** Implementação visual. Default: 'svg' (Tier 1). */
+  /** Implementação visual. Default: 'nova'. */
   variant?: DealerVariant;
   /** 'low' congela os loops (reduced motion / aparelho fraco). */
   quality?: 'high' | 'low';
