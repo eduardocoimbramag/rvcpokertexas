@@ -8,6 +8,8 @@ import { Monogram } from '../../components/AvatarBadge';
 import { Card3D } from '../../components/Card3D';
 import { ChipRack } from '../../components/poker/ChipRack';
 import { CommunityBoard } from '../../components/poker/CommunityBoard';
+import type { PuckKind } from '../../components/poker/SeatPuck';
+import { PlatePuck, SeatPuck } from '../../components/poker/SeatPuck';
 import { ClashStage } from '../../components/poker/ShowdownClash';
 import { TableVeil } from '../../components/poker/TableVeil';
 import { ChipStack } from '../../components/table/ChipStack';
@@ -16,7 +18,7 @@ import type { CashMoveCall, CashPhase, CashVerdict } from '../tournamentStore';
 import { CashVerdictPlate } from './CashVerdictPlate';
 import { TIMINGS } from '../../animations/timings';
 import type { CashSeatView, CashTableView } from '../cashTable';
-import { DEAL_STAGGER, dealSlots, tableTotal } from '../cashTable';
+import { blindSeats, DEAL_STAGGER, dealSlots, tableTotal } from '../cashTable';
 import { rivalsFromPov } from '../seatOrder';
 import { laneSlices } from '../tableLayout';
 import type { TournamentPlayer } from '../types';
@@ -93,8 +95,10 @@ function chipSideFor(index: number, count: number): ChipSide {
 
 interface SeatProps {
   seat: CashSeatView;
-  /** Tem o botão do dealer. */
-  button: boolean;
+  /** O disco de posição desta mão: dealer, small ou big blind. */
+  puck: PuckKind | null;
+  /** O que o blind custou. O disco do dealer não cobra nada. */
+  puckAmount?: number;
   /** A mesa está esperando a decisão deste assento. */
   toAct: boolean;
   /** Atraso de cada carta na coreografia da distribuição. */
@@ -155,24 +159,24 @@ function BetSpot({ amount, testid }: { amount: number; testid: string }) {
 }
 
 /**
- * O disco do dealer. Numa mesa de 3 ou mais ele não paga blind nenhum —
- * quem paga é quem senta à esquerda dele —, e diz uma coisa só, que
- * decide mão: a ORDEM DA PALAVRA.
+ * QUAL DISCO ESTE ASSENTO CARREGA nesta mão — o do dealer, o small ou o
+ * big blind. Nenhum assento carrega dois: numa mesa de 3 ou mais o botão
+ * não paga blind, quem paga é quem senta à esquerda dele e o seguinte
+ * (ver `blindSeats`, a mesma conta que a engine usa para cobrar).
  */
-function DealerPuck({ name, you }: { name: string; you: boolean }) {
-  return (
-    <span
-      className="dealer-puck dealer-puck--cash"
-      data-testid="cash-dealer-button"
-      role="img"
-      aria-label={`Botão do dealer com ${you ? 'você' : name}: fala por último do flop em diante`}
-    >
-      <span className="dealer-puck__face" aria-hidden="true">
-        D
-      </span>
-    </span>
-  );
+function puckOf(seatIndex: number, button: number, blinds: { small: number; big: number }) {
+  if (seatIndex === button) return 'dealer' as const;
+  if (seatIndex === blinds.small) return 'small' as const;
+  if (seatIndex === blinds.big) return 'big' as const;
+  return null;
 }
+
+/** O testid de cada disco — o do dealer conserva o nome que ele já tinha. */
+const PUCK_TESTID: Record<PuckKind, string> = {
+  dealer: 'cash-dealer-button',
+  small: 'cash-small-blind',
+  big: 'cash-big-blind',
+};
 
 /**
  * ASSENTO DE RIVAL: placa de identidade, duas cartas de bruços e a aposta
@@ -181,7 +185,8 @@ function DealerPuck({ name, you }: { name: string; you: boolean }) {
  */
 function RivalSeat({
   seat,
-  button,
+  puck,
+  puckAmount,
   toAct,
   delayFor,
   highlight,
@@ -231,17 +236,22 @@ function RivalSeat({
           muda o que se pode fazer contra aquele assento, e aparece uma
           vez a cada muitas mãos — não é o "resto" que ocupava espaço, é a
           notícia mais importante que uma mesa dá. */}
-      {/* A CABEÇA DO ASSENTO: a placa e, à direita dela, o disco do dealer.
+      {/* A CABEÇA DO ASSENTO: a placa, com o disco de posição APOIADO no
+          canto dela.
           O disco morava num dos vãos da linha da mão, e de lá dizia a
           coisa certa no lugar errado — ele é um atributo de QUEM senta
           ali, não da mão que está na mesa, e o vão passou a ser o
-          corredor por onde o montante sai.
+          corredor por onde o montante sai. Depois veio para a fileira da
+          cabeça, ao lado da placa, e ali o problema foi outro: dividindo
+          largura com o nome num assento de ~80px, ele coube em 8px — um
+          ponto claro que não se lê nem se sabe o que é.
 
-          A FENDA DO DISCO É RESERVADA EM TODO ASSENTO, tenha ele o botão
-          ou não. É o que mantém todas as placas com a mesma largura: se
-          a fenda só existisse no assento do dealer, a placa dele
-          encolheria e a fileira ficaria irregular a cada mão — de novo o
-          defeito que a largura fixa existe para acabar. */}
+          MONTADO NA PLACA ele não divide mais nada (ver `PlatePuck`), e
+          a reserva de meia fenda que a placa ainda guarda é só para ele
+          transbordar sem encostar no assento vizinho. Todas as placas
+          reservam a mesma meia fenda, tenham disco ou não: é o que
+          mantém a fileira com uma largura só, que foi sempre o motivo da
+          reserva existir. */}
       <div className="cash-seat__head">
         {/* A PLACA ABRE O PERFIL de quem senta ali — a mesma porta do
             duelo, e o mesmo argumento: numa mesa de seis saber com quem
@@ -258,6 +268,15 @@ function RivalSeat({
           aria-label={`Ver o perfil de ${player.name}`}
           data-testid={`cash-profile-${seat.seatIndex}`}
         >
+          {puck && (
+            <PlatePuck
+              kind={puck}
+              name={player.name}
+              you={false}
+              amount={puckAmount}
+              testId={PUCK_TESTID[puck]}
+            />
+          )}
           <span className="seat-plate__body">
             {/* NOME EM CIMA, FICHAS EMBAIXO — de propósito, e não por
               acidente de quebra de linha.
@@ -283,9 +302,6 @@ function RivalSeat({
             </span>
           </span>
         </button>
-        <span className="cash-seat__puck">
-          {button && <DealerPuck name={player.name} you={false} />}
-        </span>
       </div>
 
       {/* A LINHA DA MÃO. Os dois vãos são FENDAS de largura zero: as duas
@@ -329,7 +345,16 @@ function RivalSeat({
 }
 
 /** O SEU assento: mesma informação, tamanho de quem precisa ler. */
-function YourSeat({ seat, button, toAct, delayFor, highlight, reading, instant }: SeatProps) {
+function YourSeat({
+  seat,
+  puck,
+  puckAmount,
+  toAct,
+  delayFor,
+  highlight,
+  reading,
+  instant,
+}: SeatProps) {
   const { player, stack, bet, cards, allIn, folded } = seat;
 
   return (
@@ -343,7 +368,21 @@ function YourSeat({ seat, button, toAct, delayFor, highlight, reading, instant }
       data-testid="cash-seat-you"
     >
       <div className="cash-seat__line">
-        <span className="cash-seat__gutter">{button && <DealerPuck name={player.name} you />}</span>
+        {/* NO SEU ASSENTO O DISCO CONTINUA SOLTO, à esquerda da sua mão:
+            é o único lado do feltro com pano sobrando, e ali ele fica
+            onde um disco fica numa mesa de verdade. Ver `PlatePuck`
+            para o porquê de o do rival ser diferente. */}
+        <span className="cash-seat__gutter">
+          {puck && (
+            <SeatPuck
+              kind={puck}
+              name={player.name}
+              you
+              amount={puckAmount}
+              testId={PUCK_TESTID[puck]}
+            />
+          )}
+        </span>
         <div className="cash-seat__cards cash-seat__cards--mine" data-testid="cash-hole-you">
           {cards.map((card, index) => (
             <span
@@ -469,9 +508,26 @@ export function CashArena({
   const delayFor = (seatIndex: number) => (index: number) =>
     reduced ? 0 : (slots[seatIndex]?.[index] ?? 0) * TIMINGS.dealCardMs * DEAL_STAGGER;
 
-  /* Os blinds NÃO são mais um selo na placa: eles já estão em cena nas
-     fichas de aposta na frente de quem os pagou e na posição relativa ao
-     disco do dealer — que é de onde eles saem. Ver `blindSeats`. */
+  /* QUEM PAGA O QUÊ NESTA MÃO, na mesma conta que a engine usa para
+     cobrar (`blindSeats`): o small à esquerda do botão, o big em
+     seguida. Ela é derivada do botão em vez de viajar na vista porque é
+     função pura dele — guardá-la no estado abriria uma segunda fonte de
+     verdade para uma coisa que a mesa já sabe.
+
+     Os blinds já estavam em cena nas fichas à frente de quem os pagou,
+     e isso não bastava: as fichas dizem QUANTO tem no meio, e somem
+     quando a rua fecha e o crupiê varre. Quem está no blind continua no
+     blind a mão inteira — é posição, não aposta —, e é a posição que
+     diz quem fala por último antes do flop e quem já pagou para ver. */
+  const blinds = blindSeats(view.button, total);
+  /** O disco de um assento e o que ele custou, prontos para o assento. */
+  const puckFor = (seatIndex: number) => {
+    const puck = puckOf(seatIndex, view.button, blinds);
+    return {
+      puck,
+      puckAmount: puck === 'small' ? view.smallBlind : puck === 'big' ? view.bigBlind : undefined,
+    };
+  };
 
   const you = view.seats[youSeat];
   const rivals = rivalsFromPov(youSeat, total)
@@ -572,7 +628,7 @@ export function CashArena({
               <RivalSeat
                 key={seat.seatIndex}
                 seat={seat}
-                button={seat.seatIndex === view.button}
+                {...puckFor(seat.seatIndex)}
                 toAct={view.toAct === seat.seatIndex}
                 delayFor={delayFor(seat.seatIndex)}
                 highlight={highlight}
@@ -608,7 +664,7 @@ export function CashArena({
       {you && (
         <YourSeat
           seat={you}
-          button={youSeat === view.button}
+          {...puckFor(youSeat)}
           toAct={view.toAct === youSeat}
           delayFor={delayFor(youSeat)}
           highlight={highlight}

@@ -7,6 +7,7 @@ import type { Card, Duelist } from '../../engine/types';
 import { Monogram } from '../AvatarBadge';
 import { Card3D } from '../Card3D';
 import { ChipRack } from './ChipRack';
+import { PlatePuck, SeatPuck } from './SeatPuck';
 
 export interface PokerSeatProps {
   side: Duelist;
@@ -122,8 +123,18 @@ export function PokerSeat({
      layout: ela sai das suas duas fechadas com o que a mesa abriu. Do
      lado do rival a linha simplesmente não nasce, e a placa fica de uma
      linha só. */
+  /* O DISCO DO DEALER DO RIVAL mora NA PLACA dele, e o seu no vão ao
+     lado da sua mão. Ver `PlatePuck`: do outro lado do feltro não há
+     pano sobrando — a placa do rival é a peça mais alta daquele lado, e
+     é nela que um disco se lê. Do seu lado sobra vão, e ali ele fica
+     onde um disco fica numa mesa de verdade. */
+  const platePuck = button && !you && (
+    <PlatePuck kind="dealer" name={name} you={false} testId={`dealer-button-${side}`} />
+  );
+
   const identityBody = (
     <>
+      {platePuck}
       <span className="seat-plate__crest" data-testid={`seat-avatar-${side}`} aria-hidden="true">
         <Monogram name={name} you={you} />
       </span>
@@ -189,26 +200,18 @@ export function PokerSeat({
      para o meio não está mais aqui, está na aposta da rua. */
   const rack = <ChipRack side={side} stack={stack} instant={instant} />;
 
-  const puck = button && (
-    /* O BOTÃO DO DEALER, ao lado da MÃO — que é onde ele fica numa mesa
-       de verdade: um disco em cima do pano, na frente de quem o tem, e
-       não um selo dentro da plaquinha do nome.
-       Ele fica sempre à ESQUERDA de quem o tem, do ponto de vista dele:
-       como a mesa é vista de cima e o rival está de cabeça para baixo, a
-       esquerda dele cai na direita da tela.
+  const puck = button && you && (
+    /* O SEU BOTÃO DO DEALER, ao lado da MÃO — que é onde ele fica numa
+       mesa de verdade: um disco em cima do pano, na frente de quem o
+       tem, e não um selo dentro da plaquinha do nome.
+       Ele fica à SUA ESQUERDA, no vão que sobra do seu lado do feltro.
+       Do lado do rival não sobra vão nenhum, e por isso o dele subiu
+       para a placa (ver `platePuck` acima) — a mesma peça, no único
+       lugar daquele lado da mesa em que um disco cabe inteiro.
        Aqui ele não diz quem paga blind nenhum — a entrada desta mesa é
        igual dos dois lados. Diz uma coisa só, e ela decide mão: a ORDEM
        DA PALAVRA. Ver docs/dmisterioso.md. */
-    <span
-      className="dealer-puck"
-      data-testid={`dealer-button-${side}`}
-      role="img"
-      aria-label={`Botão do dealer com ${you ? 'você' : name}: fala por último do flop em diante`}
-    >
-      <span className="dealer-puck__face" aria-hidden="true">
-        D
-      </span>
-    </span>
+    <SeatPuck kind="dealer" name={name} you testId={`dealer-button-${side}`} />
   );
 
   const hand = (
@@ -253,13 +256,17 @@ export function PokerSeat({
           EXATAMENTE no espaço que sobra de cada lado — sem número mágico
           nenhum. Antes as duas peças pendiam da borda das cartas e
           ficavam coladas nelas, com todo o vão sobrando do lado de fora.
-          Quem tem o disco fica com ele à sua esquerda (a da direita da
-          tela, no caso do rival, que está de cabeça para baixo) e o
-          montante do outro lado. */}
+
+          O DISCO SÓ OCUPA VÃO DO SEU LADO. Do lado do rival ele subiu
+          para a placa, e o vão que ele deixou não vira buraco: a placa
+          do rival é uma peça larga e centrada, e o que estava no vão
+          dela era um disco de 30px a meia tela do nome que ele
+          qualifica. Perto do nome ele diz de quem é sem que ninguém
+          precise seguir uma linha imaginária até a placa. */}
       <div className="poker-seat__line">
         <span className="poker-seat__gutter">{you ? puck : rack}</span>
         {hand}
-        <span className="poker-seat__gutter">{you ? rack : puck}</span>
+        <span className="poker-seat__gutter">{you ? rack : null}</span>
       </div>
       {you && identity}
     </section>

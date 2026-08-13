@@ -91,6 +91,17 @@ h2 {
      4rem + 1px, e o CSS não deixa uma media query ler custom property. */
   --app-shell-w: 480px;
 
+  /* O DISCO DE POSIÇÃO (D, SB, BB) na escala do DUELO — a mesa larga, com
+     vão sobrando dos dois lados. É a medida padrão da casa: a mesa de
+     seis é a única que a reescreve (ver `--cash-puck`), porque é a única
+     apertada.
+     Ele mora na RAIZ, e não na cena, porque DUAS peças precisam do mesmo
+     número — o disco, que se mede por ele, e a PLACA em que ele se
+     apoia, que reserva o pedaço dele que cai sobre o texto. Duas cópias
+     do mesmo `clamp` sairiam de sincronia na primeira vez que alguém
+     mexesse numa delas, e o disco passaria a cobrir o nome. */
+  --puck-duel: clamp(1.6rem, 7.4vw, 2.35rem);
+
   /* Altura reservada para a barra de ações da rodada, em TODAS as fases
      da mesa (ver .arena-actions): duas fileiras de botão `size="md"`
      (2×2,75rem) + o relógio da vez (1,2rem) + os dois respiros entre
@@ -3291,6 +3302,10 @@ h2 {
      virar faixa num tablet. */
   --plate-fs: clamp(0.58rem, 3.05vw, 0.74rem);
   --plate-crest: calc(var(--plate-fs) * 2.55);
+  /* O DISCO QUE SE APOIA NESTA PLACA — o tamanho dele, para a peça poder
+     reservar o pedaço que cai sobre o texto. É a escala do duelo por
+     padrão; a mesa de seis reescreve. */
+  --plate-puck: var(--puck-duel);
   /* A liga da casa (ver --gold-liga no :root). A placa a usa em DOIS
      lugares — a moldura e o aro do retrato —, e o caixa a usa na faixa do
      fecho: três cópias sairiam de sincronia na primeira vez que alguém
@@ -4489,39 +4504,63 @@ h2 {
   height: calc(var(--chip-size) + var(--rack-step) * 5);
 }
 
-/* ==================== O botão do dealer (o disco) ==================== */
+/* ============== Os discos de posição: D, SB e BB ============== */
 
-/* Uma PEÇA sobre o pano, do lado da mão de quem o tem — que é onde um
-   botão de dealer fica numa mesa de verdade. Ele já foi um selo miúdo
-   espremido entre o nome e o stack, dentro da plaquinha de identidade:
-   ali ele lia como abreviação de alguma coisa, e não como o disco que é.
+/* UMA PEÇA SÓ EM TRÊS TINTAS. A matéria é a das FICHAS (ver `.chip`):
+   disco com relevo, borda tracejada e miolo rebaixado. O que muda de um
+   disco para o outro é a PALETA, e ela segue a do dinheiro — marfim no
+   dealer, que não custa nada e manda na ordem da palavra; ouro no big
+   blind, que é a entrada cheia; terracota no small, que é a metade dela.
+   De relance a mesa se lê sem soletrar as letras.
 
-   Fica sempre à ESQUERDA de quem o tem, do ponto de vista dele. A mesa é
-   vista de cima e o rival está de cabeça para baixo, então a esquerda
-   dele cai na direita da tela — é a mesma peça no mesmo lugar, girada
-   junto com o assento.
+   ONDE CADA UM MORA é decisão do assento, não desta peça: solto no vão
+   ao lado da SUA mão, onde há pano sobrando, e apoiado no canto da placa
+   do rival, onde não há (ver `.seat-puck-mount` e `PlatePuck`).
 
-   A matéria é a das FICHAS (ver `.chip`): disco com relevo, borda
-   tracejada e miolo rebaixado. Só a paleta muda — marfim em vez de
-   vinho, e o "D" em tinta preta, como o disco de verdade. */
+   O DEALER TEM MIOLO GRAVADO e os blinds não, e a diferença é de
+   legibilidade antes de ser de estilo: "D" é uma letra e cabe no miolo
+   rebaixado, que é o que faz o disco parecer um botão de dealer de
+   verdade; "SB" e "BB" são duas, e dentro de um miolo de 66% num disco
+   de 17px elas chegariam a 5px de corpo — um borrão. Impressas na face
+   inteira, como os marcadores de blind de uma sala de verdade, elas
+   ganham metade do disco e se leem. */
 .poker-seat__cards {
   position: relative;
 }
 
-.dealer-puck {
-  --dealer-puck-size: clamp(1.6rem, 7.4vw, 2.35rem);
+.seat-puck {
+  /* O TAMANHO VEM DE QUEM O HOSPEDA. Apoiado numa placa, ele lê o
+     `--plate-puck` dela — e é o MESMO número que a placa usou para
+     reservar o espaço dele, o que torna impossível reservar um pedaço e
+     desenhar outro. Solto no vão da sua mão não há placa acima dele, e
+     aí vale a escala do duelo, que é a da mesa larga.
+     A declaração é no elemento (e não herdada) de propósito: `var()` com
+     fallback é o único jeito de um valor de elemento perguntar "alguém
+     acima de mim tem opinião sobre isto?". */
+  --seat-puck-size: var(--plate-puck, var(--puck-duel));
+  --puck-sheen: #fffdf9;
+  --puck-body: #f0e7d9;
+  --puck-rim: #c5b7a2;
+  --puck-dash: rgba(84, 60, 38, 0.26);
+  --puck-ink: #16110c;
+
   position: relative;
   z-index: 4;
   display: grid;
   flex: none;
   place-items: center;
-  width: var(--dealer-puck-size);
-  height: var(--dealer-puck-size);
+  width: var(--seat-puck-size);
+  height: var(--seat-puck-size);
   border-radius: 9999px;
   /* O relevo: luz alta no quadrante superior esquerdo, sombra interna
      embaixo e uma sombra projetada curta — o disco fica APOIADO no pano
      em vez de desenhado sobre ele. */
-  background: radial-gradient(circle at 32% 26%, #fffdf9 0%, #f0e7d9 46%, #c5b7a2 100%);
+  background: radial-gradient(
+    circle at 32% 26%,
+    var(--puck-sheen) 0%,
+    var(--puck-body) 46%,
+    var(--puck-rim) 100%
+  );
   box-shadow:
     inset 0 2px 2px rgba(255, 255, 255, 0.95),
     inset 0 -5px 8px rgba(92, 68, 44, 0.46),
@@ -4532,7 +4571,7 @@ h2 {
 
 /* As marcas de borda da ficha, na versão clara: tracejado rebaixado em
    vez de marfim sobre vinho. */
-.dealer-puck::before {
+.seat-puck::before {
   content: '';
   position: absolute;
   inset: 7%;
@@ -4540,11 +4579,11 @@ h2 {
   /* O traçado acompanha o TAMANHO do disco: em medida fixa ele engrossa
      proporcionalmente quando o disco encolhe, e o que era marca de borda
      vira um anel grosso que come o miolo. */
-  border: calc(var(--dealer-puck-size) * 0.1) dashed rgba(84, 60, 38, 0.26);
+  border: calc(var(--seat-puck-size) * 0.1) dashed var(--puck-dash);
 }
 
 /* O miolo, onde a ficha leva o valor gravado e o disco leva o "D". */
-.dealer-puck__face {
+.seat-puck__face {
   position: relative;
   display: grid;
   width: 66%;
@@ -4556,10 +4595,98 @@ h2 {
     inset 0 0 0 1.5px rgba(70, 48, 30, 0.3),
     inset 0 1px 2px rgba(255, 255, 255, 0.95);
   font-family: var(--font-display);
-  font-size: calc(var(--dealer-puck-size) * 0.42);
+  font-size: calc(var(--seat-puck-size) * 0.42);
   font-weight: 700;
   line-height: 1;
-  color: #16110c;
+  color: var(--puck-ink);
+}
+
+/* O BIG BLIND em ouro âmbar: é a entrada cheia da mesa, e a tinta mais
+   acesa da casa é dela. */
+.seat-puck--bb {
+  --puck-sheen: #fff3dc;
+  --puck-body: #f5b76f;
+  --puck-rim: #b8752b;
+  --puck-dash: rgba(84, 48, 10, 0.32);
+  --puck-ink: #2a1206;
+}
+
+/* O SMALL em terracota: a metade da entrada, na tinta secundária da
+   marca. Ele é o par mais fraco do dinheiro e a peça mais discreta das
+   três — e as duas coisas dizem a mesma verdade. */
+.seat-puck--sb {
+  --puck-sheen: #f8d6bd;
+  --puck-body: #cb7349;
+  --puck-rim: #7d3d1f;
+  --puck-dash: rgba(64, 26, 10, 0.34);
+  --puck-ink: #2a1206;
+}
+
+/* AS DUAS LETRAS DOS BLINDS ocupam a face inteira do disco, sem o miolo
+   rebaixado: é o que as tira dos 5px em que não se leem. A gravação em
+   relevo (a luz por baixo da letra) faz o serviço que o miolo fazia —
+   dar profundidade — sem cobrar largura nenhuma. */
+.seat-puck--sb .seat-puck__face,
+.seat-puck--bb .seat-puck__face {
+  width: 84%;
+  height: 84%;
+  background: none;
+  box-shadow: none;
+  font-size: calc(var(--seat-puck-size) * 0.46);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+/* O DISCO APOIADO NA PLACA — os assentos de rival, nas duas mesas.
+
+   Do outro lado do feltro não há pano sobrando: numa fileira própria o
+   disco disputava largura com o NOME, que é a leitura que a placa existe
+   para dar, e foi essa disputa que o levou aos 8px em que ele não se lê
+   mais. Apoiado, ele para de disputar — fica meio dentro e meio fora do
+   canto da placa, como um disco que alguém encostou ali, e o tamanho
+   dele volta a ser o da mesa.
+
+   O CANTO É O DIREITO porque é o lado do dono: a mesa é vista de cima e
+   o rival está de cabeça para baixo, então a esquerda DELE cai na
+   direita da tela. É a mesma peça no mesmo lugar, girada junto com o
+   assento — e é por isso que, do seu lado, ela fica à esquerda.
+
+   ELE SE APOIA NA BORDA DE CIMA, e não no meio da peça — e essa foi a
+   única posição que passou na medição.
+
+   A CONTA QUE MANDA É A LARGURA DA PLACA. Numa faixa de três rivais, num
+   aparelho de 320px, a placa mede ~45px e a linha do montante ("⊙ 1.000")
+   pede ~30px sozinha: qualquer disco que cruze a horizontal do texto
+   cobre um algarismo, e descontar a largura dele do respiro só empurrava
+   o número para debaixo da própria borda. Foi assim que o disco chegou
+   aos 8px que motivaram esta mudança — não havia largura para ele, e ele
+   encolheu até caber.
+
+   O ESPAÇO QUE EXISTE ALI É VERTICAL. Apoiado na borda de cima, o disco
+   sai da linha do texto inteiro: `-78%` deixa a base dele exatamente na
+   faixa da borda da placa, acima da primeira linha, e o nome volta a ter
+   a largura toda da peça — mais do que ele tinha quando o disco andava
+   ao lado. Ele fica em cima do bloco do nome, que é o que se pediu, e
+   não sobre ele.
+
+   PARA FORA ele sai um quinto (`22%`), e é isso que a placa reserva na
+   largura dela (meia peça, repartida nos dois lados pela centragem — ver
+   `.cash-seat__head .cash-seat__plate`): o disco morre dentro do assento
+   e o vão até o vizinho fica inteiro.
+
+   O CANTO É O DIREITO porque é o lado do dono: a mesa é vista de cima e
+   o rival está de cabeça para baixo, então a esquerda DELE cai na
+   direita da tela. É a mesma peça no mesmo lugar, girada junto com o
+   assento — e é por isso que, do seu lado, ela fica à esquerda. */
+.seat-puck-mount {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  transform: translate(22%, -78%);
+  pointer-events: none;
 }
 
 /* A APOSTA DA RUA em cifra solta (`.street-bet`) SAIU da mesa. Ela era uma
@@ -9011,9 +9138,9 @@ body.is-street-cut #root {
      Os assentos das pontas desenham o montante deles PARA FORA, e sem a
      reserva a pilha do rival da ponta saía pela borda do feltro. */
   --cash-rack-w: calc(var(--cash-chip) * 2.55);
-  /* O CORPO DA PLACA DO RIVAL, e o disco que anda ao lado dela.
+  /* O CORPO DA PLACA DO RIVAL, e o disco que se apoia nela.
      Os dois moram aqui pelo mesmo motivo da ficha: `.seat-plate` e
-     `.dealer-puck` declaram `--plate-fs` e `--dealer-puck-size` em si
+     `.seat-puck` declaram `--plate-fs` e `--seat-puck-size` em si
      mesmos, e o valor do elemento vence o herdado — quem quer que os
      dois conversem precisa de um terceiro token, acima de ambos.
 
@@ -9034,13 +9161,28 @@ body.is-street-cut #root {
      bordas. Repetida em cada uma, sairia de sincronia na primeira vez
      que alguém mexesse no vão entre as duas cartas. */
   --cash-seat-w: calc(var(--cash-card-w) * 2 + 0.12rem);
-  /* O DISCO É 1,05 DO CORPO DA LETRA: um selo ao lado do nome, e não uma
-     peça que dispute a placa. Cada pixel que ele toma sai da largura do
-     nome, que é a leitura que a placa existe para dar — e a conta é
-     apertada: no pior aparelho da suíte (320x568) a placa da faixa de
-     três mede 36px e o corpo do texto pede 28, sendo "Helena" o apelido
-     mais longo do elenco. */
-  --cash-puck: calc(var(--cash-plate-fs) * 1.05);
+  /* O DISCO SAI DA ESCALA DA MESA, e não do que sobrava da fileira.
+     Ele já foi 1,05 do corpo da letra — 8px no aparelho mais estreito —,
+     e aquele número não era uma escolha de tamanho: era o que restava
+     depois de o nome ficar com a largura dele, porque os dois dividiam a
+     mesma linha. Um disco de 8px não diz o que é; diz que há um ponto
+     claro ao lado do nome.
+
+     Apoiado na placa (ver `.seat-puck-mount`) ele não divide mais nada,
+     e a medida passa a ser a CARTA — a peça que dá a escala real do
+     assento e que já encolhe junto com ele pelos dois motivos que
+     encolhem a mesa (a faixa cheia e a tela baixa).
+
+     O TETO É A ALTURA DA PLACA (2,9 corpos de letra é o que ela mede com
+     as duas linhas e o respiro): apoiado num canto, um disco mais alto
+     que a peça em que se apoia deixa de ler como apoiado e passa a ler
+     como solto por cima. Entre a conta da carta e a da placa vale a
+     menor — no aparelho mais estreito quem manda é o piso do `clamp`
+     (17px), e no maior, a carta (25px). Nos dois casos o disco DOBROU. */
+  --cash-puck: min(
+    clamp(1.05rem, calc(var(--cash-card-w) * 0.55), 1.65rem),
+    calc(var(--cash-plate-fs) * 2.9)
+  );
 
   display: flex;
   width: 100%;
@@ -9062,6 +9204,18 @@ body.is-street-cut #root {
    saem. Estreitar a faixa fechava justamente esse corredor — e a carta
    menor, que já recua 4% por faixa de profundidade, dá a mesma leitura
    de distância sem cobrar nada dele. */
+
+/* A FAIXA DE BAIXO ABRE ESPAÇO PARA O DISCO da própria cabeça.
+   O disco de posição se apoia na borda de cima da placa e sobra para
+   cima (ver `.seat-puck-mount`); no aparelho mais estreito essa sobra
+   alcançava a ficha de aposta de um assento da faixa de cima — foi a
+   única colisão que a mudança criou, e ela apareceu na medição, não na
+   tela. Um terço de disco resolve, e ele só é cobrado de quem TEM faixa
+   acima: a primeira sobe para o pano vazio da cabeceira, onde não há
+   nada a esbarrar. */
+.cash-lane + .cash-lane {
+  margin-top: calc(var(--cash-puck) * 0.35);
+}
 
 /* A curva: numa faixa de três, os assentos das pontas descem um fio — as
    cadeiras laterais de uma mesa oval ficam mais perto de você que a da
@@ -9138,63 +9292,42 @@ body.is-street-cut #root {
   justify-content: center;
 }
 
-/* A CABEÇA DO ASSENTO: a placa CENTRADA no assento, e o disco à direita
-   dela.
-   As colunas laterais são `1fr` — iguais por definição —, e é isso que
-   centra a placa exatamente entre as duas cartas, sem número mágico
-   nenhum. Antes a cabeça era uma linha flex com a placa elástica e o
-   disco no fim: a placa ocupava tudo MENOS o disco, e o centro dela caía
-   meio disco à esquerda do centro das cartas. Com o nome centrado
-   dentro de uma placa descentrada, o defeito só ficou mais visível.
-
-   `minmax(0, 1fr)` e não `1fr`: o mínimo de uma coluna `1fr` é o
-   conteúdo dela, então a coluna da direita se recusava a ficar menor
-   que o disco e empurrava a placa 6px para a esquerda — o mesmo defeito
-   com outra causa. Com o mínimo em zero as duas colunas voltam a ser
-   iguais de verdade, e o disco transborda a sua em vez de alargá-la. */
+/* A CABEÇA DO ASSENTO: a placa, CENTRADA no assento.
+   Ela já foi uma grade de três colunas para centrar a placa apesar do
+   disco que morava ao lado dela; com o disco APOIADO na placa (ver
+   `.seat-puck-mount`) não há mais nada na fileira para descentrar coisa
+   nenhuma, e centrar volta a ser uma linha de flex. */
 .cash-seat__head {
-  display: grid;
+  display: flex;
   width: 100%;
   align-items: center;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  justify-content: center;
 }
 
-/* A PLACA TEM LARGURA FIXA, e é o assento menos a fenda do disco.
+/* A PLACA TEM LARGURA FIXA, e é o assento menos a metade do disco que
+   transborda dela.
    Antes ela era do tamanho do conteúdo: um apelido curto com stack de
    dois dígitos dava uma placa pequena ao lado de uma grande, e a
    fileira lia como peças de jogos diferentes. Pior, a largura mudava
    SOZINHA durante a mão, a cada ficha ganha ou perdida.
    Fixa, ela vira moldura: o que muda dentro é o texto, e o texto se
-   centra. A largura vem do token do assento e não de `100%` porque
-   `100%` numa coluna `auto` de grid seria circular. */
+   centra.
+
+   A RESERVA VALE PARA TODA PLACA, tenha ela disco ou não — é o que
+   mantém a fileira com uma largura só, que foi sempre o motivo de ela
+   existir. E ela ENCOLHEU: a fenda antiga era o disco inteiro mais um
+   respiro (~10 a 15px), a de agora é meia peça (~8 a 12px), porque o
+   disco passou a se apoiar na placa em vez de andar ao lado dela. O
+   disco quase dobrou de tamanho e a placa ficou MAIS larga que antes —
+   as duas coisas saem da mesma mudança.
+
+   MEIA PEÇA, e não um quarto: a placa é centrada no assento, então a
+   reserva se reparte nos dois lados dela. É o quarto da direita que o
+   disco usa para transbordar (ver `.seat-puck-mount`); o da esquerda é o
+   preço de a placa continuar centrada entre as duas cartas. */
 .cash-seat__head .cash-seat__plate {
   min-width: 0;
-  /* A COLUNA VAI DECLARADA. O disco reivindica a 3 pelo nome, e a
-     colocação automática do grid preenche a partir da 1 — sem esta
-     linha a placa ia parar na coluna da ESQUERDA, encostada na borda do
-     assento e espremida ao tamanho do texto. Era o mesmo sintoma que
-     esta regra existe para corrigir, com outra causa. */
-  width: calc(var(--cash-seat-w) - var(--cash-puck) - var(--cash-plate-fs) * 0.28);
-  grid-column: 2;
-}
-
-/* O DISCO fica na coluna da direita, encostado na placa, e TRANSBORDA
-   para o vão entre assentos — que é o único lugar de onde tirar a
-   largura dele sem tirá-la do nome.
-   A conta que garante que ele não encosta no vizinho: a coluna da
-   direita mede meia fenda, o disco mede uma, então ele sai meia fenda
-   (~6px) para fora do assento; o vão entre assentos mede 5px e a placa
-   do vizinho começa outra meia fenda para dentro do assento dele. */
-.cash-seat__puck {
-  display: flex;
-  width: var(--cash-puck);
-  height: var(--cash-puck);
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  margin-left: calc(var(--cash-plate-fs) * 0.28);
-  grid-column: 3;
-  justify-self: start;
+  width: calc(var(--cash-seat-w) - var(--cash-puck) * 0.5);
 }
 
 /* NOME EM CIMA, MONTANTE EMBAIXO — a decisão que destrava a placa.
@@ -9245,6 +9378,19 @@ body.is-street-cut #root {
   padding-block: calc(var(--plate-fs) * 0.24);
   padding-inline: calc(var(--plate-fs) * 0.3);
 }
+
+/* A PLACA COM DISCO NÃO ABRE RESPIRO NENHUM para ele, e é essa a
+   diferença entre esta versão e as duas que a medição reprovou antes:
+   apoiado na borda de CIMA (ver `.seat-puck-mount`), o disco não cruza a
+   linha do texto, e descontar largura do nome para um disco que não
+   passa por ali seria pagar duas vezes pelo mesmo espaço.
+
+   POR QUE NÃO BASTAVA DESCONTAR: o conteúdo da placa é CENTRADO, então
+   um respiro de X à direita empurra o texto só X/2 para a esquerda. Para
+   tirar o nome de baixo de um disco que entra 13px na placa de 320px
+   seriam ~26px de respiro numa peça de 45px. A medição do primeiro
+   desenho: "Dante" invadido em 9,3px, "Helena" em 9,8px — uma letra
+   inteira, com o respiro já aplicado. */
 
 /* O nome não precisa de teto: empilhado, ele só disputa espaço consigo
    mesmo, e a placa comporta o mais longo do elenco ("Helena") inteiro
@@ -9417,16 +9563,18 @@ body.is-street-cut #root {
   box-shadow: 0 0 0 1px rgba(14, 4, 8, 0.6);
 }
 
-/* O DISCO DO DEALER entra na escala da PLACA, que é onde ele passou a
-   morar — um selo ao lado do nome, e não uma peça no feltro.
-   A regra antiga escrevia numa variável MORTA (`--puck-size`); o nome
-   que `.dealer-puck` lê é `--dealer-puck-size`, e por isso o disco saía
-   nos 30px do duelo ao lado de cartas de rival menores que ele.
+/* O DISCO DO RIVAL entra na escala da MESA DE SEIS (ver `--cash-puck`).
+   Sem esta linha ele sairia nos 30px do duelo, ao lado de cartas de
+   rival menores que ele.
+   Quem recebe o token é a PLACA, e não o disco: é ela que reserva o
+   espaço dele, e é de lá que ele o herda — um número só para as duas
+   contas (ver `.seat-puck`).
    O SEU disco não é tocado de propósito: a sua mão é a carta cheia do
    duelo, e ali o disco tem de ser o do duelo. `.cash-you` não carrega
-   `.cash-seat`, então este seletor pega só os rivais. */
-.cash-seat .dealer-puck {
-  --dealer-puck-size: var(--cash-puck);
+   `.cash-seat`, e o seu disco não mora em placa nenhuma — ele cai no
+   padrão da casa sozinho. */
+.cash-seat .seat-plate {
+  --plate-puck: var(--cash-puck);
 }
 
 /* ---- O MEIO: as cinco comunitárias e o que há em jogo ---- */
