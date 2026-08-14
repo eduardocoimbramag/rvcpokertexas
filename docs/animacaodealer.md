@@ -24,11 +24,11 @@ Resumo em números:
 | `public/dealernova/semvar/*`                       | Corpo padrão (montagem de repouso e idle)                       |
 | `public/dealernova/varfeliz/boca-feliz.svg`        | Troca da boca para o rosto feliz                                |
 | `public/dealernova/vartriste/*`                    | Troca de boca, pupila e sobrancelha + lágrima                   |
-| `src/features/bac-bo/scene/dealer/dealerRig.ts`    | Geometria: posição/escala de cada peça e os pivôs               |
-| `src/features/bac-bo/scene/dealer/NovaDealer.tsx`  | O rig e **todas** as variantes de animação                      |
-| `src/features/bac-bo/scene/dealer/dealerBeats.ts`  | Sorteio e duração dos beats de ociosidade                       |
-| `src/features/bac-bo/scene/dealer/dealerExpression.ts` | Mapa reação → rosto e reação → lágrima                      |
-| `src/features/bac-bo/scene/dealer/useDealerReaction.ts` | Mapa fase/desfecho do jogo → reação (já existia)            |
+| `src/features/poker/scene/dealer/dealerRig.ts`    | Geometria: posição/escala de cada peça e os pivôs               |
+| `src/features/poker/scene/dealer/NovaDealer.tsx`  | O rig e **todas** as variantes de animação                      |
+| `src/features/poker/scene/dealer/dealerBeats.ts`  | Sorteio e duração dos beats de ociosidade                       |
+| `src/features/poker/scene/dealer/dealerExpression.ts` | Mapa reação → rosto e reação → lágrima                      |
+| `src/features/poker/scene/dealer/useDealerReaction.ts` | Mapa fase/desfecho do jogo → reação (já existia)            |
 
 A crupiê antiga foi **removida** (Fase 2 de `limpeza.md`): o rig `SvgRigDealer` e
 os 16 SVGs de `public/dealer/` saíram, junto com o `variant="svg"` que os

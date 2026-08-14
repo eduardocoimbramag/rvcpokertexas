@@ -1,15 +1,15 @@
 import { useState } from 'react';
 
-import { DevToolsPanel } from '@/features/bac-bo/components/DevToolsPanel';
-import { GameScreen } from '@/features/bac-bo/components/GameScreen';
-import { HistorySheet } from '@/features/bac-bo/components/HistorySheet';
-import { HomeScreen } from '@/features/bac-bo/components/HomeScreen';
-import { SettingsSheet } from '@/features/bac-bo/components/SettingsSheet';
-import { TutorialSheet } from '@/features/bac-bo/components/TutorialSheet';
-import { TournamentApp } from '@/features/bac-bo/tournament/TournamentApp';
-import { useTournamentStore } from '@/features/bac-bo/tournament/tournamentStore';
-import { AmbientLayer } from '@/features/bac-bo/scene/ambient/AmbientLayer';
-import { useGameStore } from '@/features/bac-bo/store/gameStore';
+import { DevToolsPanel } from '@/features/poker/components/DevToolsPanel';
+import { GameScreen } from '@/features/poker/components/GameScreen';
+import { HistorySheet } from '@/features/poker/components/HistorySheet';
+import { HomeScreen } from '@/features/poker/components/HomeScreen';
+import { SettingsSheet } from '@/features/poker/components/SettingsSheet';
+import { TutorialSheet } from '@/features/poker/components/TutorialSheet';
+import { TournamentApp } from '@/features/poker/tournament/TournamentApp';
+import { useTournamentStore } from '@/features/poker/tournament/tournamentStore';
+import { AmbientLayer } from '@/features/poker/scene/ambient/AmbientLayer';
+import { useGameStore } from '@/features/poker/store/gameStore';
 import { appEnv } from '@/shared/config/env';
 import { formatDelta } from '@/shared/lib/format';
 

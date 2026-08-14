@@ -6,9 +6,11 @@ Este documento levanta o que ainda está no repositório, quanto pesa, **o que �
 seguro remover** e em que ordem — com o método de medição descrito para que
 qualquer número aqui possa ser reconferido.
 
-> **Estado: Fases 0 a 6 EXECUTADAS.** A Fase 0 foi decidida — **o blackjack não
-> volta** — e o jogo inteiro saiu do repositório. Só a **Fase 7** (rename da
-> pasta `bac-bo/`) continua pendente, e ela é a de menor retorno.
+> **Estado: AUDITORIA CONCLUÍDA — Fases 0 a 7 EXECUTADAS.** A Fase 0 foi
+> decidida (**o blackjack não volta**), o jogo inteiro saiu do repositório e a
+> pasta virou `src/features/poker/`. Não há fase pendente; o que restou de
+> trabalho identificado está em §10.1 e §10.2, e nenhum dos dois estava no plano
+> original.
 >
 > **O que a remoção deu, medido:** 30 arquivos apagados (2 criados:
 > `engine/deck.ts` e o teste dele), **~12.000 linhas** a menos, `index.css` de 10.011 → 8.275 linhas, bundle JS de 720 → 652 kB
@@ -316,7 +318,7 @@ os 8 tipos de `animations/blaze.ts` e `HAND_GAP`/`HAND_SPREAD_MAX`/
 
 ## 6. Nomes legados — e por que o maior deles é armadilha
 
-### 6.1 `src/features/bac-bo/` (a pasta)
+### 6.1 `src/features/bac-bo/` (a pasta) ✅ RENOMEADA na Fase 7
 
 **Todo o jogo vive dentro dela.** Renomear para `src/features/poker/` é o
 rename mais visível da limpeza e o mais fácil de fazer com segurança —
@@ -325,7 +327,7 @@ rename mais visível da limpeza e o mais fácil de fazer com segurança —
 **extensão `.js`**. Um rename que não atualizar esses quatro arquivos passa no
 `tsc` e no `vitest`, e **quebra só no e2e**.
 
-### 6.2 `bacbo-arena:state` (chave de localStorage) — ⚠️ NÃO RENOMEAR SEM MIGRAÇÃO
+### 6.2 `bacbo-arena:state` (chave de localStorage) — ⚠️ MANTIDA de propósito
 
 ```ts
 // src/features/bac-bo/services/GameStorageService.ts
@@ -502,14 +504,37 @@ uma a uma, contra o `src` — nenhuma aparece em nenhum `.ts`/`.tsx`. Depois,
 conferência em tela: home, vitrine e a mesa de Hold'em em jogo (placas, fichas,
 pote, board, botão do dealer e leitura da mão), sem erro de console nem 404.
 
-### Fase 7 — Rename da pasta (~30 min)
+### Fase 7 — Rename da pasta ✅ FEITA
 
-`src/features/bac-bo/` → `src/features/poker/`. Use o rename da IDE (atualiza
-imports), e **depois** confira à mão os quatro `e2e/*.spec.ts` (§6.1).
+`src/features/bac-bo/` → `src/features/poker/`, com `git mv`: os **132 arquivos**
+entraram no histórico como **rename puro** (`R`, zero linha alterada), então
+`git log --follow` continua achando o passado de cada um.
 
-**Verificar:** `npm run check && npm run test:e2e && npm run build`
+**O move em si foi trivial, e há um motivo verificável para isso:** nenhum
+import DENTRO da pasta usava o alias `@/features/bac-bo/` — os 111 imports com
+`@/` apontam todos para `@/shared/*` (e um para `@/App`), e o resto é relativo.
+Conferi isso ANTES de mover; se houvesse um só self-reference por alias, o move
+o quebraria em silêncio.
 
-**Não** renomeie a chave de localStorage (§6.2).
+Só **12 referências externas** precisaram de edição:
+
+- `src/App.tsx` — 10 imports por alias;
+- `e2e/cash-table.spec.ts` e `e2e/table-parity.spec.ts` — a armadilha do §6.1.
+
+**Correção ao §6.1:** ele fala em "quatro `e2e/*.spec.ts`". Hoje são **dois** —
+`tournament-flow.spec.ts` saiu na Fase 5, e `game-flow.spec.ts` não importa nada
+de `src/`. A armadilha em si é real e continua valendo para os dois que sobraram.
+
+**A chave de localStorage NÃO foi renomeada** (§6.2), e agora ela é a última
+coisa no projeto que ainda se chama `bacbo`. Justamente por ficar sozinha é que
+parece um esquecimento — então o `GameStorageService.ts` ganhou um comentário
+explicando que uma chave de storage é um ENDEREÇO, não um nome, e que trocá-la
+apaga o saldo de quem já jogou.
+
+**Verificado:** `npm run check` (586 testes), `npm run build` e **`npm run test:e2e`
+(31/31)** — esta última é a única que pegaria o erro do §6.1. O bundle saiu com
+**hash idêntico** ao de antes do rename (`index-BjHfnQhb.js`), que é a prova de
+que a mudança foi puramente estrutural.
 
 ---
 
@@ -561,9 +586,9 @@ imports), e **depois** confira à mão os quatro `e2e/*.spec.ts` (§6.1).
 
 ## 10. Recomendação — e o que ficou
 
-As Fases 0 a 6 estão feitas. **Sobra a Fase 7** (rename de `src/features/bac-bo/`
-para `src/features/poker/`), que segue sendo a de menor retorno prático e a mais
-barulhenta no histórico do git.
+**As Fases 0 a 7 estão feitas.** Esta auditoria não tem mais nenhuma fase
+pendente. O que segue abaixo são as duas coisas que a execução revelou e que
+não estavam previstas em fase nenhuma.
 
 ### 10.1 O que a execução deixou em aberto, e não estava em fase nenhuma
 

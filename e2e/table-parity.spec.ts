@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
-import { TOURNAMENT_ENABLED } from '../src/features/bac-bo/tournament/availability.js';
+import { TOURNAMENT_ENABLED } from '../src/features/poker/tournament/availability.js';
 
 /**
  * AS DUAS MESAS SÃO A MESMA MESA.

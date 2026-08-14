@@ -8,6 +8,25 @@ import { pokerHistoryRecordSchema } from '../engine/poker/types';
  * segurança (o jogo recomeça do estado inicial) em vez de quebrar a UI.
  */
 
+/**
+ * O NOME LEGADO É DE PROPÓSITO — não troque para `poker-arena:state`.
+ *
+ * `bacbo` é o primeiro jogo que este projeto foi, e desde a Fase 7 da
+ * limpeza (docs/limpeza.md) esta string é a ÚLTIMA coisa que ainda o
+ * nomeia: a pasta virou `features/poker/`, e é justamente por ficar
+ * sozinha que ela parece um esquecimento. Não é.
+ *
+ * Uma chave de localStorage não é um nome, é um ENDEREÇO. Trocá-la faz o
+ * jogo passar a ler um endereço vazio e **apagar saldo, histórico e
+ * configurações de todo jogador que já abriu o jogo** — sem erro, sem
+ * teste vermelho, sem nada em cena além de um saldo zerado.
+ *
+ * Renomear exige migração de verdade, não find & replace: ler a chave
+ * antiga, gravar na nova, remover a antiga, e manter esse código por
+ * algumas versões (o envelope versionado abaixo é o lugar dele). É
+ * trabalho para uma decisão que não muda nada para quem joga — a string
+ * é invisível.
+ */
 const STORAGE_KEY = 'bacbo-arena:state';
 const CURRENT_VERSION = 3;
 

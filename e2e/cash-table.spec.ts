@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { TOURNAMENT_ENABLED } from '../src/features/bac-bo/tournament/availability.js';
+import { TOURNAMENT_ENABLED } from '../src/features/poker/tournament/availability.js';
 
 /**
  * A MESA DE CASH DE 6 — do lobby até estar sentado.

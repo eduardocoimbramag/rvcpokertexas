@@ -60,7 +60,7 @@ npm run dev          # desenvolvimento (DevTools habilitado via .env.development
 
 ## Arquitetura
 
-Estrutura por domínio (`features/bac-bo`), com regras do jogo em **funções puras** e a UI proibida de calcular resultados:
+Estrutura por domínio (`features/poker`), com regras do jogo em **funções puras** e a UI proibida de calcular resultados:
 
 ```
 src/
@@ -68,7 +68,7 @@ src/
 │   ├── config/env.ts        # Env vars validadas com Zod
 │   ├── lib/random.ts        # Rng injetável: CryptoRng (produção) / SeededRng (testes)
 │   └── components/          # Button, Sheet (bottom sheet acessível)
-└── features/bac-bo/
+└── features/poker/
     ├── engine/              # ★ Toda a lógica do jogo vive aqui
     │   ├── types.ts         # Carta, naipe, duelista, partida — o vocabulário comum
     │   ├── deck.ts          # O baralho francês de 52: montar e tirar do topo
