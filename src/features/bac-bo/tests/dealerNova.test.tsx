@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DEALER_REACTIONS } from '../scene/dealer/DealerController';
 import { IDLE_BEATS } from '../scene/dealer/dealerBeats';
-import { faceForReaction, tearsForReaction } from '../scene/dealer/dealerExpression';
+import { bracosForReaction, faceForReaction, tearsForReaction } from '../scene/dealer/dealerExpression';
 import {
   CORTE_CABECA,
   CORTE_CORPO,
@@ -33,7 +33,7 @@ describe('geometria do rig', () => {
     // certa e nenhuma peça apontando para o arquivo de outra.
     const vistos = new Set<string>();
     for (const [nome, peca] of Object.entries(PARTS)) {
-      expect(peca.src, nome).toMatch(/\/dealernova\/(semvar|varfeliz|vartriste)\/[\w-]+\.svg$/);
+      expect(peca.src, nome).toMatch(/\/dealernova\/(semvar|varfeliz|vartriste|varantebraco)\/[\w-]+\.svg$/);
       // A lágrima é a única peça instanciada duas vezes (uma por olho).
       if (!nome.startsWith('lagrima')) {
         expect(vistos.has(peca.src), `${nome} repete ${peca.src}`).toBe(false);
@@ -113,18 +113,39 @@ describe('rosto por reação', () => {
   });
 
   it('as fases neutras do jogo não mexem no rosto', () => {
-    for (const reacao of ['idle', 'present', 'anticipate', 'shake', 'reveal', 'shrug'] as const) {
+    for (const reacao of ['idle', 'anticipate', 'shake', 'reveal', 'shrug'] as const) {
       expect(faceForReaction(reacao)).toBe('neutra');
+    }
+  });
+
+  it('o convite de mão estendida vem sorrindo, como no mock do designer', () => {
+    expect(faceForReaction('present')).toBe('feliz');
+  });
+});
+
+describe('poses de braço por reação (docs/antebraco.md, solução B)', () => {
+  it('lucro bate palmas; confirmação estende a mão; derrota fica recolhida', () => {
+    expect(bracosForReaction('celebrate')).toBe('palmas');
+    expect(bracosForReaction('present')).toBe('apresenta');
+    // A derrota usa o REPOUSO de propósito: postura recolhida com as
+    // lágrimas por cima — não existe pose de braço triste.
+    expect(bracosForReaction('console')).toBe('repouso');
+  });
+
+  it('toda reação tem pose definida (o Record obriga, o teste documenta)', () => {
+    for (const reacao of DEALER_REACTIONS) {
+      expect(['repouso', 'apresenta', 'palmas']).toContain(bracosForReaction(reacao));
     }
   });
 });
 
 describe('NovaDealer', () => {
-  it.each(DEALER_REACTIONS)('a reação "%s" leva o rosto correspondente', (reaction) => {
+  it.each(DEALER_REACTIONS)('a reação "%s" leva rosto e pose correspondentes', (reaction) => {
     render(<NovaDealer reaction={reaction} />);
     const rig = screen.getByTestId('dealer');
     expect(rig).toHaveAttribute('data-reaction', reaction);
     expect(rig).toHaveAttribute('data-face', faceForReaction(reaction));
+    expect(rig).toHaveAttribute('data-bracos', bracosForReaction(reaction));
   });
 
   it('as lágrimas só entram em cena na derrota', () => {

@@ -19,7 +19,9 @@ export type DealerFace = 'neutra' | 'feliz' | 'triste';
 const FACE_BY_REACTION: Record<DealerReaction, DealerFace> = {
   idle: 'neutra',
   greet: 'feliz',
-  present: 'neutra',
+  // O convite de mão estendida vem SORRINDO no mock do designer — o
+  // gesto é de boas-vindas, e cara neutra com braço aberto lê como tédio.
+  present: 'feliz',
   anticipate: 'neutra',
   shake: 'neutra',
   reveal: 'neutra',
@@ -41,4 +43,36 @@ export function faceForReaction(reaction: DealerReaction): DealerFace {
 
 export function tearsForReaction(reaction: DealerReaction): boolean {
   return REACOES_COM_LAGRIMA.has(reaction);
+}
+
+/**
+ * POSE DE BRAÇOS por reação (docs/antebraco.md, solução B) — os braços
+ * não articulam o cotovelo: trocam de POSE, cada uma uma arte pronta do
+ * designer com o encaixe já resolvido no desenho:
+ *
+ * - `repouso`: mãos cruzadas no ventre (as quatro peças de sempre);
+ * - `apresenta`: mão estendida, convidando o jogador a agir — é a pose
+ *   da confirmação de duelo e das apostas;
+ * - `palmas`: mãos erguidas batendo palmas — a pose do LUCRO.
+ *
+ * A derrota fica no `repouso` de propósito: postura recolhida, mãos no
+ * ventre, com as lágrimas por cima (ver tearsForReaction).
+ */
+export type BracoPose = 'repouso' | 'apresenta' | 'palmas';
+
+const POSE_BY_REACTION: Record<DealerReaction, BracoPose> = {
+  idle: 'repouso',
+  greet: 'repouso',
+  present: 'apresenta',
+  anticipate: 'repouso',
+  shake: 'repouso',
+  reveal: 'repouso',
+  celebrate: 'palmas',
+  console: 'repouso',
+  shrug: 'repouso',
+  apologize: 'repouso',
+};
+
+export function bracosForReaction(reaction: DealerReaction): BracoPose {
+  return POSE_BY_REACTION[reaction];
 }

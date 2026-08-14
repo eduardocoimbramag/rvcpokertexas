@@ -75,24 +75,59 @@ pupila é um oval alto e o olho é largo. Mantendo a proporção nativa, ou sobr
 branco demais dos lados (olhar pequeno, de boneca) ou a íris vazava por baixo da
 pálpebra.
 
-### O encaixe do cotovelo
+### Os braços são POSES PRONTAS (não articulam o cotovelo)
 
-O `y` dos antebraços em `PARTS` não é escolha de gosto: é o único valor em que o
-**eixo do antebraço passa pelo centro do círculo da calota do braço**
-(`PIVOTS.cotovelo*`). Aí a borda do antebraço fica tangente a esse círculo, o
-contorno de uma peça continua no da outra, e o pedaço de calota que sobra em
-volta vira a ponta arredondada do cotovelo — que é o que se vê num braço de
-verdade. Encostadas topo a topo, as duas peças cruzavam os contornos em ângulo e
-abriam um degrau visível. E como o eixo passa pelo centro, **a tangência se
-mantém em qualquer ângulo de flexão**: o cotovelo dobra sem nunca desencaixar.
+Depois de quatro tentativas de articular o cotovelo por rotação (histórico em
+`antebraco.md`), os braços passaram a trabalhar por **troca de pose** — cada
+pose é uma arte pronta do designer (pasta `varantebraco/`), com o encaixe do
+cotovelo resolvido no próprio desenho, até o vinco:
 
-> **Em aberto:** com o cotovelo bem esticado (o aceno do `greet`, a comemoração),
-> a articulação ainda abre um degrau no contorno. A causa é de espessura, não de
-> posição: o antebraço é mais fino (meia-espessura ~26,5) do que a calota do
-> braço é larga (raio ~30,2), então sobra sempre um arco do braço para fora dele.
-> Uma tentativa de resolver redesenhando o braço por cima do antebraço (recortado
-> num disco sobre a calota) foi **revertida** — corrigia o contorno, mas o
-> resultado ficou pior no conjunto.
+| Pose        | Arte                                                   | Quando entra                     |
+| ----------- | ------------------------------------------------------ | -------------------------------- |
+| `repouso`   | As quatro peças de sempre, mãos cruzadas no ventre     | Todas as reações neutras — e a **derrota**, de propósito: postura recolhida com as lágrimas por cima |
+| `apresenta` | Antebraço estendido nascendo no cotovelo direito, palma aberta | `present` (confirmação de duelo e apostas) — o convite para o jogador agir, sorrindo |
+| `palmas`    | Dois antebraços de palma erguida, um por lado          | `celebrate` (lucro) — **batem de verdade**: cada mão afasta e volta ao contato, girando no cotovelo (2,5°, 0,4 s), somada ao pulo do corpo |
+
+**O que a pose troca é o ANTEBRAÇO.** As três artes de `varantebraco/` são
+antebraços — a pasta diz isso no nome —, e todas se penduram no mesmo pivô de
+cotovelo. Os **braços superiores ficam sempre em cena**: escondê-los para montar
+as palmas como braços inteiros deixava o ombro solto, sem nada ligando o corpo à
+mão. Nas palmas a ordem de desenho é **invertida** em relação ao repouso — a mão
+da direita da tela entra primeiro e fica atrás da esquerda, como no desenho de
+referência —, e o repouso mantém a ordem original, que já tinha o encaixe certo.
+
+A troca é crossfade de 200 ms (o mesmo `blendMs` do rosto). A pose `apresenta`
+ganha uma flutuação lenta da mão (±2,5° em 3,2 s), de quem sustenta o gesto. O
+repouso — único que ainda articula — fica **pinado**: cotovelo preso à pose de
+encaixe perfeito (clamp de ±1,5°, a micro-flexão que o idle provou ser
+invisível), com os gestos restantes morando no ombro.
+
+O mapa reação → pose vive em `bracosForReaction` (`dealerExpression.ts`),
+coberto por teste, e o rig expõe `data-bracos` para inspeção.
+
+**O ombro só ABRE, nunca fecha.** O braço superior vive atrás do tronco e o
+antebraço à frente do vestido: girando o ombro para dentro, o braço superior
+afunda no tronco e some enquanto o antebraço continua em cena — o braço parte no
+meio e o cotovelo vira um degrau. Era o que deformava a pose de choro (fechava
+4°) e, em menor grau, a tensão e o pedido de desculpas. O construtor das
+variantes agora trava o ângulo em ≥ 0 (`abre()` em `NovaDealer.tsx`), então
+nenhuma pose consegue fechar por engano. Abrir é seguro: a calota do ombro gira
+em torno do próprio centro, o topo continua coberto pelo deltoide desenhado no
+corpo e o braço só ganha mais pele à mostra.
+
+Com ângulo zero a pose fica **idêntica à de repouso, pixel a pixel** — o encaixe
+perfeito da arte. É o que `console`, `anticipate` e `apologize` usam: a emoção
+vem do corpo (mais baixo e encolhido), do rosto e das lágrimas, não de torcer
+os braços.
+
+### O caixa reage à sessão, não à última mão
+
+Na fase `completed` (o caixa, "BOA PARTIDA!"), a reação sai do **desfecho da
+SESSÃO** — stack final contra o buy-in — e não do desfecho da última mão. A mesa
+é uma sessão: quem perdeu a última mão mas se levantou no lucro levou a noite, e
+uma crupiê chorando ao lado de um "você terminou no positivo" era contradição em
+cena. No `settle` (showdown), segue valendo o desfecho da mão — ali é a ela que
+a mesa reage. (`useDealerReaction.ts`, coberto por teste.)
 
 ### Duas costuras que sustentam o rig
 

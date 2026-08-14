@@ -7,7 +7,7 @@ import { AmbientLayer } from '../scene/ambient/AmbientLayer';
 import { TableScene } from '../scene/TableScene';
 import { Dealer } from '../scene/dealer/Dealer';
 import { DEALER_REACTIONS } from '../scene/dealer/DealerController';
-import { resolveDealerReaction } from '../scene/dealer/useDealerReaction';
+import { resolveDealerReaction, useDealerReaction } from '../scene/dealer/useDealerReaction';
 import { resolveSceneQuality } from '../scene/sceneQuality';
 import type { GamePhase } from '../store/gameStore';
 import { useGameStore } from '../store/gameStore';
@@ -60,6 +60,55 @@ describe('resolveDealerReaction', () => {
   it('fora do veredito, o resultado residual é ignorado', () => {
     expect(resolveDealerReaction('dealing', 'tie')).toBe('shake');
     expect(resolveDealerReaction('betting', 'win')).toBe('present');
+  });
+});
+
+describe('useDealerReaction — o caixa reage à SESSÃO, não à última mão', () => {
+  /** Sonda: expõe o que o hook devolve para o estado atual do store. */
+  function Sonda() {
+    return <p data-testid="sonda">{useDealerReaction()}</p>;
+  }
+
+  /** Sessão fechada com o stack final pedido (buy-in de 5.000). */
+  const sessao = (stackFinal: number) => ({
+    matchId: 'm1',
+    buyIn: 5000,
+    stacks: { player: stackFinal, opponent: 10000 - stackFinal },
+    handsPlayed: 8,
+    button: 'player' as const,
+    over: true,
+  });
+
+  it('perdeu a última mão mas levantou no LUCRO → comemora (o bug do print)', () => {
+    // A mesa é uma sessão: o caixa diz "terminou no positivo", e uma
+    // crupiê chorando ao lado desse letreiro é contradição em cena.
+    useGameStore.setState({
+      phase: 'completed',
+      session: sessao(7895),
+      result: { outcome: 'lose' } as never,
+    });
+    render(<Sonda />);
+    expect(screen.getByTestId('sonda')).toHaveTextContent('celebrate');
+  });
+
+  it('ganhou a última mão mas levantou no PREJUÍZO → lamenta', () => {
+    useGameStore.setState({
+      phase: 'completed',
+      session: sessao(3200),
+      result: { outcome: 'win' } as never,
+    });
+    render(<Sonda />);
+    expect(screen.getByTestId('sonda')).toHaveTextContent('console');
+  });
+
+  it('no showdown (settle) segue valendo o desfecho da MÃO', () => {
+    useGameStore.setState({
+      phase: 'settle',
+      session: sessao(7895),
+      result: { outcome: 'lose' } as never,
+    });
+    render(<Sonda />);
+    expect(screen.getByTestId('sonda')).toHaveTextContent('console');
   });
 });
 

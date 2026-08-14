@@ -60,13 +60,15 @@ const part = (src: string, x: number, y: number, w: number, h: number): RigPart 
  * Recorte da cena — mesma proporção (1:2) do rig anterior, e por isso
  * nenhuma regra de CSS muda com ele.
  *
- * O topo subiu de 40 para 16 quando a FRANJA cresceu: ela passou a ser
- * o ponto mais alto da figura e encostava fora do quadro. Mexer no
- * recorte (e não encolher a franja de volta) mantém a silhueta da
- * modelo — o custo é a figura assentar ~2,7% mais baixa no quadro, o
- * que na tela dá uns 7px e não tira a crupiê do lugar.
+ * O topo subiu de 40 para 6 em dois tempos: primeiro quando a FRANJA
+ * cresceu e virou o ponto mais alto da figura; depois para dar TETO ao
+ * PULO da comemoração — o corpo sobe até 20 unidades no celebrate, e a
+ * franja (repouso em y≈27) precisa continuar dentro do quadro no ápice,
+ * senão telas cujo recorte encosta no topo do palco decapitavam a
+ * crupiê no meio do salto. A folga de baixo comporta o deslocamento: o
+ * vestido termina em y≈879 e o quadro vai até 886.
  */
-export const RIG_VIEWBOX = '1269 16 440 880';
+export const RIG_VIEWBOX = '1269 6 440 880';
 
 /**
  * A proporção que o CSS reserva para a crupiê (`.dealer-rig`),
@@ -100,6 +102,29 @@ export const PARTS = {
      ângulo de flexão — o cotovelo dobra sem nunca desencaixar. */
   antebracoDir: part('semvar/anteb-dir.svg', 1313.9, 546.5, 239.96, 216.62),
   antebracoEsq: part('semvar/anteb-esq.svg', 1423.1, 546.5, 239.86, 216.17),
+
+  /* POSES PRONTAS DE BRAÇO (docs/antebraco.md, solução B) — peças da
+     pasta varantebraco, desenhadas pelo designer JÁ MONTADAS, com o
+     cotovelo resolvido dentro da própria arte (até o vinco do cotovelo
+     vem desenhado). Os nomes de arquivo são do designer e não seguem a
+     convenção dir/esq da tela — o que manda é a geometria medida:
+
+     - apresenta: ANTEBRAÇO+MÃO estendidos, nascendo no cotovelo DIREITO
+       da tela (o braço superior de repouso continua no lugar);
+     - palmas: dois BRAÇOS COMPLETOS (ombro→mão), um por lado, mãos
+       erguidas à frente do peito — substituem as quatro peças de
+       repouso por inteiro. */
+  bracoApresenta: part('varantebraco/braco-dir-vari.svg', 1603.2, 335.3, 201.76, 253.69),
+  /* As duas peças de palma são ANTEBRAÇOS (montá-las como braços
+     inteiros, escondendo o braço superior, deixava o ombro sem conexão).
+     O `y` das duas é o que faz a PONTA delas cair ~7 abaixo do fim da
+     calota do braço superior (que termina em y≈587): assim o antebraço
+     COBRE a calota inteira e o contorno dele vira o contorno do
+     cotovelo. Parando acima dela — como estava —, a calota sobrava por
+     baixo como uma bolha separada, com o próprio contorno cruzando o do
+     antebraço: era o desencaixe visível na comemoração. */
+  bracoPalmasDir: part('varantebraco/braco-esq-vari.svg', 1314.4, 384.9, 223.77, 209.13),
+  bracoPalmasEsq: part('varantebraco/braco-dir-vari-2.svg', 1495.7, 390.6, 166.06, 203.42),
 
   sobrancelha: part('semvar/sobrancelha-padrao.svg', 1403.94, 168, 170.7, 20.95),
   sobrancelhaTriste: part('vartriste/sombrancelha-triste.svg', 1403.94, 166, 170.7, 22.7),

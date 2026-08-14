@@ -7,8 +7,8 @@ import type { DealerProps, DealerReaction } from './DealerController';
 import { DEALER_REACTIONS } from './DealerController';
 import type { IdleBeat } from './dealerBeats';
 import { useIdleBeat } from './dealerBeats';
-import type { DealerFace } from './dealerExpression';
-import { faceForReaction, tearsForReaction } from './dealerExpression';
+import type { BracoPose, DealerFace } from './dealerExpression';
+import { bracosForReaction, faceForReaction, tearsForReaction } from './dealerExpression';
 import type { RigPart } from './dealerRig';
 import { CORTE_CABECA, CORTE_CORPO, PARTS, PIVOTS, RIG_VIEWBOX } from './dealerRig';
 
@@ -101,8 +101,12 @@ const RAIZ = variantes(
        só, repetido, vira metrônomo; o segundo, mais baixo, dá o quique
        de quem está genuinamente animada. E o agacha ANTES de subir
        (scaleY < 1 no impulso) é o que faz o pulo ter peso. */
+    /* Altura do pulo LIMITADA pelo quadro: a franja repousa ~21 unidades
+       abaixo do topo do viewBox, e subir mais que isso corta o cabelo em
+       telas cujo recorte encosta no topo do palco. O peso do gesto vem
+       do squash & stretch, não da altura. */
     celebrate: {
-      y: [0, 6, -38, -8, -26, 0],
+      y: [0, 6, -20, -6, -14, 0],
       scaleY: [1, 0.94, 1.045, 0.98, 1.025, 1],
       rotate: [0, 0, -2.2, 0, 2.2, 0],
       transition: {
@@ -179,82 +183,99 @@ const CABECA = variantes(
 const ABRIR = { dir: 1, esq: -1 } as const;
 type Lado = keyof typeof ABRIR;
 
+/**
+ * Ombro. O ângulo é sempre o de ABRIR, e o clamp abaixo garante que ele
+ * NUNCA feche para dentro — é limite de montagem, não de gosto.
+ *
+ * O braço superior vive ATRÁS do tronco e o antebraço À FRENTE do
+ * vestido. Girando para dentro, o braço superior afunda no tronco e
+ * some, enquanto o antebraço continua em cena: o braço parte no meio e
+ * o cotovelo vira um degrau. Era exatamente o que deformava a pose de
+ * choro (que fechava 4°) e, em menor grau, a tensão e o pedido de
+ * desculpas. Abrir é seguro: a calota do ombro gira em torno do próprio
+ * centro, então o topo continua coberto pelo deltoide desenhado no
+ * corpo, e o braço só ganha mais pele à mostra.
+ *
+ * Com `abre(0)` a pose fica IDÊNTICA à de repouso, pixel a pixel — que
+ * é o encaixe perfeito da arte. Toda reação sem gesto de braço próprio
+ * usa esse zero, e a emoção vem do corpo, do rosto e das lágrimas.
+ */
 function ombro(lado: Lado): Variants {
   const s = ABRIR[lado];
   const acena = lado === 'esq';
+  /** Ângulo de abrir, travado em ≥ 0: fechar quebraria a montagem. */
+  const abre = (graus: number) => s * Math.max(0, graus);
   return variantes(
     { rotate: 0 },
     {
       idle: {
-        rotate: [0, s * 1.5, 0],
+        rotate: [abre(0), abre(1.5), abre(0)],
         transition: { duration: 5.5, repeat: Infinity, ease: 'easeInOut' },
       },
       // Só um braço acena; o outro acompanha de leve, como um corpo real.
       greet: acena
-        ? { rotate: [s * 6, s * 14, s * 6, s * 14, s * 5], transition: { duration: 1.25 } }
-        : { rotate: s * 2 },
-      present: { rotate: s * 7 },
-      anticipate: { rotate: s * -3 },
+        ? {
+            rotate: [abre(8), abre(15), abre(8), abre(15), abre(6)],
+            transition: { duration: 1.25 },
+          }
+        : { rotate: abre(2) },
+      // present/celebrate: os braços de REPOUSO saem de cena (troca de
+      // pose — ver bracosForReaction); ficam neutros para o crossfade
+      // não misturar um gesto pela metade.
+      present: { rotate: abre(0) },
+      // Tensão, choro e desculpa: braços na pose de repouso, EXATA. A
+      // emoção está no corpo (mais baixo), no rosto e nas lágrimas.
+      anticipate: { rotate: abre(0) },
       shake: acena
-        ? { rotate: [s * 2, s * 5, s * 2], transition: { duration: 0.42, repeat: Infinity } }
-        : { rotate: s * 1 },
-      reveal: { rotate: s * 8 },
-      // Braços ABERTOS no ar, no compasso do pulo (meio ciclo do corpo).
-      celebrate: {
-        rotate: [s * 20, s * 30, s * 20],
-        transition: { duration: 0.575, repeat: Infinity, ease: 'easeInOut' },
-      },
-      console: { rotate: s * -4 },
-      shrug: { rotate: s * 12, transition: { type: 'spring', stiffness: 240, damping: 14 } },
-      apologize: { rotate: s * -3 },
+        ? {
+            rotate: [abre(2), abre(6), abre(2)],
+            transition: { duration: 0.42, repeat: Infinity },
+          }
+        : {
+            rotate: [abre(1), abre(3), abre(1)],
+            transition: { duration: 0.42, repeat: Infinity },
+          },
+      reveal: { rotate: abre(8) },
+      celebrate: { rotate: abre(0) },
+      console: { rotate: abre(0) },
+      shrug: { rotate: abre(12), transition: { type: 'spring', stiffness: 240, damping: 14 } },
+      apologize: { rotate: abre(0) },
 
-      alonga: { rotate: s * 10, transition: { duration: 1.1, ease: 'easeInOut' } },
-      ajeitaOmbro: { rotate: lado === 'dir' ? s * 4 : s * -1 },
-      inclina: { rotate: s * 1.5 },
+      alonga: { rotate: abre(10), transition: { duration: 1.1, ease: 'easeInOut' } },
+      ajeitaOmbro: { rotate: abre(lado === 'dir' ? 4 : 0) },
+      inclina: { rotate: abre(1.5) },
     },
   );
 }
 
 /**
- * Cotovelo. O REPOUSO já é dobrado (±12°): a arte vem com os antebraços
- * cruzando à frente e, sem essa abertura, as duas mãos se enfiavam uma
- * dentro da outra. Tudo aqui é medido a partir desse repouso.
+ * Cotovelo dos braços de REPOUSO — PINADO. A expressão dos braços vem
+ * da TROCA DE POSE (docs/antebraco.md, solução B): `apresenta` e
+ * `palmas` são artes prontas do designer com o cotovelo resolvido no
+ * desenho. O repouso, único que articula, fica preso à pose em que o
+ * encaixe das peças é perfeito — o clamp de ±1,5° (a micro-flexão que o
+ * idle provou ser invisível) garante que nenhuma reação o mova por
+ * engano.
  */
 const FLEXAO_REPOUSO = 8;
+const PINO = 1.5;
 
 function cotovelo(lado: Lado): Variants {
   const s = ABRIR[lado];
-  const trabalha = lado === 'esq';
-  /** Ângulo em torno do REPOUSO — todas as poses são desvios dele, para
-   *  mexer na flexão de base não obrigar a recalcular a tabela inteira. */
-  const g = (delta: number) => ({ rotate: s * (FLEXAO_REPOUSO + delta) });
-  const kf = (...deltas: number[]) => deltas.map((d) => s * (FLEXAO_REPOUSO + d));
+  const g = (delta: number) => ({
+    rotate: s * (FLEXAO_REPOUSO + Math.max(-PINO, Math.min(PINO, delta))),
+  });
+  const kf = (...deltas: number[]) => deltas.map((d) => g(d).rotate);
   return variantes(g(0), {
     idle: {
       rotate: kf(0, 1.5, 0),
       transition: { duration: 6, repeat: Infinity, ease: 'easeInOut' },
     },
-    greet: trabalha
-      ? { rotate: kf(-6, -12, -6, -12, -4), transition: { duration: 1.25 } }
-      : g(0),
-    present: g(-3),
-    anticipate: g(2),
-    // DISTRIBUINDO: é o antebraço que trabalha, não o corpo inteiro.
-    shake: trabalha
-      ? { rotate: kf(0, -6, 4, 0), transition: { duration: 0.42, repeat: Infinity } }
-      : { rotate: kf(0, 3, 0), transition: { duration: 0.42, repeat: Infinity } },
-    reveal: g(-4),
-    // Cotovelo ESTICA na comemoração: o braço abre inteiro, não dobrado.
-    celebrate: {
-      rotate: kf(-8, -18, -8),
-      transition: { duration: 0.575, repeat: Infinity, ease: 'easeInOut' },
+    shake: {
+      rotate: kf(0, 1.5, 0.5, 0),
+      transition: { duration: 0.42, repeat: Infinity },
     },
-    console: g(4),
-    shrug: { rotate: s * (FLEXAO_REPOUSO + 8), transition: { type: 'spring', stiffness: 240, damping: 14 } },
-    apologize: g(6),
-
-    alonga: { rotate: s * (FLEXAO_REPOUSO - 6), transition: { duration: 1.1, ease: 'easeInOut' } },
-    ajeitaOmbro: g(lado === 'dir' ? -2 : 1),
+    alonga: { rotate: g(0).rotate, transition: { duration: 1.1, ease: 'easeInOut' } },
   });
 }
 
@@ -437,6 +458,24 @@ function usePiscada(ativo: boolean): boolean {
 const BLEND = { duration: DEALER_TIMINGS.blendMs / 1000, ease: 'easeInOut' } as const;
 const OLHAR_MOLA = { type: 'spring', stiffness: 210, damping: 22 } as const;
 
+/* Animações das POSES DE BRAÇO — constantes de módulo: um alvo recriado
+   a cada render reiniciaria o loop de keyframes toda vez que ela pisca. */
+
+/**
+ * Palmas: giram no COTOVELO (sao antebracos), e o repouso do ciclo e o
+ * CONTATO - cada mao so afasta e volta, que e o gesto de bater palma.
+ * Amplitude curta de proposito: no cotovelo, 2,5 graus ja afastam a mao
+ * o bastante para o olho ler a batida, e mais que isso vira aceno.
+ */
+const PALMA_DIR_BATE = { rotate: [0, -2.5, 0] };
+const PALMA_ESQ_BATE = { rotate: [0, 2.5, 0] };
+const PALMA_RITMO = { duration: 0.4, repeat: Infinity, ease: 'easeInOut' } as const;
+
+/** Apresenta: a mão estendida flutua de leve, como quem sustenta o gesto. */
+const APRESENTA_FLUTUA = { rotate: [0, 2.5, 0] };
+const APRESENTA_RITMO = { duration: 3.2, repeat: Infinity, ease: 'easeInOut' } as const;
+
+
 export function NovaDealer({ reaction, quality = 'high' }: Omit<DealerProps, 'variant'>) {
   const animado = quality === 'high';
   // Os dois recortes são referenciados por url(#id): precisam ser
@@ -451,6 +490,7 @@ export function NovaDealer({ reaction, quality = 'high' }: Omit<DealerProps, 'va
 
   const rosto: DealerFace = beat === 'sorriso' ? 'feliz' : faceForReaction(reaction);
   const chorando = tearsForReaction(reaction);
+  const bracos: BracoPose = bracosForReaction(reaction);
 
   const rotulos = useMemo(() => [reaction, beat], [reaction, beat]);
   const olhar = OLHAR[beat] ?? OLHAR[reaction] ?? OLHAR_PARADO;
@@ -463,6 +503,7 @@ export function NovaDealer({ reaction, quality = 'high' }: Omit<DealerProps, 'va
       data-reaction={reaction}
       data-face={rosto}
       data-beat={beat}
+      data-bracos={bracos}
     >
       <MotionConfig reducedMotion={animado ? 'never' : 'always'}>
         <svg viewBox={RIG_VIEWBOX} aria-hidden="true" focusable="false">
@@ -487,8 +528,13 @@ export function NovaDealer({ reaction, quality = 'high' }: Omit<DealerProps, 'va
               <Peca part={PARTS.cabeloTras} />
             </Joint>
 
-            {/* Braços superiores: ATRÁS do tronco, para o encaixe do ombro
-                sumir sob o deltoide já desenhado no corpo. */}
+            {/* BRACOS POR POSE (docs/antebraco.md, solucao B): o que a
+                pose troca e o ANTEBRACO -- as variantes do designer sao
+                antebracos, com o cotovelo ja resolvido na arte.
+
+                Os bracos superiores ficam SEMPRE em cena, atras do
+                tronco: e deles que todo antebraco nasce, e escondê-los
+                deixava o ombro solto, sem nada ligando o corpo a mao. */}
             <Joint pivot={PIVOTS.ombroDir} variants={OMBRO_DIR}>
               <Peca part={PARTS.bracoDir} />
             </Joint>
@@ -501,18 +547,68 @@ export function NovaDealer({ reaction, quality = 'high' }: Omit<DealerProps, 'va
               <Peca part={PARTS.corpo} />
             </g>
 
-            {/* Antebraços: à FRENTE do vestido e pendurados no ombro — o
-                cotovelo soma a sua flexão à rotação do ombro. */}
-            <Joint pivot={PIVOTS.ombroDir} variants={OMBRO_DIR}>
-              <Joint pivot={PIVOTS.cotoveloDir} variants={COTOVELO_DIR}>
-                <Peca part={PARTS.antebracoDir} />
+            {/* Antebraço da ESQUERDA da tela: a mão que repousa no ventre —
+                vale para repouso E apresenta. */}
+            <motion.g animate={{ opacity: bracos === 'palmas' ? 0 : 1 }} transition={BLEND}>
+              <Joint pivot={PIVOTS.ombroDir} variants={OMBRO_DIR}>
+                <Joint pivot={PIVOTS.cotoveloDir} variants={COTOVELO_DIR}>
+                  <Peca part={PARTS.antebracoDir} />
+                </Joint>
               </Joint>
-            </Joint>
-            <Joint pivot={PIVOTS.ombroEsq} variants={OMBRO_ESQ}>
-              <Joint pivot={PIVOTS.cotoveloEsq} variants={COTOVELO_ESQ}>
-                <Peca part={PARTS.antebracoEsq} />
+            </motion.g>
+
+            {/* Antebraço da DIREITA da tela em repouso (cruza para o ventre). */}
+            <motion.g animate={{ opacity: bracos === 'repouso' ? 1 : 0 }} transition={BLEND}>
+              <Joint pivot={PIVOTS.ombroEsq} variants={OMBRO_ESQ}>
+                <Joint pivot={PIVOTS.cotoveloEsq} variants={COTOVELO_ESQ}>
+                  <Peca part={PARTS.antebracoEsq} />
+                </Joint>
               </Joint>
-            </Joint>
+            </motion.g>
+
+            {/* POSE APRESENTA: a mão estendida, nascendo no MESMO cotovelo
+                direito (aninhada no ombro para acompanhar qualquer resto de
+                movimento dele), com uma flutuação lenta de quem sustenta o
+                convite. */}
+            <motion.g animate={{ opacity: bracos === 'apresenta' ? 1 : 0 }} transition={BLEND}>
+              <Joint pivot={PIVOTS.ombroEsq} variants={OMBRO_ESQ}>
+                <Joint
+                  pivot={PIVOTS.cotoveloEsq}
+                  animate={APRESENTA_FLUTUA}
+                  transition={APRESENTA_RITMO}
+                >
+                  <Peca part={PARTS.bracoApresenta} />
+                </Joint>
+              </Joint>
+            </motion.g>
+
+            {/* POSE PALMAS: os dois ANTEBRACOS do designer, pendurados no
+                cotovelo (e nao no ombro -- montá-los como bracos inteiros
+                era o que deixava o ombro sem conexao).
+
+                A ordem aqui e INVERTIDA em relacao ao repouso: a mao da
+                DIREITA da tela entra primeiro e fica ATRAS da esquerda,
+                como no desenho de referencia. */}
+            <motion.g animate={{ opacity: bracos === 'palmas' ? 1 : 0 }} transition={BLEND}>
+              <Joint pivot={PIVOTS.ombroEsq} variants={OMBRO_ESQ}>
+                <Joint
+                  pivot={PIVOTS.cotoveloEsq}
+                  animate={PALMA_ESQ_BATE}
+                  transition={PALMA_RITMO}
+                >
+                  <Peca part={PARTS.bracoPalmasEsq} />
+                </Joint>
+              </Joint>
+              <Joint pivot={PIVOTS.ombroDir} variants={OMBRO_DIR}>
+                <Joint
+                  pivot={PIVOTS.cotoveloDir}
+                  animate={PALMA_DIR_BATE}
+                  transition={PALMA_RITMO}
+                >
+                  <Peca part={PARTS.bracoPalmasDir} />
+                </Joint>
+              </Joint>
+            </motion.g>
 
             {/* CABEÇA: rosto, olhos, boca e franja giram como uma peça só. */}
             <g clipPath={`url(#${recorteCabeca})`}>
