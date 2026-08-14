@@ -137,19 +137,57 @@ describe('mesa de seis — quem carrega cada disco', () => {
 });
 
 describe('duelo — o disco do dealer, de cada lado', () => {
-  it('o do RIVAL mora na placa dele', () => {
+  /**
+   * O DUELO É ESPELHADO, e o espelho é o do tampo: gire a mesa meia volta
+   * e um lado vira o outro. Nos DOIS lados o disco é a mesma peça solta,
+   * no vão ao lado da mão — nenhum dos dois o pendura na placa do nome.
+   *
+   * Isso é o que separa esta mesa da de SEIS: lá o disco do rival sobe
+   * para a placa porque cinco assentos na metade de cima de um telefone
+   * não deixam vão nenhum (ver `PlatePuck`). Aqui deixam, e herdar aquela
+   * solução custava justamente o espelho.
+   */
+  const vaoDe = (disco: HTMLElement) => disco.closest('.poker-seat__gutter');
+
+  it('nos DOIS lados ele é a mesma peça, solta no vão — nunca na placa', () => {
+    const { unmount } = renderDuelo('player', true);
+    const meu = screen.getByTestId('dealer-button-player');
+    expect(vaoDe(meu)).not.toBeNull();
+    expect(meu.closest('.seat-plate')).toBeNull();
+    unmount();
+
     renderDuelo('opponent', true);
-    const disco = screen.getByTestId('dealer-button-opponent');
-    expect(disco.closest('.seat-plate')).not.toBeNull();
-    expect(disco.closest('.poker-seat__gutter')).toBeNull();
+    const dele = screen.getByTestId('dealer-button-opponent');
+    expect(vaoDe(dele)).not.toBeNull();
+    expect(dele.closest('.seat-plate')).toBeNull();
   });
 
-  it('o SEU fica no vão ao lado da mão, e não na sua placa', () => {
-    /* O pedido foi explícito: no POV ele continua à esquerda. */
+  /**
+   * O LADO em que cada disco cai, que é o ponto do espelho — e a razão de
+   * a asserção olhar a POSIÇÃO do vão na grade, e não uma classe: a linha
+   * é `1fr auto 1fr` (vão · cartas · vão), então o vão de índice 0 é o da
+   * esquerda da tela e o de índice 2 é o da direita. Uma asserção por
+   * classe passaria com os dois discos no mesmo lado.
+   */
+  const ladoDoDisco = (testId: string) => {
+    const disco = screen.getByTestId(testId);
+    const vao = vaoDe(disco);
+    const linha = vao?.parentElement;
+    if (!vao || !linha) throw new Error('o disco não está num vão da linha da mão');
+    return [...linha.children].indexOf(vao) === 0 ? 'esquerda' : 'direita';
+  };
+
+  it('o SEU cai à ESQUERDA da tela — é a sua mão esquerda', () => {
     renderDuelo('player', true);
-    const disco = screen.getByTestId('dealer-button-player');
-    expect(disco.closest('.poker-seat__gutter')).not.toBeNull();
-    expect(disco.closest('.seat-plate')).toBeNull();
+    expect(ladoDoDisco('dealer-button-player')).toBe('esquerda');
+  });
+
+  it('o do RIVAL cai à DIREITA da tela — que é a mão esquerda DELE', () => {
+    /* Quem senta de frente para você tem a própria esquerda do lado de lá
+       do feltro. Pôr o disco dele à esquerda da TELA seria desenhar os
+       dois discos do mesmo lado do tampo — o oposto de espelhar. */
+    renderDuelo('opponent', true);
+    expect(ladoDoDisco('dealer-button-opponent')).toBe('direita');
   });
 
   it('sem o botão, nenhum dos dois lados desenha disco nenhum', () => {

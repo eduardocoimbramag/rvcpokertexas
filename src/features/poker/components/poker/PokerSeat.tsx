@@ -7,7 +7,7 @@ import type { Card, Duelist } from '../../engine/types';
 import { Monogram } from '../AvatarBadge';
 import { Card3D } from '../Card3D';
 import { ChipRack } from './ChipRack';
-import { PlatePuck, SeatPuck } from './SeatPuck';
+import { SeatPuck } from './SeatPuck';
 
 export interface PokerSeatProps {
   side: Duelist;
@@ -123,18 +123,8 @@ export function PokerSeat({
      layout: ela sai das suas duas fechadas com o que a mesa abriu. Do
      lado do rival a linha simplesmente não nasce, e a placa fica de uma
      linha só. */
-  /* O DISCO DO DEALER DO RIVAL mora NA PLACA dele, e o seu no vão ao
-     lado da sua mão. Ver `PlatePuck`: do outro lado do feltro não há
-     pano sobrando — a placa do rival é a peça mais alta daquele lado, e
-     é nela que um disco se lê. Do seu lado sobra vão, e ali ele fica
-     onde um disco fica numa mesa de verdade. */
-  const platePuck = button && !you && (
-    <PlatePuck kind="dealer" name={name} you={false} testId={`dealer-button-${side}`} />
-  );
-
   const identityBody = (
     <>
-      {platePuck}
       <span className="seat-plate__crest" data-testid={`seat-avatar-${side}`} aria-hidden="true">
         <Monogram name={name} you={you} />
       </span>
@@ -200,18 +190,16 @@ export function PokerSeat({
      para o meio não está mais aqui, está na aposta da rua. */
   const rack = <ChipRack side={side} stack={stack} instant={instant} />;
 
-  const puck = button && you && (
-    /* O SEU BOTÃO DO DEALER, ao lado da MÃO — que é onde ele fica numa
-       mesa de verdade: um disco em cima do pano, na frente de quem o
-       tem, e não um selo dentro da plaquinha do nome.
-       Ele fica à SUA ESQUERDA, no vão que sobra do seu lado do feltro.
-       Do lado do rival não sobra vão nenhum, e por isso o dele subiu
-       para a placa (ver `platePuck` acima) — a mesma peça, no único
-       lugar daquele lado da mesa em que um disco cabe inteiro.
-       Aqui ele não diz quem paga blind nenhum — a entrada desta mesa é
-       igual dos dois lados. Diz uma coisa só, e ela decide mão: a ORDEM
-       DA PALAVRA. Ver docs/dmisterioso.md. */
-    <SeatPuck kind="dealer" name={name} you testId={`dealer-button-${side}`} />
+  /* O BOTÃO DO DEALER, ao lado da MÃO de quem o tem — que é onde ele
+     fica numa mesa de verdade: um disco em cima do pano, na frente do
+     dono, e não um selo pendurado na plaquinha do nome.
+     Aqui ele não diz quem paga blind nenhum — a entrada desta mesa é
+     igual dos dois lados. Diz uma coisa só, e ela decide mão: a ORDEM
+     DA PALAVRA. Ver docs/dmisterioso.md.
+     É a MESMA peça nos dois lados, e é isso que faz o duelo ler como uma
+     mesa vista de cima (ver o espelho na linha da mão, abaixo). */
+  const puck = button && (
+    <SeatPuck kind="dealer" name={name} you={you} testId={`dealer-button-${side}`} />
   );
 
   const hand = (
@@ -257,16 +245,26 @@ export function PokerSeat({
           nenhum. Antes as duas peças pendiam da borda das cartas e
           ficavam coladas nelas, com todo o vão sobrando do lado de fora.
 
-          O DISCO SÓ OCUPA VÃO DO SEU LADO. Do lado do rival ele subiu
-          para a placa, e o vão que ele deixou não vira buraco: a placa
-          do rival é uma peça larga e centrada, e o que estava no vão
-          dela era um disco de 30px a meia tela do nome que ele
-          qualifica. Perto do nome ele diz de quem é sem que ninguém
-          precise seguir uma linha imaginária até a placa. */}
+          OS DOIS LADOS SÃO ESPELHADOS, e o espelho é o do tampo: gire a
+          mesa meia volta e um lado vira o outro. Do seu lado o disco fica
+          à ESQUERDA e o montante à direita; do lado do rival, o contrário
+          — porque a ESQUERDA DELE é a direita da tela. Quem senta de
+          frente para você tem a própria mão esquerda do lado de lá do
+          feltro, e é ali que o disco dele descansa numa mesa de verdade.
+
+          O disco do rival já morou pendurado na placa do nome (ver
+          `PlatePuck`). Aquilo é a solução da MESA DE SEIS, onde os
+          assentos de rival são estreitos por definição — cinco na metade
+          de cima de um telefone — e um disco na fileira encolhia até os
+          8px em que não se lê mais. No DUELO não existe esse aperto: a
+          linha do rival é esta mesma grade de três colunas, com um vão
+          inteiro sobrando à direita. Herdar ali a solução de um problema
+          que este lado não tem custava o espelho — e o espelho é o que
+          faz a mesa ler como mesa. */}
       <div className="poker-seat__line">
         <span className="poker-seat__gutter">{you ? puck : rack}</span>
         {hand}
-        <span className="poker-seat__gutter">{you ? rack : null}</span>
+        <span className="poker-seat__gutter">{you ? rack : puck}</span>
       </div>
       {you && identity}
     </section>
