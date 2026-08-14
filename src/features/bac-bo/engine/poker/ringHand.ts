@@ -1,6 +1,6 @@
 import type { Rng } from '@/shared/lib/random';
 
-import { buildDeck } from '../rules';
+import { buildDeck } from '../deck';
 import type { Card } from '../types';
 import {
   legalActionsFor,

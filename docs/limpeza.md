@@ -6,10 +6,25 @@ Este documento levanta o que ainda está no repositório, quanto pesa, **o que �
 seguro remover** e em que ordem — com o método de medição descrito para que
 qualquer número aqui possa ser reconferido.
 
-> **Estado: Fases 1 e 2 EXECUTADAS.** O resto (Fases 3 a 7) continua sendo
-> levantamento, e a Fase 3 em diante segue bloqueada pela decisão de produto da
-> Fase 0. A seção §7 traz o plano por fases, cada uma com o comando de
-> verificação que precisa passar antes da fase seguinte.
+> **Estado: Fases 0 a 6 EXECUTADAS.** A Fase 0 foi decidida — **o blackjack não
+> volta** — e o jogo inteiro saiu do repositório. Só a **Fase 7** (rename da
+> pasta `bac-bo/`) continua pendente, e ela é a de menor retorno.
+>
+> **O que a remoção deu, medido:** 30 arquivos apagados (2 criados:
+> `engine/deck.ts` e o teste dele), **~12.000 linhas** a menos, `index.css` de 10.011 → 8.275 linhas, bundle JS de 720 → 652 kB
+> (gzip 218 → 197 kB) e CSS de 138 → 116 kB (gzip 27,7 → 23,4 kB). A suíte caiu
+> de 806 para 586 casos e **deixou de ter testes pulados** — os 5 que havia eram
+> do modo desligado. `npm run check`, `npm run build` e as suítes e2e
+> `cash-table` e `game-flow` passam.
+>
+> ⚠️ **As seções §1 a §6 abaixo são o LEVANTAMENTO ORIGINAL, preservado como
+> estava.** Vários números e afirmações delas foram desmentidos na execução — as
+> correções estão marcadas na fase em que apareceram (§7). Cinco erros valem
+> destaque: `--color-arena-700` e `podium.ts` **não podiam sair**; `rankValue`
+> **não** vai para o `deck.ts`; a "armadilha" do enum `ForcedDeal` **não
+> existia**; e a §4.4 não listava dois arquivos de teste que precisavam de
+> tratamento (`bracketAdvance.test.tsx` e o `components.test.tsx`, que teve de
+> ser fatiado em vez de apagado).
 >
 > ⚠️ **Uma correção ao próprio documento**, achada ao executar a Fase 1: a §5.3
 > dava `--color-arena-700` como "declarada e nunca lida". **Está errado.** O
@@ -343,12 +358,21 @@ existe, é usado e é legítimo (um dado como avatar de perfil).
 A ordem importa: cada fase deixa o projeto verde antes da seguinte. **Um commit
 por fase**, para que qualquer uma possa ser revertida sozinha.
 
-### Fase 0 — Decisão de produto (bloqueia tudo)
+### Fase 0 — Decisão de produto ✅ DECIDIDA: **o blackjack não volta**
 
-**O modo blackjack vai voltar?** Se sim, pare aqui: o flag já faz o trabalho e
-esta auditoria vira uma lista de "não mexer". Se não, siga.
+**O modo blackjack vai voltar?** Não. A decisão foi tomada em 14/08/2026, ao
+pedir a execução das Fases 3 a 6 — pedir a remoção *é* a resposta, e nenhuma
+fase daquele bloco faz sentido sob a outra hipótese.
 
-Não é decisão técnica. O código está saudável, testado e desligado de propósito.
+Não era decisão técnica: o código estava saudável, testado e desligado de
+propósito. O que mudou não foi a qualidade dele, foi o produto — a casa joga
+Texas Hold'em, em duas mesas (1v1 e cash de 6), e manter um segundo jogo inteiro
+de pé custava manutenção, tempo de CI e carga mental em cada mexida no
+`tournamentStore`.
+
+**O caminho de volta, se alguém mudar de ideia:** `git revert` dos commits das
+Fases 3 a 6. Eles foram feitos em fases justamente para isso, e o histórico
+guarda o jogo inteiro — engine, telas, chaveamento, mesa única e testes.
 
 ### Fase 1 — Remoções sem risco ✅ FEITA
 
@@ -381,40 +405,102 @@ Não é decisão técnica. O código está saudável, testado e desligado de pro
 app rodando: 20 peças carregadas, nenhuma de `/dealer/`, zero 404 e zero erro de
 console.
 
-### Fase 3 — Telas e componentes do blackjack (~1 h)
+### Fase 3 — Telas e componentes do blackjack ✅ FEITA
 
-Remover os 17 arquivos da §4.1 e os quatro ramos de `stage` em
-`TournamentApp.tsx`. O TypeScript vai apontar cada ponta solta — siga os erros
-até o `tsc` ficar limpo.
+- ✅ Os 17 arquivos da §4.1, **confirmados por corte de grafo** (refiz a medição
+  do §3.2 antes de apagar: o corte devolveu exatamente a mesma lista)
+- ✅ Os quatro ramos de `stage` em `TournamentApp.tsx` e seus imports
+- ✅ `tests/blaze.test.ts`, `tests/tableSeries.test.ts` e — **fora da lista da
+  §4.4** — `tests/bracketAdvance.test.tsx`, que testava a `BracketScreen`
+- ✅ `tests/components.test.tsx` foi **fatiado, não apagado**: três dos seus
+  `describe` eram de blackjack (`HandsArena`, `CardVeil`, `RoundEndBanner`, 671
+  linhas contíguas) e os outros sete são do poker vivo. A §4.4 não registrava
+  isso.
 
-**Verificar:** `npm run check && npm run build` + jogar uma sessão cash inteira.
+`LocalBlackjackGameEngine.ts` ficou para a Fase 4: `createGameEngine.ts` ainda o
+importava, e apagar um sem o outro deixaria a fase vermelha.
 
-### Fase 4 — Engine e regras (~1 h, a mais delicada)
+**Verificado:** `npm run check` + `npm run build` + a suíte e2e do cash.
+Bundle: 720 kB → 660 kB (gzip 218 → 200 kB).
 
-1. Criar `engine/deck.ts` com `buildDeck`, `drawCard`, `rankValue`, `DECK_COUNT`
-2. Repontar os 5 importadores do poker para o módulo novo
-3. Apagar `engine/rules.ts`, `engine/LocalBlackjackGameEngine.ts`,
-   `engine/createGameEngine.ts`
-4. Fatiar `engine/types.ts` (§4.2) — **atenção ao enum `ForcedDeal`**
-5. Migrar os casos de `tests/rules.test.ts` que cobrem o baralho para
-   `tests/deck.test.ts`; apagar o resto
+### Fase 4 — Engine e regras ✅ FEITA
 
-**Verificar:** `npm run check` — os testes de poker são a rede aqui, e são
-densos (`pokerEngine`, `pokerRules`, `ringHand`, `sidePots`, `betting`).
+- ✅ `engine/deck.ts` criado com `buildDeck`, `drawCard` e `DECK_COUNT`
+- ✅ Os importadores do poker repontados (`LocalPokerEngine`, `ringHand`,
+  `cashTable`)
+- ✅ `LocalBlackjackGameEngine.ts`, `createGameEngine.ts` e `tests/engine.test.ts`
+- ✅ `GameEngine.ts` aparado: a interface `GameEngine` (o contrato do 21) saiu
+  inteira; ficaram `FindMatchParams`, `SetStakeParams` e `GameEngineError`, que
+  o poker usa
+- ✅ Casos de baralho migrados de `tests/rules.test.ts` para `tests/deck.test.ts`
 
-### Fase 5 — Store do torneio (~1–2 h, a mais arriscada)
+**Duas correções ao levantamento, achadas aqui:**
 
-Remover de `tournamentStore.ts` o estado e as ações de chaveamento/mesa única.
-**Faça por último e sozinho num commit** — são 2.192 linhas de estado
-entrelaçado, e o modo cash depende do mesmo objeto.
+1. **`rankValue` NÃO vai para o `deck.ts`.** A §4.2 o dava como usado por
+   `poker/handRank.ts` — não é: aquele arquivo importa só `{ Card, CardRank }`, e
+   o `rankValue` que aparece nele é uma **variável de laço** homônima. O
+   `rankValue` de `rules.ts` é pontuação de **21** (Ás = 11), e o poker tem a
+   própria tabela (`POKER_RANK_VALUE`, Ás = 14). Levá-lo junto seria carregar
+   regra de blackjack para dentro do baralho do poker.
+2. **A "armadilha" do enum `ForcedDeal` não existe.** A §4.2 avisava que ele era
+   usado pelo `DevToolsPanel` e pelo `LocalPokerEngine` e que o valor
+   `'blackjack'` teria de sair sozinho. Na verdade o DevTools usa
+   `ForcedPokerDeal` (de `poker/types.ts`) e o `ForcedDeal` de blackjack só era
+   usado por `rules.ts` — morreu inteiro com ele, sem cirurgia.
 
-**Verificar:** `npm run check` + `npm run test:e2e` (a suíte `cash-table.spec.ts`
-é a que prova que a mesa continua de pé).
+Também: **`HistoryEntry` não era reusado pelo poker** (§8 dizia que sim). O
+poker tem `PokerHistoryEntry`/`RingHistoryEntry` próprios.
 
-### Fase 6 — CSS (~30 min)
+### Fase 5 — Store do torneio ✅ FEITA
 
-Remover os 33 blocos da §4.3. Sem risco de compilação (CSS não quebra build) —
-o risco é remover um bloco a mais. Faça bloco a bloco, conferindo em tela.
+- ✅ Estado (`bracket`, `tableSeries`, `activeMatch`, `simulating`, `prizePaid`),
+  as 5 ações (`playMyMatch`, `finishMyMatch`, `backToBracket`,
+  `settleTableRound`, `showTableChampion`), `runSimulation`, `chargeEntryFee`,
+  os 4 estágios e 9 seletores
+- ✅ `bracket.ts`, `tableRules.ts`, `engine/rules.ts` e os testes deles
+- ✅ `e2e/tournament-flow.spec.ts` (estava 100% pulado pelo flag)
+- ✅ `blackjackScore`/`simulateBotMatch` de `simulation.ts`
+- ✅ `BRACKET_ENABLED` e `tests/createLobbyFee.test.tsx` — o arquivo inteiro era
+  um `describe.skipIf(!BRACKET_ENABLED)`, e a premissa dele ("reativar numa linha
+  reativa a cobertura") deixou de valer quando o modo saiu
+- ✅ O fatiamento de `engine/types.ts` foi **fechado aqui**, e não na Fase 4: ele
+  dependia de o store soltar o `RoundResult`. Sobraram carta, naipe, duelista,
+  oponente e partida — todo o cluster de 21 (mão, ação, fase, lance, estado da
+  rodada) saiu.
+
+**`startTournament` ganhou uma saída explícita** (`if (s.format !== 'cash') return`).
+Sem ela, uma sala de formato não-cash cairia num `if` sem `else` — um botão que
+não faz nada, que é pior que um erro.
+
+**`podium.ts` NÃO saiu.** A §4.2 o listava com o blackjack, mas
+`screens/PrizeSplit.tsx` — tela viva do lobby — importa o `PODIUM_METALS`.
+
+**Verificado:** `npm run check`, `npm run build`, e as suítes e2e `cash-table` +
+`game-flow` (28 passaram).
+
+### Fase 6 — CSS ✅ FEITA
+
+Os 33 blocos da §4.3 saíram, mais o que eles arrastaram: **72 regras, 6
+`@keyframes` órfãos e 3 blocos `@media` que esvaziaram**. `index.css`: 10.011 →
+8.275 linhas. CSS do bundle: 138 kB → 116 kB (gzip 27,7 → 23,4 kB).
+
+Três armadilhas que a remoção "bloco a bloco" teria pego mal, e por isso ela foi
+feita por script com dry-run:
+
+1. **Comentário não é seletor.** A primeira versão do script tratava o
+   comentário anterior como parte do seletor e ia levando junto o cabeçalho da
+   seção **viva** da mesa de cash.
+2. **Lista de seletores pode ser mista.** A regra
+   `.nameplate.is-turn .nameplate__dot, .turn-wait__dot` tem um seletor morto e
+   um **vivo** (`.turn-wait__dot`, do `PokerArena`). Apagar a regra inteira
+   mataria a animação do ponto da vez; o script passou a **podar** a lista.
+3. **`@keyframes` sobrevivem calados.** `nameplate-breathe` continua vivo porque
+   `.turn-wait__dot` o anima — enquanto outros seis ficaram órfãos e saíram.
+
+**Rede de segurança usada:** as 114 classes que sumiram do CSS foram cruzadas,
+uma a uma, contra o `src` — nenhuma aparece em nenhum `.ts`/`.tsx`. Depois,
+conferência em tela: home, vitrine e a mesa de Hold'em em jogo (placas, fichas,
+pote, board, botão do dealer e leitura da mão), sem erro de console nem 404.
 
 ### Fase 7 — Rename da pasta (~30 min)
 
@@ -473,14 +559,34 @@ imports), e **depois** confira à mão os quatro `e2e/*.spec.ts` (§6.1).
 
 ---
 
-## 10. Recomendação
+## 10. Recomendação — e o que ficou
 
-**Faça as Fases 1 e 2 agora** — são 30 minutos, risco quase nulo, e tiram
-176 KB de assets e arquivos que ninguém defende.
+As Fases 0 a 6 estão feitas. **Sobra a Fase 7** (rename de `src/features/bac-bo/`
+para `src/features/poker/`), que segue sendo a de menor retorno prático e a mais
+barulhenta no histórico do git.
 
-**As Fases 3 a 6 dependem da Fase 0.** Se a resposta for "o blackjack não
-volta", vale muito: tira ~5.500 linhas, 22% do tempo de teste e um jogo
-inteiro de carga mental de quem for mexer no `tournamentStore` amanhã.
+### 10.1 O que a execução deixou em aberto, e não estava em fase nenhuma
 
-**A Fase 7 (rename) é a de menor retorno prático** e a mais barulhenta no
-histórico do git — deixe por último, e só quando as outras estiverem estáveis.
+Uma coisa: **a união `TournamentFormat` ainda é `'bracket' | 'table' | 'cash'`**,
+embora só o `cash` tenha caminho de execução. Ela sobrevive porque cinco telas
+ainda ramificam por ela (`LobbyScreen`, `LobbyBrowseScreen`,
+`TournamentSettingsSheet`, `PrizeSplit`, `CreateLobbySheet`), junto com
+`formatLabel`, `TOURNAMENT_FORMATS`, `sizesFor`, `defaultSizeFor`,
+`TABLE_TARGET_WINS`, `tablePrize`, `prizeFor` e `PRIZE_SHARES`.
+
+Colapsar tudo isso para `'cash'` é um refactor de interface que **nenhuma fase
+desta auditoria escopou** — e por isso não foi feito por conta própria. O que
+ficou no lugar é uma saída explícita em `startTournament`
+(`if (s.format !== 'cash') return`), para que nenhuma sala de formato morto caia
+num `if` sem `else`.
+
+Se for encarar, é uma Fase 8, e o roteiro é: colapsar a união em `types.ts`,
+seguir os erros do `tsc` pelas cinco telas, e apagar o que ficar órfão do prêmio
+de pódio (que só o chaveamento pagava).
+
+### 10.2 Um teste instável que continua lá
+
+`tests/seating.test.ts > levantar sem fichas não credita nada` segue piscando
+(ver §9). Não foi tocado por nenhuma fase, e o sintoma agora está visível: erro
+de **1 crédito** (`expected 10009 to be 10010`), o que cheira a arredondamento
+na conta do caixa, não a corrida de timer. Vale investigar por si só.

@@ -7,26 +7,12 @@ import { TIMINGS } from '../animations/timings';
 import { ACTION_SECONDS, SHOW_CARDS_SECONDS } from '../store/gameStore';
 import { MIN_STAKE, afterHouseEdge, cashOutValue } from '../engine/credits';
 import { audioManager } from '../services/AudioManager';
-import type { Match, RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
-import {
-  activeRoundIndex,
-  createBracket,
-  isEliminated,
-  isThirdPlaceMatch,
-  otherPendingMatches,
-  placementOf,
-  recordMatchResult,
-  tournamentChampion,
-  yourPendingMatch,
-} from './bracket';
 import {
   botChatLine,
   chatMessage,
   makeBots,
   makeLobbyListings,
-  shuffle,
-  simulateBotMatch,
   systemMessage,
   you,
 } from './simulation';
@@ -39,12 +25,8 @@ import type { CashTableView } from './cashTable';
 import { dealDurationMs } from './cashTable';
 import type { CashHandResult } from './cashEngine';
 import { CashTableEngine } from './cashEngine';
-import { asOpponent, seatOf } from './seatOrder';
-import type { TableRoundVerdict, TableStanding, TableWins } from './tableRules';
-import { awardTableWins, judgeTableRound } from './tableRules';
+import { seatOf } from './seatOrder';
 import type {
-  Bracket,
-  BracketSize,
   ChatMessage,
   LobbyListing,
   LobbyVisibility,
@@ -56,7 +38,6 @@ import type {
 import {
   CASH_DEFAULT_BLIND,
   CASH_DEFAULT_BUY_IN,
-  TABLE_TARGET_WINS,
   lobbyPasswordMatches,
 } from './types';
 
@@ -105,17 +86,12 @@ export type TournamentStage =
   | 'closed'
   | 'browse'
   | 'lobby'
-  | 'bracket'
-  | 'match'
-  /** Mesa única: a série inteira acontece numa tela só. */
-  | 'table'
   /** Poker cash: as seis cadeiras vazias, antes da primeira mão. */
   | 'seating'
   /** Poker cash: a mesa de 6 montada, com fichas, pote e board. */
   | 'cash'
   /** Poker cash: o CAIXA — o que se levou da mesa, depois de levantar. */
-  | 'cashout'
-  | 'champion';
+  | 'cashout';
 
 /**
  * Estágios em que a MESA ESTÁ EM CENA — exatamente os que desenham
@@ -129,12 +105,7 @@ export type TournamentStage =
  * enquadramentos. Quem acrescentar um estágio com mesa em cena tem um
  * lugar só para lembrar.
  */
-export const TABLE_STAGES: ReadonlySet<TournamentStage> = new Set([
-  'match',
-  'table',
-  'cash',
-  'cashout',
-]);
+export const TABLE_STAGES: ReadonlySet<TournamentStage> = new Set(['cash', 'cashout']);
 
 /** O lance que a mesa acabou de anunciar, para o alto-falante. */
 export interface CashMoveCall {
@@ -266,45 +237,6 @@ export interface CashShowPrompt {
  */
 export type SeatClaim =
   { ok: true; seatIndex: number } | { ok: false; reason: 'taken' | 'seated' | 'closed' };
-
-/** Um assento da mesa única, com o contador da série. */
-export interface TableSeriesSeat {
-  player: TournamentPlayer;
-  /** Rodadas vencidas (0 a TABLE_TARGET_WINS). */
-  wins: number;
-}
-
-/**
- * A série da MESA ÚNICA: todos no mesmo feltro, rodada após rodada, até
- * alguém chegar a 3 vitórias. As regras de empate e desempate vivem em
- * ./tableRules — aqui fica só o estado que a mesa mostra.
- */
-export interface TableSeries {
-  seats: TableSeriesSeat[];
-  /** Rodada corrente (1-based), contando as de desempate. */
-  round: number;
-  /** Quem joga a rodada corrente; quem está fora ASSISTE. */
-  playingIds: string[];
-  /** A rodada corrente é uma rodada de desempate. */
-  tiebreak: boolean;
-  /** Campeão da série (chegou a 3); `null` enquanto ela corre. */
-  championId: string | null;
-  /** Veredito da última rodada julgada — é o que a mesa anuncia. */
-  lastVerdict: TableRoundVerdict | null;
-}
-
-/**
- * Dados prontos para o TournamentMatchScreen abrir a mesa. A partida
- * NÃO nasce decidida: a tela joga a mão de blackjack de verdade (motor
- * próprio, hit/stand interativos) e devolve o desfecho em
- * `finishMyMatch(result)`.
- */
-export interface ActiveMatch {
-  bracketMatchId: string;
-  match: Match;
-  /** É a disputa do 3º lugar (muda o que está em jogo na tela). */
-  thirdPlace: boolean;
-}
 
 /** Características escolhidas na criação da sala (todas de uma vez). */
 export interface CreateLobbyOptions {
@@ -461,14 +393,6 @@ export interface TournamentState {
    * não oferece nenhuma outra decisão.
    */
   cashCanLeave: boolean;
-  bracket: Bracket | null;
-  /** Série da mesa única; `null` fora do formato `table`. */
-  tableSeries: TableSeries | null;
-  activeMatch: ActiveMatch | null;
-  /** Bots preenchendo/simulando — trava botões durante a animação. */
-  simulating: boolean;
-  /** Garante que o prêmio ao campeão seja creditado uma única vez. */
-  prizePaid: boolean;
 
   openBrowse: () => void;
   createLobby: (options: CreateLobbyOptions) => void;
@@ -498,18 +422,6 @@ export interface TournamentState {
   cashAnswerShow: (show: boolean) => void;
   /** Levanta da mesa de cash e volta ao salão com as fichas que sobraram. */
   leaveCashTable: () => void;
-  playMyMatch: () => void;
-  /** Grava no chaveamento o resultado que a mesa acabou de decidir. */
-  finishMyMatch: (result: RoundResult) => void;
-  backToBracket: () => void;
-  /**
-   * Julga a rodada da mesa única a partir das mãos do showdown: aplica os
-   * pontos, decide desempate/campeão e monta a rodada seguinte. Paga o
-   * prêmio (ou cobra a taxa) no instante em que a série fecha.
-   */
-  settleTableRound: (standings: readonly TableStanding[]) => void;
-  /** Encerra a mesa única e abre a coroação. */
-  showTableChampion: () => void;
   leaveTournament: () => void;
 }
 
@@ -1443,10 +1355,6 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       claiming: null,
       claimError: null,
       seatingClock: 0,
-      bracket: null,
-      tableSeries: null,
-      activeMatch: null,
-      simulating: false,
       feePaid: false,
       cashTable: null,
       cashLegal: [],
@@ -1557,65 +1465,6 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     );
   };
 
-  /**
-   * Cobra a taxa de entrada do jogador — o ÚNICO ponto do torneio que
-   * mexe no saldo para baixo, e só na derrota que o elimina. Antes disso
-   * nada é debitado: sala montada e desfeita, ou torneio que nunca
-   * começou, não custam crédito nenhum.
-   */
-  const chargeEntryFee = (): void => {
-    const s = get();
-    if (s.feePaid || s.entryFee <= 0) return;
-    set({ feePaid: true });
-    useGameStore.getState().applyBalanceDelta(-s.entryFee);
-  };
-
-  /**
-   * Simula as partidas dos bots na rodada atual (escalonadas) e, quando a
-   * rodada fecha, avança: espera o jogador se ele seguir vivo, ou continua
-   * sozinha até coroar o campeão se ele já foi eliminado.
-   */
-  const runSimulation = (): void => {
-    set({ simulating: true });
-    const tick = (): void => {
-      const s = get();
-      const b = s.bracket;
-      if (!b) return;
-      const champ = tournamentChampion(b);
-      if (champ) {
-        // Pódio pago uma única vez, pela colocação: 50/30/20 do bolo dos
-        // derrotados. A disputa do 3º lugar corre ANTES da final, então
-        // quando sai o campeão as quatro posições já estão definidas.
-        if (!s.prizePaid) {
-          const place = placementOf(b, YOU_ID);
-          const prize = place ? prizeFor(place, s.entryFee, s.size) : 0;
-          if (prize > 0) useGameStore.getState().applyBalanceDelta(prize);
-          set({ prizePaid: true });
-        }
-        schedule(() => set({ stage: 'champion', simulating: false }), 1000);
-        return;
-      }
-      const [target] = otherPendingMatches(b, YOU_ID);
-      if (target) {
-        const { scoreA, scoreB } = simulateBotMatch();
-        schedule(() => {
-          const cur = get().bracket;
-          if (cur) set({ bracket: recordMatchResult(cur, target.id, scoreA, scoreB) });
-          tick();
-        }, 750);
-        return;
-      }
-      // Sem outras partidas pendentes nesta rodada.
-      if (yourPendingMatch(b, YOU_ID)) {
-        set({ simulating: false }); // é a vez do jogador
-        return;
-      }
-      // Rodada fechada e o jogador não está na próxima → segue simulando.
-      schedule(tick, 500);
-    };
-    tick();
-  };
-
   return {
     stage: 'closed',
     visibility: 'public',
@@ -1655,11 +1504,6 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     cashShown: false,
     cashCanLeave: false,
     cashBroke: false,
-    bracket: null,
-    tableSeries: null,
-    activeMatch: null,
-    simulating: false,
-    prizePaid: false,
 
     openBrowse: () => {
       clearTimers();
@@ -1733,11 +1577,6 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
               : 'Sala criada. Ela já aparece na lista de salas para todo mundo.',
           ),
         ],
-        bracket: null,
-        tableSeries: null,
-        activeMatch: null,
-        simulating: false,
-        prizePaid: false,
       });
       scheduleFill();
     },
@@ -1779,11 +1618,6 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         readyIds: [host.id], // o anfitrião da sala já conta como presente
         bannedNames: [],
         chat: [systemMessage(`Você entrou em ${lobby.name}.`)],
-        bracket: null,
-        tableSeries: null,
-        activeMatch: null,
-        simulating: false,
-        prizePaid: false,
       });
       // Os convidados confirmam ao longo dos próximos segundos; o
       // anfitrião não tem o que confirmar (a sala é dele).
@@ -1853,10 +1687,18 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
          e nada é debitado aqui, porque a cobrança acontece na derrota e
          só nela. No cash é a COMPRA, e ela sai do saldo quando a mesa
          abre (ver `openTableIfFull`). */
-      const emJogo = s.format === 'cash' ? s.buyIn : s.entryFee;
-      if (useGameStore.getState().balance < emJogo) return;
+      /* Só o CASH tem mesa para abrir. O chaveamento e a mesa única de
+         21 saíram do projeto (docs/limpeza.md, Fase 5): não há mais
+         estágio nem tela para eles. A união `TournamentFormat` ainda os
+         nomeia porque a vitrine e a folha de criação leem o campo, mas
+         nenhuma das duas os oferece — e sair aqui é EXPLÍCITO de
+         propósito: um `if` sem `else` seria um botão que não faz nada. */
+      if (s.format !== 'cash') return;
+
+      /* O saldo precisa COBRIR a COMPRA, e ela sai do saldo quando a
+         mesa abre (ver `openTableIfFull`), não aqui. */
+      if (useGameStore.getState().balance < s.buyIn) return;
       clearTimers();
-      const seeded = shuffle([you(), ...s.members.filter((m) => !m.isYou)]);
 
       /* POKER CASH: ninguém senta por sorteio. As cadeiras entram VAZIAS
          e cada um escolhe a sua — e é a escolha que decide quem fica à
@@ -1865,52 +1707,15 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
          Quantas cadeiras é o TAMANHO DA SALA, escolhido na criação: a
          mesa vai de três a seis, e o número deixou de ser seis cravado
          quando a folha passou a perguntá-lo. */
-      if (s.format === 'cash') {
-        set({
-          stage: 'seating',
-          bracket: null,
-          tableSeries: null,
-          seats: Array.from({ length: s.size }, () => null),
-          claiming: null,
-          claimError: null,
-          chat: [...s.chat, systemMessage('Mesa aberta. Escolha sua cadeira.')],
-          simulating: false,
-          prizePaid: false,
-        });
-        raceForSeats();
-        startSeatingClock();
-        return;
-      }
-
-      // MESA ÚNICA: ninguém é pareado com ninguém — todos sentam no mesmo
-      // feltro e a série de melhor de 3 começa na primeira rodada.
-      if (s.format === 'table') {
-        set({
-          stage: 'table',
-          bracket: null,
-          tableSeries: {
-            seats: seeded.map((player) => ({ player, wins: 0 })),
-            round: 1,
-            playingIds: seeded.map((player) => player.id),
-            tiebreak: false,
-            championId: null,
-            lastVerdict: null,
-          },
-          chat: [...s.chat, systemMessage('A mesa está aberta! Melhor de 3 — boa sorte.')],
-          simulating: false,
-          prizePaid: false,
-        });
-        return;
-      }
-
       set({
-        stage: 'bracket',
-        bracket: createBracket(seeded, s.size as BracketSize),
-        tableSeries: null,
-        chat: [...s.chat, systemMessage('O torneio começou! Boa sorte.')],
-        simulating: false,
-        prizePaid: false,
+        stage: 'seating',
+        seats: Array.from({ length: s.size }, () => null),
+        claiming: null,
+        claimError: null,
+        chat: [...s.chat, systemMessage('Mesa aberta. Escolha sua cadeira.')],
       });
+      raceForSeats();
+      startSeatingClock();
     },
 
     claimSeat: async (seatIndex) => {
@@ -1984,155 +1789,6 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
       });
     },
 
-    playMyMatch: () => {
-      const b = get().bracket;
-      if (!b) return;
-      const bm = yourPendingMatch(b, YOU_ID);
-      if (!bm || !bm.a || !bm.b) return;
-      const opponent = bm.a.id === YOU_ID ? bm.b : bm.a;
-      // Nada é decidido aqui: a tela da partida abre a mesa e joga a
-      // mão de blackjack de verdade contra o dealer da casa.
-      const match: Match = {
-        id: bm.id,
-        opponent: asOpponent(opponent),
-        stake: 0,
-        createdAt: Date.now(),
-      };
-      set({
-        stage: 'match',
-        activeMatch: {
-          bracketMatchId: bm.id,
-          match,
-          thirdPlace: isThirdPlaceMatch(b, bm.id),
-        },
-      });
-    },
-
-    /** Chamado quando a mesa do jogador fecha a mão (grava no chaveamento). */
-    finishMyMatch: (result) => {
-      const s = get();
-      const am = s.activeMatch;
-      const b = s.bracket;
-      if (!am || !b) return;
-      // A partida pode ser a do 3º lugar, que vive fora de `rounds`.
-      const bm = [...b.rounds.flat(), ...(b.thirdPlace ? [b.thirdPlace] : [])].find(
-        (m) => m.id === am.bracketMatchId,
-      );
-      if (!bm || bm.played || !bm.a || !bm.b) return;
-      const youWin = result.outcome === 'win';
-      // Placar do chaveamento: o total da mão; estouro conta 0 (quem
-      // estoura não tem mão). O chaveamento decide o vencedor comparando
-      // placares, então no desfecho em que o BLACKJACK decide com totais
-      // iguais (natural × 21 em três cartas), o perdedor cede um ponto
-      // no registro — o placar tem de concordar com a mesa.
-      let youScore = result.playerBust ? 0 : result.playerTotal;
-      let oppScore = result.opponentBust ? 0 : result.opponentTotal;
-      if (youWin && youScore <= oppScore) oppScore = Math.max(0, youScore - 1);
-      if (!youWin && oppScore <= youScore) youScore = Math.max(0, oppScore - 1);
-      const youAreA = bm.a.id === YOU_ID;
-      const scoreA = youAreA ? youScore : oppScore;
-      const scoreB = youAreA ? oppScore : youScore;
-      set({ bracket: recordMatchResult(b, bm.id, scoreA, scoreB) });
-      // Perdeu = está eliminado: é ESTE o instante em que a taxa sai do
-      // saldo. Ganhando, ele segue no torneio sem pagar nada.
-      if (!youWin) chargeEntryFee();
-    },
-
-    backToBracket: () => {
-      set({ stage: 'bracket', activeMatch: null });
-      runSimulation();
-    },
-
-    settleTableRound: (standings) => {
-      const s = get();
-      const series = s.tableSeries;
-      if (s.stage !== 'table' || !series || series.championId) return;
-
-      const wins: TableWins = Object.fromEntries(
-        series.seats.map((seat) => [seat.player.id, seat.wins]),
-      );
-      const verdict = judgeTableRound(standings, wins, TABLE_TARGET_WINS);
-
-      // Ninguém salvou a mão: a rodada não vale ponto e a mesa
-      // redistribui — mesma rodada, cartas novas.
-      if (verdict.kind === 'void') {
-        audioManager.playSfx('tie');
-        set({
-          tableSeries: { ...series, round: series.round + 1, lastVerdict: verdict },
-        });
-        return;
-      }
-
-      // Empate na decisão: o ponto coroaria dois de uma vez, então
-      // ninguém pontua — a rodada de desempate é que vale, e quem está
-      // fora dela vira espectador.
-      if (verdict.kind === 'tiebreak') {
-        audioManager.playSfx('stake');
-        set({
-          tableSeries: {
-            ...series,
-            round: series.round + 1,
-            playingIds: verdict.contenders,
-            tiebreak: true,
-            lastVerdict: verdict,
-          },
-        });
-        return;
-      }
-
-      const nextWins = awardTableWins(wins, verdict.winners);
-      const seats = series.seats.map((seat) => ({
-        ...seat,
-        wins: nextWins[seat.player.id] ?? seat.wins,
-      }));
-      const championId = verdict.championId;
-
-      if (!championId) {
-        audioManager.playSfx(verdict.winners.includes(YOU_ID) ? 'win' : 'tap');
-        set({
-          tableSeries: {
-            ...series,
-            seats,
-            round: series.round + 1,
-            // Fechado o desempate sem campeão (impossível hoje, mas o
-            // estado não pode ficar preso nele), a mesa volta cheia.
-            playingIds: series.seats.map((seat) => seat.player.id),
-            tiebreak: false,
-            lastVerdict: verdict,
-          },
-        });
-        return;
-      }
-
-      // A série fechou: é AQUI que o dinheiro se move, uma única vez.
-      // O campeão leva 90% do bolo das taxas; todos os outros pagam a sua.
-      if (!s.prizePaid) {
-        set({ prizePaid: true });
-        if (championId === YOU_ID) {
-          useGameStore.getState().applyBalanceDelta(tablePrize(s.entryFee, s.size));
-        } else {
-          chargeEntryFee();
-        }
-      }
-      audioManager.playSfx(championId === YOU_ID ? 'win' : 'lose');
-      set({
-        tableSeries: {
-          ...series,
-          seats,
-          playingIds: [],
-          tiebreak: false,
-          championId,
-          lastVerdict: verdict,
-        },
-      });
-    },
-
-    showTableChampion: () => {
-      if (get().stage !== 'table' || !get().tableSeries?.championId) return;
-      clearTimers();
-      set({ stage: 'champion' });
-    },
-
     leaveTournament: () => {
       clearTimers();
       set({
@@ -2141,10 +1797,6 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         readyIds: [],
         bannedNames: [],
         chat: [],
-        bracket: null,
-        tableSeries: null,
-        activeMatch: null,
-        simulating: false,
         // Sai sem dívida: quem não perdeu partida não paga taxa.
         feePaid: false,
       });
@@ -2155,22 +1807,6 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
 /** Seletores derivados usados pelas telas. */
 export const tournamentSelectors = {
   youId: YOU_ID,
-  /** A sala é uma mesa única (melhor de 3) em vez de chaveamento. */
-  isTable: (s: TournamentState) => s.format === 'table',
-  /** O assento do jogador na mesa única. */
-  yourSeat: (s: TournamentState) =>
-    s.tableSeries?.seats.find((seat) => seat.player.id === YOU_ID) ?? null,
-  /** Campeão da mesa única (o assento que chegou a 3). */
-  tableChampion: (s: TournamentState) => {
-    const series = s.tableSeries;
-    if (!series?.championId) return null;
-    return series.seats.find((seat) => seat.player.id === series.championId)?.player ?? null;
-  },
-  /** Você está de fora da rodada corrente (rodada de desempate alheia). */
-  youSpectating: (s: TournamentState) => {
-    const series = s.tableSeries;
-    return !!series && !series.championId && !series.playingIds.includes(YOU_ID);
-  },
   isOwner: (s: TournamentState) => s.ownerId === YOU_ID,
   seatsFull: (s: TournamentState) => s.members.length === s.size,
   youReady: (s: TournamentState) => s.readyIds.includes(YOU_ID),
@@ -2178,15 +1814,6 @@ export const tournamentSelectors = {
   /** Mesa cheia e todos confirmados: a partida pode ser iniciada. */
   allReady: (s: TournamentState) =>
     s.members.length === s.size && s.members.every((m) => s.readyIds.includes(m.id)),
-  yourPending: (s: TournamentState) => (s.bracket ? yourPendingMatch(s.bracket, YOU_ID) : null),
-  youEliminated: (s: TournamentState) => (s.bracket ? isEliminated(s.bracket, YOU_ID) : false),
-  activeRound: (s: TournamentState) => (s.bracket ? activeRoundIndex(s.bracket) : 0),
-  champion: (s: TournamentState) => (s.bracket ? tournamentChampion(s.bracket) : null),
   /** Colocação final do jogador (1–4), ou `null` se caiu antes da semi. */
-  placement: (s: TournamentState) => (s.bracket ? placementOf(s.bracket, YOU_ID) : null),
   /** A sua partida pendente é a disputa do 3º lugar. */
-  yourPendingIsThirdPlace: (s: TournamentState) => {
-    const pending = s.bracket ? yourPendingMatch(s.bracket, YOU_ID) : null;
-    return !!(s.bracket && pending && isThirdPlaceMatch(s.bracket, pending.id));
-  },
 };

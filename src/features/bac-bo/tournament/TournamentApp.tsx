@@ -1,14 +1,10 @@
 import { AnimatePresence, motion } from 'framer-motion';
 
-import { BracketScreen } from './screens/BracketScreen';
 import { CashOutScreen } from './screens/CashOutScreen';
 import { CashTableScreen } from './screens/CashTableScreen';
-import { ChampionScreen } from './screens/ChampionScreen';
 import { LobbyBrowseScreen } from './screens/LobbyBrowseScreen';
 import { LobbyScreen } from './screens/LobbyScreen';
 import { SeatingScreen } from './screens/SeatingScreen';
-import { TableMatchScreen } from './screens/TableMatchScreen';
-import { TournamentMatchScreen } from './screens/TournamentMatchScreen';
 import { useTournamentStore } from './tournamentStore';
 
 export interface TournamentAppProps {
@@ -43,11 +39,6 @@ export function TournamentApp({ onExit }: TournamentAppProps) {
       >
         {stage === 'browse' && <LobbyBrowseScreen onBack={onExit} />}
         {stage === 'lobby' && <LobbyScreen />}
-        {stage === 'bracket' && <BracketScreen />}
-        {stage === 'match' && <TournamentMatchScreen />}
-        {/* Mesa única: a série inteira (rodadas, desempates e o fim) mora
-            numa tela só — não há chaveamento a que voltar. */}
-        {stage === 'table' && <TableMatchScreen />}
         {/* Poker cash: as seis cadeiras vazias, antes da primeira mão. */}
         {stage === 'seating' && <SeatingScreen />}
         {/* Poker cash: a mesa de 6 montada. */}
@@ -55,7 +46,6 @@ export function TournamentApp({ onExit }: TournamentAppProps) {
         {/* Poker cash: o CAIXA — a MESMA tela de fecho do duelo, com a
             mesma comissão da casa (ver `CashOutScreen`). */}
         {stage === 'cashout' && <CashOutScreen />}
-        {stage === 'champion' && <ChampionScreen />}
       </motion.div>
     </AnimatePresence>
   );

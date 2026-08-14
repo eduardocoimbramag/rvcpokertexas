@@ -71,10 +71,9 @@ src/
 └── features/bac-bo/
     ├── engine/              # ★ Toda a lógica do jogo vive aqui
     │   ├── types.ts         # Carta, naipe, duelista, partida — o vocabulário comum
-    │   ├── rules.ts         # Baralho + regras de 21 (usadas pelo modo Torneio)
+    │   ├── deck.ts          # O baralho francês de 52: montar e tirar do topo
     │   ├── credits.ts       # Regras puras de créditos/stakes
-    │   ├── LocalBlackjackGameEngine.ts  # Engine de 21 (modo Torneio)
-    │   └── poker/           # ★★ TEXAS HOLD'EM — o jogo do 1v1
+    │   └── poker/           # ★★ TEXAS HOLD'EM — o único jogo da casa
     │       ├── handRank.ts          # Juízo das mãos: melhor 5 entre 7, puro
     │       ├── types.ts             # Ruas, lances, estado e resultado (Zod)
     │       ├── rules.ts             # Blinds, ações legais, pote, payout, bot
@@ -95,12 +94,12 @@ src/
     │   ├── poker/           # ★ A MESA DE HOLD'EM: assentos, board, apostas, embate
     │   ├── table/           # Peças compartilhadas (fichas, carta, medalhão)
     │   └── …                # Home, confirmação, resultado, folhas
-    ├── tournament/          # Modo Torneio — segue jogando 21 (mesa própria)
+    ├── tournament/          # Salas e mesa CASH de 6 (lobby, vitrine, assentos)
     └── tests/               # Unitários + componentes
 e2e/                         # Playwright (viewport Pixel 7)
 ```
 
-> **Duas mesas, dois jogos.** O 1v1 é Texas Hold'em (`engine/poker` + `components/poker`); o modo **Torneio** continua sendo o duelo de 21, com a engine e a arena dele intactas (`engine/rules.ts`, `components/HandsArena.tsx`). O que as duas compartilham é o baralho, a carta 3D, as fichas e o cenário — não as regras.
+> **Duas mesas, um jogo só.** O 1v1 e a mesa cash de 6 são os dois Texas Hold'em (`engine/poker` + `components/poker`), e compartilham baralho, carta 3D, fichas e cenário. O projeto já teve um duelo de **21** atrás do modo Torneio — engine, arena, chaveamento e mesa única —, e ele foi **removido por inteiro** (docs/limpeza.md). Do que era dele sobrou só o baralho, agora em `engine/deck.ts`.
 
 ### Máquina de estados
 

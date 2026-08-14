@@ -2,7 +2,7 @@ import type { Rng } from '@/shared/lib/random';
 import { randomInt } from '@/shared/lib/random';
 
 import { TIMINGS } from '../animations/timings';
-import { buildDeck } from '../engine/rules';
+import { buildDeck } from '../engine/deck';
 import type { Street } from '../engine/poker/types';
 import type { Card } from '../engine/types';
 import { leftOf } from './seatOrder';

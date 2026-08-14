@@ -1,17 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createBracket, placementOf, recordMatchResult } from '../tournament/bracket';
 import { makeBots, makeLobbyListings, you } from '../tournament/simulation';
 import {
-  prizeFor,
-  tournamentPot,
   tournamentSelectors,
   useTournamentStore,
 } from '../tournament/tournamentStore';
 import type { LobbyListing } from '../tournament/types';
 import { CASH_SEATS } from '../tournament/types';
 import { sizesFor } from '../tournament/types';
-import type { RoundResult } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
 
 /**
@@ -35,7 +31,7 @@ function listing(overrides: Partial<LobbyListing> = {}): LobbyListing {
     id: 'lobby-1',
     name: 'Mesa Imperial',
     hostName: 'Otto',
-    format: 'bracket',
+    format: 'cash',
     size: 4,
     filled: 2,
     fee: 25,
@@ -55,7 +51,7 @@ describe('criação de sala', () => {
     useTournamentStore.getState().createLobby({
       name: '  Mesa Coroa  ',
       visibility: 'private',
-      format: 'bracket',
+      format: 'cash',
       size: 4,
       fee: 50,
       password: '4821',
@@ -74,7 +70,7 @@ describe('criação de sala', () => {
     useTournamentStore.getState().createLobby({
       name: 'Mesa Aberta',
       visibility: 'public',
-      format: 'bracket',
+      format: 'cash',
       size: 8,
       fee: 10,
       password: '1234',
@@ -86,7 +82,7 @@ describe('criação de sala', () => {
     useTournamentStore.getState().createLobby({
       name: 'Mesa Coroa',
       visibility: 'public',
-      format: 'bracket',
+      format: 'cash',
       size: 4,
       fee: 50,
       password: '',
@@ -102,23 +98,6 @@ describe('sala de 16', () => {
     expect(new Set(bots.map((b) => b.name)).size).toBe(15);
   });
 
-  it('a sala nasce com 16 e o chaveamento abre nas oitavas', () => {
-    useTournamentStore.getState().createLobby({
-      name: 'Copa Grande',
-      visibility: 'public',
-      format: 'bracket',
-      size: 16,
-      fee: 10,
-      password: '',
-    });
-    const members = [you(), ...makeBots(15)];
-    useTournamentStore.setState({ members, readyIds: members.map((m) => m.id) });
-    useTournamentStore.getState().startTournament();
-
-    const s = useTournamentStore.getState();
-    expect(s.stage).toBe('bracket');
-    expect(s.bracket?.rounds.map((r) => r.length)).toEqual([8, 4, 2, 1]);
-  });
 });
 
 describe('porta da sala privada', () => {
@@ -137,10 +116,9 @@ describe('porta da sala privada', () => {
       expect(sizesFor(lobby.format)).toContain(lobby.size);
     }
 
-    /* A VITRINE É DE POKER, e só. Anunciar na lista uma sala que não se
-       pode criar seria oferecer uma porta que leva a outro jogo — os
-       modos de blackjack continuam no projeto, atrás de
-       `BRACKET_ENABLED`, sem porta de entrada. */
+    /* A VITRINE É DE POKER, e só — não há outro formato a anunciar: os
+       modos de blackjack foram REMOVIDOS do projeto (docs/limpeza.md,
+       Fase 5). */
     expect(lobbies.every((l) => l.format === 'cash')).toBe(true);
 
     /* AS QUATRO MESAS APARECEM. A de seis é a mais comum, como numa casa
@@ -180,7 +158,7 @@ function fullRoom(fee: number, { ready = true } = {}) {
   useTournamentStore.getState().createLobby({
     name: 'Mesa Coroa',
     visibility: 'public',
-    format: 'bracket',
+    format: 'cash',
     size: 4,
     fee,
     password: '',
@@ -193,47 +171,6 @@ function fullRoom(fee: number, { ready = true } = {}) {
     readyIds: ready ? members.map((m) => m.id) : ['you'],
   });
   return members;
-}
-
-/** Põe o torneio em andamento com a partida do jogador pronta para o desfecho. */
-function startedTournament(fee: number) {
-  fullRoom(fee);
-  useTournamentStore.getState().startTournament();
-}
-
-/**
- * Desfecho de uma mão do duelo de 21, do jeito que a mesa do torneio o
- * entrega ao `finishMyMatch`: quem venceu fez 19, quem perdeu fez 17.
- * Nada de estouro — os totais gravados no chaveamento são os das
- * próprias mãos.
- */
-function blackjackResult(outcome: 'win' | 'lose'): RoundResult {
-  const winningHand = [
-    { rank: '10', suit: 'spades' },
-    { rank: '9', suit: 'hearts' },
-  ] as const;
-  const losingHand = [
-    { rank: '10', suit: 'clubs' },
-    { rank: '7', suit: 'hearts' },
-  ] as const;
-  const youWin = outcome === 'win';
-  return {
-    id: 'r1',
-    matchId: 'bm-1',
-    playerHand: [...(youWin ? winningHand : losingHand)],
-    opponentHand: [...(youWin ? losingHand : winningHand)],
-    playerTotal: youWin ? 19 : 17,
-    opponentTotal: youWin ? 17 : 19,
-    playerBust: false,
-    opponentBust: false,
-    playerNatural: false,
-    opponentNatural: false,
-    outcome,
-    stake: 10,
-    payout: youWin ? 20 : 0,
-    netChange: youWin ? 10 : -10,
-    completedAt: 0,
-  };
 }
 
 describe('confirmação da sala', () => {
@@ -249,7 +186,7 @@ describe('confirmação da sala', () => {
 
     useTournamentStore.setState({ readyIds: members.map((m) => m.id) });
     useTournamentStore.getState().startTournament();
-    expect(useTournamentStore.getState().stage).toBe('bracket');
+    expect(useTournamentStore.getState().stage).toBe('seating');
   });
 
   it('com todo mundo confirmado, quem não é dono ainda não inicia', () => {
@@ -300,7 +237,7 @@ describe('confirmação da sala', () => {
     useTournamentStore.getState().createLobby({
       name: 'Mesa Coroa',
       visibility: 'public',
-      format: 'bracket',
+      format: 'cash',
       size: 4,
       fee: 10,
       password: '',
@@ -324,168 +261,6 @@ describe('confirmação da sala', () => {
     const s = useTournamentStore.getState();
     expect(s.readyIds).not.toContain(victim.id);
     expect(tournamentSelectors.allReady(s)).toBe(false);
-  });
-});
-
-describe('taxa de entrada: cobrada só na derrota', () => {
-  it('iniciar o torneio não debita nada', () => {
-    startedTournament(50);
-    expect(useTournamentStore.getState().stage).toBe('bracket');
-    expect(useGameStore.getState().balance).toBe(1000);
-  });
-
-  it('sair antes de perder não custa nada', () => {
-    startedTournament(50);
-    useTournamentStore.getState().leaveTournament();
-    expect(useGameStore.getState().balance).toBe(1000);
-  });
-
-  it('perder a partida debita a taxa uma única vez', () => {
-    startedTournament(50);
-    useTournamentStore.getState().playMyMatch();
-    if (!useTournamentStore.getState().activeMatch) {
-      throw new Error('partida do jogador não iniciada');
-    }
-
-    // A mesa fechou a mão com a derrota do jogador (17 × 19).
-    useTournamentStore.getState().finishMyMatch(blackjackResult('lose'));
-    expect(useGameStore.getState().balance).toBe(950);
-    expect(useTournamentStore.getState().feePaid).toBe(true);
-
-    // Uma segunda chamada não cobra de novo.
-    useTournamentStore.getState().finishMyMatch(blackjackResult('lose'));
-    expect(useGameStore.getState().balance).toBe(950);
-  });
-
-  it('vencer não debita: o jogador segue no torneio sem pagar', () => {
-    startedTournament(50);
-    useTournamentStore.getState().playMyMatch();
-    if (!useTournamentStore.getState().activeMatch) {
-      throw new Error('partida do jogador não iniciada');
-    }
-
-    useTournamentStore.getState().finishMyMatch(blackjackResult('win'));
-    expect(useGameStore.getState().balance).toBe(1000);
-    expect(useTournamentStore.getState().feePaid).toBe(false);
-  });
-
-  it('o campeão leva 50% do bolo — e a taxa dele nunca foi cobrada', () => {
-    startedTournament(50);
-    useTournamentStore.setState({
-      bracket: resolvedBracket('champion'),
-      stage: 'bracket',
-      activeMatch: null,
-    });
-
-    useTournamentStore.getState().backToBracket();
-    vi.advanceTimersByTime(5000);
-
-    // Bolo = 3 taxas de 50 = 150; menos 10% = 135; metade = 67.
-    expect(prizeFor(1, 50, 4)).toBe(67);
-    expect(useGameStore.getState().balance).toBe(1067);
-    expect(useTournamentStore.getState().feePaid).toBe(false);
-  });
-});
-
-/**
- * Chaveamento de 4 resolvido inteiro, com o jogador terminando na
- * colocação pedida. Monta na mão para não depender das simulações.
- */
-function resolvedBracket(outcome: 'champion' | 'runnerUp' | 'third' | 'fourth') {
-  let bracket = createBracket([you(), ...makeBots(3)], 4);
-  const winsSemi = outcome === 'champion' || outcome === 'runnerUp';
-
-  // Semifinais: a sua (índice 0) e a dos bots.
-  const semi = bracket.rounds[0] ?? [];
-  for (const match of semi) {
-    const mine = match.a?.id === 'you' || match.b?.id === 'you';
-    const youAreA = match.a?.id === 'you';
-    if (!mine) {
-      bracket = recordMatchResult(bracket, match.id, 11, 4);
-      continue;
-    }
-    const youScore = winsSemi ? 11 : 4;
-    const oppScore = winsSemi ? 4 : 11;
-    bracket = recordMatchResult(
-      bracket,
-      match.id,
-      youAreA ? youScore : oppScore,
-      youAreA ? oppScore : youScore,
-    );
-  }
-
-  // Disputa do 3º lugar (só existe para quem perdeu a semi).
-  const third = bracket.thirdPlace;
-  if (third?.a && third.b) {
-    const youAreA = third.a.id === 'you';
-    const youScore = outcome === 'third' ? 11 : 4;
-    const oppScore = outcome === 'third' ? 4 : 11;
-    const mine = third.a.id === 'you' || third.b.id === 'you';
-    bracket = recordMatchResult(
-      bracket,
-      third.id,
-      mine ? (youAreA ? youScore : oppScore) : 11,
-      mine ? (youAreA ? oppScore : youScore) : 4,
-    );
-  }
-
-  // Final.
-  const final = bracket.rounds[1]?.[0];
-  if (final?.a && final.b) {
-    const youAreA = final.a.id === 'you';
-    const youScore = outcome === 'champion' ? 11 : 4;
-    const oppScore = outcome === 'champion' ? 4 : 11;
-    const mine = final.a.id === 'you' || final.b.id === 'you';
-    bracket = recordMatchResult(
-      bracket,
-      final.id,
-      mine ? (youAreA ? youScore : oppScore) : 11,
-      mine ? (youAreA ? oppScore : youScore) : 4,
-    );
-  }
-
-  return bracket;
-}
-
-describe('pódio: 50 / 30 / 20 do bolo, menos 10% da casa', () => {
-  it('divide o bolo entre os três primeiros e deixa 10% com a casa', () => {
-    // 8 jogadores × 100: bolo = 700 (as taxas dos 7 derrotados).
-    expect(tournamentPot(100, 8)).toBe(700);
-    expect(prizeFor(1, 100, 8)).toBe(315); // 50% de 630
-    expect(prizeFor(2, 100, 8)).toBe(189); // 30%
-    expect(prizeFor(3, 100, 8)).toBe(126); // 20%
-    expect(prizeFor(4, 100, 8)).toBe(0); // fora do pódio, sem prêmio
-
-    const pago = prizeFor(1, 100, 8) + prizeFor(2, 100, 8) + prizeFor(3, 100, 8);
-    expect(tournamentPot(100, 8) - pago).toBe(70); // exatamente os 10%
-  });
-
-  it('vice e terceiro recebem a sua fatia (com a taxa já debitada)', () => {
-    for (const [outcome, place] of [
-      ['runnerUp', 2],
-      ['third', 3],
-      ['fourth', 4],
-    ] as const) {
-      useTournamentStore.setState(initialTournament, true);
-      useGameStore.setState({ ...initialGame, balance: 1000 }, true);
-      startedTournament(50);
-      useTournamentStore.setState({
-        bracket: resolvedBracket(outcome),
-        stage: 'bracket',
-        activeMatch: null,
-        // Perdeu pelo menos uma partida no caminho: a taxa saiu lá.
-        feePaid: true,
-      });
-      useGameStore.setState({ balance: 950 });
-
-      useTournamentStore.getState().backToBracket();
-      vi.advanceTimersByTime(5000);
-
-      const finished = useTournamentStore.getState().bracket;
-      if (!finished) throw new Error('chaveamento perdido no meio do teste');
-      expect(placementOf(finished, 'you')).toBe(place);
-      expect(useGameStore.getState().balance).toBe(950 + prizeFor(place, 50, 4));
-    }
   });
 });
 
@@ -581,19 +356,4 @@ describe('sala de CASH — a economia da mesa de 6', () => {
     expect(s.blind).toBe(100);
   });
 
-  it('os torneios não precisam declarar a economia do cash', () => {
-    // Uma sala de chaveamento genuinamente não tem buy-in nem blind:
-    // obrigá-la a informar os dois seria pedir um número sem sentido.
-    useTournamentStore.getState().createLobby({
-      name: 'Copa',
-      visibility: 'public',
-      format: 'bracket',
-      size: 8,
-      fee: 50,
-      password: '',
-    });
-
-    expect(useTournamentStore.getState().format).toBe('bracket');
-    expect(useTournamentStore.getState().entryFee).toBe(50);
-  });
 });

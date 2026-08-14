@@ -5,7 +5,7 @@ import { CryptoRng, pickRandom, randomInt } from '@/shared/lib/random';
 import { GameEngineError } from '../GameEngine';
 import type { FindMatchParams, SetStakeParams } from '../GameEngine';
 import { TABLE_ANTE, TABLE_MIN_BET, validateStake } from '../credits';
-import { buildDeck, drawCard } from '../rules';
+import { buildDeck, drawCard } from '../deck';
 import type { Card, Duelist, Match, Opponent } from '../types';
 import { matchSchema } from '../types';
 import type {

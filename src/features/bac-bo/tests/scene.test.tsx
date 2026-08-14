@@ -265,7 +265,7 @@ describe('AmbientLayer — coluna de cena e extensão de ambiente', () => {
      cobra todos os estágios que desenham `TableScene` — foi ao ganhar
      `cash` e `cashout` (e não atualizar o cenário junto) que o caixa da
      mesa de 6 passou a aparecer com o enquadramento de menu. */
-  it.each(['match', 'table', 'cash', 'cashout'] as const)(
+  it.each(['cash', 'cashout'] as const)(
     'usa o enquadramento de jogo no estágio %s do torneio',
     (stage) => {
       useTournamentStore.setState({ stage });
@@ -277,7 +277,7 @@ describe('AmbientLayer — coluna de cena e extensão de ambiente', () => {
   /* O contraponto: onde a mesa NÃO está em cena, o enquadramento tem de
      continuar o do menu — inclusive na escolha de cadeira, que mostra o
      salão inteiro atrás das seis cadeiras. */
-  it.each(['browse', 'lobby', 'seating', 'bracket'] as const)(
+  it.each(['browse', 'lobby', 'seating'] as const)(
     'mantém o enquadramento de menu no estágio %s',
     (stage) => {
       useTournamentStore.setState({ stage });

@@ -55,10 +55,10 @@ export function CreateLobbySheet({ open, onClose }: CreateLobbySheetProps) {
 
   const [visibility, setVisibility] = useState<LobbyVisibility>('public');
   const [name, setName] = useState(suggestLobbyName);
-  /* A SALA É DE POKER, e isso deixou de ser uma escolha. O formato
-     sobrevive como constante porque o store, a vitrine e o histórico
-     ainda falam essa língua — e porque os outros dois modos continuam
-     inteiros no projeto, atrás de `BRACKET_ENABLED`. */
+  /* A SALA É DE POKER, e isso deixou de ser uma escolha: o chaveamento
+     e a mesa única de 21 saíram do projeto (docs/limpeza.md, Fase 5). O
+     formato sobrevive como constante porque o store, a vitrine e o
+     histórico ainda falam essa língua. */
   const format: TournamentFormat = 'cash';
   const [size, setSize] = useState<TournamentSize>(defaultSizeFor('cash'));
   /* Com a mesa aberta desligada, toda sala nasce FECHADA — e o estado

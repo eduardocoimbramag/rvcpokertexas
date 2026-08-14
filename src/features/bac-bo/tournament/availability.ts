@@ -29,22 +29,6 @@ export const TOURNAMENT_ENABLED = true;
 export const TOURNAMENT_SOON_HINT = 'Em breve';
 
 /**
- * OS MODOS DE BLACKJACK — chaveamento e mesa única — estão DESLIGADOS.
- *
- * Eles continuam inteiros no projeto (telas, store, regras e testes de
- * unidade): o que saiu foi a porta de entrada. A folha de criação virou
- * uma folha de POKER — você escolhe quantas pessoas sentam, não que jogo
- * se joga —, e a vitrine passou a anunciar só mesas de poker.
- *
- * Reativar é mudar esta linha para `true`: a régua de formatos volta à
- * folha de criação e a vitrine volta a sortear os três formatos.
- *
- * O flag existe pelo mesmo motivo do de cima: um `git revert` de uma
- * remoção é caro e arriscado; um booleano é uma decisão que se desfaz.
- */
-export const BRACKET_ENABLED = false;
-
-/**
  * A MESA ABERTA está DESLIGADA — toda sala de cash nasce FECHADA.
  *
  * Mesa aberta é a que continua na vitrine depois de começar: quem chega

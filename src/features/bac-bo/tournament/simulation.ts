@@ -163,10 +163,10 @@ export function makeLobbyListings(): LobbyListing[] {
   return shuffle(LOBBY_NAMES)
     .slice(0, randInt(4, 6))
     .map((name, index) => {
-      /* A VITRINE É DE POKER, e só. Os outros dois formatos continuam no
-         projeto, sem porta de entrada (ver `BRACKET_ENABLED`): anunciar
-         na lista uma sala que não se pode criar seria oferecer uma porta
-         que leva a outro jogo. */
+      /* A VITRINE É DE POKER, e só — não há outro formato a anunciar.
+         O chaveamento e a mesa única de 21 foram REMOVIDOS do projeto
+         (docs/limpeza.md, Fase 5); o campo `format` sobrevive porque o
+         store, a vitrine e o histórico ainda falam essa língua. */
       const format: TournamentFormat = 'cash';
       const roll = Math.random();
       /* MESAS CHEIAS EM MAIORIA, com as curtas aparecendo: é o que uma
@@ -232,28 +232,3 @@ export function botChatLine(): string {
   return pick(CHAT_LINES);
 }
 
-/**
- * Total plausível de uma mão de blackjack simulada de bot. A convenção
- * do PLACAR do chaveamento: estouro conta 0 (quem estoura não tem mão),
- * o resto para entre 17 e 21 — a faixa em que mãos reais terminam.
- */
-export function blackjackScore(): number {
-  const roll = Math.random();
-  if (roll < 0.16) return 0; // estourou
-  if (roll < 0.24) return 21;
-  return randInt(17, 20);
-}
-
-/**
- * Resultado de uma partida SEM o jogador (dois bots): joga até haver um
- * vencedor (mata-mata não admite empate).
- */
-export function simulateBotMatch(): { scoreA: number; scoreB: number } {
-  let scoreA = blackjackScore();
-  let scoreB = blackjackScore();
-  while (scoreA === scoreB) {
-    scoreA = blackjackScore();
-    scoreB = blackjackScore();
-  }
-  return { scoreA, scoreB };
-}
