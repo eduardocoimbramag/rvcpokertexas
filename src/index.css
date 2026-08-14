@@ -35,7 +35,6 @@
   --color-table-900: #1e4934;
   --color-rail-900: #38160e;
   --color-rail-700: #6a3420;
-  --color-spot: #f5b76f;
 }
 
 html,
@@ -5743,13 +5742,6 @@ body.is-street-cut #root {
   z-index: 5;
 }
 
-/* Sem cenário não há crupiê a flanquear: a placa volta ao fluxo. */
-.showdown-strip .winner-plate {
-  position: static;
-  width: 100%;
-  translate: none;
-}
-
 /* ==================== Campo de créditos (AmountStepper) ==================== */
 
 /* Padrão de digitar valor da casa: campo à esquerda, atalhos de
@@ -5979,16 +5971,6 @@ body.is-street-cut #root {
    dois números que não mudam nunca, repetidos a cada mão por cima da cena
    em que as cartas voam. Quem precisa deles lê o pote, que já nasce com
    as duas entradas dentro. */
-
-/* Sem cenário não há crupiê que flanquear: a placa do vencedor volta ao
-   fluxo e ocupa a faixa inteira (ver `.showdown-strip .winner-plate`). */
-.showdown-strip {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 1rem;
-  padding-top: 0.5rem;
-}
 
 @media (prefers-reduced-motion: reduce) {
   /* O halo da vez PARA de pulsar, mas continua aceso: ele não é enfeite,
@@ -6993,26 +6975,6 @@ body.is-street-cut #root {
 .tournament-summary__sep {
   color: var(--color-lavender);
   opacity: 0.6;
-}
-
-/* Faixa "campeão leva tudo" na folha de configurações. */
-.tournament-prize {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.85rem 1rem;
-  border-radius: 1rem;
-  background: linear-gradient(180deg, rgba(95, 20, 32, 0.7) 0%, rgba(42, 8, 16, 0.7) 100%);
-  box-shadow: inset 0 0 0 1px rgba(245, 183, 111, 0.4);
-  font-weight: 800;
-  color: var(--color-ivory);
-}
-
-.tournament-prize__value {
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-gold);
 }
 
 /* ---------- Lobby: assentos ---------- */

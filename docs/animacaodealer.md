@@ -30,9 +30,10 @@ Resumo em números:
 | `src/features/bac-bo/scene/dealer/dealerExpression.ts` | Mapa reação → rosto e reação → lágrima                      |
 | `src/features/bac-bo/scene/dealer/useDealerReaction.ts` | Mapa fase/desfecho do jogo → reação (já existia)            |
 
-A crupiê antiga foi **desativada**, não apagada: `Dealer` monta a nova por padrão
-e ainda aceita `variant="svg"` para montar a antiga (`public/dealer/`), que o jogo
-nunca pede. `variant="none"` tira a crupiê de cena.
+A crupiê antiga foi **removida** (Fase 2 de `limpeza.md`): o rig `SvgRigDealer` e
+os 16 SVGs de `public/dealer/` saíram, junto com o `variant="svg"` que os
+montava e que o jogo nunca pediu. Restam duas variantes: `nova` (o padrão, a
+única implementação) e `none`, que tira a crupiê de cena.
 
 ### Enquadramento
 

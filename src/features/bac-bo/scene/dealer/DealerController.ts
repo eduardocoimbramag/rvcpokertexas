@@ -22,12 +22,14 @@ export type DealerReaction = (typeof DEALER_REACTIONS)[number];
 
 /**
  * Implementações disponíveis do dealer:
- * - `nova`: rig da arte nova (public/dealernova/) — ATIVA.
- * - `svg`: rig da arte antiga (public/dealer/) — aposentado, mantido
- *   apenas como referência histórica do primeiro rig.
- * - `none`: sem crupiê em cena.
+ * - `nova`: rig da arte nova (public/dealernova/) — a ATIVA, e a única.
+ * - `none`: sem crupiê em cena (cenário reduzido/desligado).
+ *
+ * Houve um `svg`, o primeiro rig (public/dealer/). O jogo nunca o pediu
+ * e ele foi removido junto com a arte dele; o tipo continua sendo uma
+ * união porque é o ponto de troca para a próxima implementação.
  */
-export type DealerVariant = 'nova' | 'svg' | 'none';
+export type DealerVariant = 'nova' | 'none';
 
 export interface DealerProps {
   reaction: DealerReaction;

@@ -139,11 +139,11 @@ describe('Dealer (fachada)', () => {
     expect(screen.queryByTestId('dealer')).not.toBeInTheDocument();
   });
 
-  it('o rig ANTIGO continua montável, mas não é o padrão', () => {
-    // `variant="svg"` é a arte aposentada (public/dealer/): o jogo nunca
-    // a pede, e o teste existe para o dia em que alguém pedir.
-    render(<Dealer reaction="idle" variant="svg" />);
-    expect(screen.getByTestId('dealer')).not.toHaveAttribute('data-face');
+  it('a fachada monta o rig da arte nova por padrão', () => {
+    // O `data-face` é assinatura do rig novo: é ele que troca as peças
+    // do rosto. Sem prop nenhuma, é este que tem de entrar em cena.
+    render(<Dealer reaction="idle" />);
+    expect(screen.getByTestId('dealer')).toHaveAttribute('data-face');
   });
 });
 

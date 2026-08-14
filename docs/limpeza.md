@@ -6,9 +6,21 @@ Este documento levanta o que ainda está no repositório, quanto pesa, **o que �
 seguro remover** e em que ordem — com o método de medição descrito para que
 qualquer número aqui possa ser reconferido.
 
-> **Nada neste documento foi executado.** É um levantamento. A seção §7 traz o
-> plano por fases, cada uma com o comando de verificação que precisa passar
-> antes da fase seguinte.
+> **Estado: Fases 1 e 2 EXECUTADAS.** O resto (Fases 3 a 7) continua sendo
+> levantamento, e a Fase 3 em diante segue bloqueada pela decisão de produto da
+> Fase 0. A seção §7 traz o plano por fases, cada uma com o comando de
+> verificação que precisa passar antes da fase seguinte.
+>
+> ⚠️ **Uma correção ao próprio documento**, achada ao executar a Fase 1: a §5.3
+> dava `--color-arena-700` como "declarada e nunca lida". **Está errado.** O
+> token vive dentro do bloco `@theme` do Tailwind v4, que gera utilitários a
+> partir dele — e `bg-arena-700` é usado em `DevToolsPanel.tsx` (2×) e
+> `Sheet.tsx` (1×). O CSS compilado confirma:
+> `.bg-arena-700{background-color:var(--color-arena-700)}`. O token **foi
+> mantido**; removê-lo apagaria o fundo desses três elementos sem quebrar build
+> nem teste. Vale como regra para as fases seguintes: **em Tailwind v4, um
+> `--color-*` do `@theme` pode ser consumido sem nunca aparecer como
+> `var(--color-*)`** — a busca literal não enxerga isso.
 
 ---
 
@@ -216,7 +228,7 @@ correto.
 
 ## 5. Fora do blackjack
 
-### 5.1 Arquivos nunca importados (por ninguém, nem teste)
+### 5.1 Arquivos nunca importados (por ninguém, nem teste) ✅ removidos na Fase 1
 
 | Arquivo | Linhas | Nota |
 | ------- | -----: | ---- |
@@ -226,7 +238,7 @@ correto.
 
 Os dois barrels são remoção livre. O `vite-env.d.ts` é falso positivo do método.
 
-### 5.2 Assets órfãos em `public/` (~176 KB)
+### 5.2 Assets órfãos em `public/` (~176 KB) ✅ removidos nas Fases 1 e 2
 
 | Asset | Tamanho | Por quê |
 | ----- | ------: | ------- |
@@ -242,11 +254,17 @@ e o rig antigo está marcado como aposentado desde a substituição.
 `scripts/process-dealer-assets.py` (9 KB) processava PNGs de uma pasta `art/`
 que **não existe mais** no repositório. É um script sem entrada.
 
-### 5.3 CSS sem nenhum uso
+### 5.3 CSS sem nenhum uso ✅ removido na Fase 1
 
-`.showdown-strip` (~12 linhas) e `.tournament-prize` (~17 linhas) não são
-citados por nenhum `.ts`/`.tsx`. Também `--color-arena-700` e `--color-spot`,
-duas custom properties declaradas e nunca lidas.
+`.showdown-strip` (~12 linhas) e `.tournament-prize` (~17 linhas) não eram
+citados por nenhum `.ts`/`.tsx` — saíram, junto com a regra órfã
+`.showdown-strip .winner-plate`.
+
+`--color-spot` era de fato morto (o `.rival-seat__spot` que parecia consumi-lo
+usa `rgba()` escrito à mão) — saiu.
+
+**`--color-arena-700` FICOU.** O levantamento original o dava como morto e
+estava errado: ver o aviso no topo deste documento.
 
 ### 5.4 Documentação quebrada
 
@@ -332,25 +350,36 @@ esta auditoria vira uma lista de "não mexer". Se não, siga.
 
 Não é decisão técnica. O código está saudável, testado e desligado de propósito.
 
-### Fase 1 — Remoções sem risco (~10 min)
+### Fase 1 — Remoções sem risco ✅ FEITA
 
-- `engine/index.ts` e `engine/poker/index.ts` (barrels que ninguém importa)
-- `public/logocompletarvc.svg`
-- `dealernova/semvar/pupila-padrao.svg`, `dealernova/vartriste/pupila-triste.svg`
-- `.showdown-strip` e `.tournament-prize` do CSS; `--color-arena-700`, `--color-spot`
-- `scripts/process-dealer-assets.py` (a pasta `art/` que ele lia não existe)
-- Corrigir os 3 links quebrados do README
+- ✅ `engine/index.ts` e `engine/poker/index.ts` (barrels que ninguém importa)
+- ✅ `public/logocompletarvc.svg`
+- ✅ `dealernova/semvar/pupila-padrao.svg`, `dealernova/vartriste/pupila-triste.svg`
+- ✅ `.showdown-strip` e `.tournament-prize` do CSS; `--color-spot`
+- ⚠️ `--color-arena-700` **NÃO removido** — está vivo via `bg-arena-700` (topo do doc)
+- ✅ `scripts/process-dealer-assets.py` (a pasta `art/` que ele lia não existe);
+  a pasta `scripts/` ficou vazia e saiu junto
+- ✅ Os 3 links quebrados do README: o do spec histórico passou a apontar para
+  este documento (§2), o de `dmisterioso.md` saiu (a regra do botão já está
+  explicada por extenso no próprio bullet) e o de `scenario.md` virou
+  `animacaodealer.md`
 
-**Verificar:** `npm run check && npm run build`
+**Verificado:** `npm run check` (801 testes) + `npm run build`, ambos verdes.
 
-### Fase 2 — Aposentar o rig antigo da crupiê (~20 min)
+### Fase 2 — Aposentar o rig antigo da crupiê ✅ FEITA
 
-- `scene/dealer/SvgRigDealer.tsx`
-- `public/dealer/` (16 SVGs, 156 KB)
-- O ramo `variant === 'svg'` de `Dealer.tsx` e o valor `'svg'` de `DealerVariant`
-- O caso de teste "o rig ANTIGO continua montável" em `tests/scene.test.tsx`
+- ✅ `scene/dealer/SvgRigDealer.tsx` (e com ele um segundo `RIG_ASPECT`
+  exportado, homônimo do de `dealerRig.ts` — ninguém importava o do rig antigo)
+- ✅ `public/dealer/` (16 SVGs, 152 KB)
+- ✅ O ramo `variant === 'svg'` de `Dealer.tsx` e o valor `'svg'` de
+  `DealerVariant` (`'nova' | 'none'` agora)
+- ✅ O caso de teste "o rig ANTIGO continua montável" virou "a fachada monta o
+  rig da arte nova por padrão" — o mesmo assert de `data-face`, agora provando
+  o caminho que o jogo usa de verdade
 
-**Verificar:** `npm run check` + abrir o jogo e conferir a crupiê em cena.
+**Verificado:** `npm run check` + `npm run build` verdes, e a crupiê conferida no
+app rodando: 20 peças carregadas, nenhuma de `/dealer/`, zero 404 e zero erro de
+console.
 
 ### Fase 3 — Telas e componentes do blackjack (~1 h)
 
@@ -424,9 +453,23 @@ imports), e **depois** confira à mão os quatro `e2e/*.spec.ts` (§6.1).
 | CSS: remover bloco vivo | Blocos com modificador dinâmico (`hud-pill--${variant}`) não aparecem em busca literal — a lista da §4.3 já foi filtrada por isso |
 | Arrependimento | Um commit por fase; `git revert` de uma fase não afeta as outras |
 
-**Rede de segurança que já existe:** 795 casos de teste unitário, 4 suítes e2e,
+**Rede de segurança que já existe:** 801 casos de teste unitário, 4 suítes e2e,
 `tsc` estrito com `noUncheckedIndexedAccess`, e ESLint. Rodar
 `npm run check && npm run build` entre fases cobre a maior parte.
+
+> ⚠️ **Um teste INSTÁVEL na rede, achado ao executar a Fase 1.**
+> `tests/seating.test.ts > a economia da mesa de cash > levantar sem fichas não
+> credita nada, e o saldo fecha a conta` falha de forma intermitente — medido em
+> ~1–2 vezes a cada 8 execuções, e **igualmente no código sem nenhuma limpeza**
+> (conferido em worktree limpo no HEAD anterior). O grafo de imports dele
+> (`engine/credits`, `tournamentStore`, `gameStore`, `simulation`) não toca nada
+> que as Fases 1 e 2 removeram.
+>
+> Isso importa para quem seguir com as fases seguintes: **uma falha isolada
+> nesse teste não é sinal de que a sua fase quebrou algo.** Rode de novo antes
+> de investigar. E vale consertá-lo por si só — é a mesa cash de verdade, e um
+> teste que pisca esconde regressão real justamente na área mais arriscada da
+> limpeza (Fase 5).
 
 ---
 

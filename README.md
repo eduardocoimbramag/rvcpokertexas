@@ -2,7 +2,7 @@
 
 Jogo de **Texas Hold'em heads-up** mobile-first em React + TypeScript com **toda a lógica rodando localmente**: duelo contra um oponente simulado numa mesa de feltro verde, créditos virtuais, cartas 3D animadas, áudio sintetizado e persistência versionada. Sem backend — mas com a arquitetura pronta para recebê-lo.
 
-> Base histórica do projeto (era um Bac Bo de dados, depois um duelo de 21): [docs/BacBo_Arena_Master_Specification.md](docs/BacBo_Arena_Master_Specification.md)
+> Base histórica do projeto (era um Bac Bo de dados, depois um duelo de 21): [docs/limpeza.md](docs/limpeza.md) §2
 
 ## Regras do jogo
 
@@ -10,7 +10,7 @@ Jogo de **Texas Hold'em heads-up** mobile-first em React + TypeScript com **toda
 - **Os dois compram fichas pelo mesmo BUY-IN: até 5.000** (ou o que o saldo permitir). Ele sai do saldo no ato de sentar e as fichas ficam no feltro: **o saldo não se mexe entre as mãos**, como em qualquer sala. Enquanto a sessão corre **o saldo sai de cena** — o que está em jogo está desenhado na mesa, e um terceiro número no canto não participa de decisão nenhuma. Ele volta no caixa, nos menus e no extrato.
 - **A entrada é FIXA e igual dos dois lados: 100 créditos** de cada um vão ao pote antes da primeira carta, **em toda mão**. Não há valor a combinar — o que varia é o que se aposta dentro da mão.
 - **O montante de cada um fica em cima do pano**, centrado no vão entre a mão e a borda da mesa, em **fichas de quatro valores** — 25 (marfim), 100 (vinho, a da entrada), 500 (ardósia) e 1.000 (ouro), todas com o brasão da casa. É a MESMA ficha do pote: uma ficha é uma ficha em toda a mesa, e o que muda é quanto ela vale. Um stack não se conta, se **lê**: seis douradas são seis mil, e isso se vê de relance. Apostar tira fichas do montante em direção ao centro; recolher o pote traz de volta. A distância entre as duas pilhas é o placar da sessão.
-- **Regra do heads-up**: quem tem o botão (o disco branco com o **D**, sobre o pano ao lado da mão) fala **primeiro no pré-flop** — e **por último** no flop, no turn e no river. Ele é sorteado na abertura da mesa e **passa de lado a cada mão**, para que a posição se reparta ao longo da sessão. Não cobra blind nenhum aqui: diz só a ordem da palavra. Ver [docs/dmisterioso.md](docs/dmisterioso.md).
+- **Regra do heads-up**: quem tem o botão (o disco branco com o **D**, sobre o pano ao lado da mão) fala **primeiro no pré-flop** — e **por último** no flop, no turn e no river. Ele é sorteado na abertura da mesa e **passa de lado a cada mão**, para que a posição se reparta ao longo da sessão. Não cobra blind nenhum aqui: diz só a ordem da palavra.
 - **As quatro ruas** correm na ordem clássica: pré-flop → flop (3) → turn (1) → river (1) → showdown. Os cinco lugares da mesa ficam desenhados no feltro desde o primeiro instante, vazios.
 - **Cada rua abre com um CORTE DE CENA**, na ordem de uma mesa de verdade: a tela inteira sai de foco, o letreiro de ouro da casa — o mesmo carimbo do "Hora do duelo" — entra no centro, o foco volta e **só então** as cartas caem. Anunciar e virar são dois acontecimentos: virar por trás do desfoque escondia justamente o que a rua É. A etiqueta miúda que antes trocava de palavra em silêncio saiu.
 - **A fileira de lances tem quatro lugares fixos**: `APOSTAR · PASSAR/PAGAR · CORRER · LEVANTAR`, do que mais se faz para o que menos se faz. O lugar que não cabe na rua fica **vazio** em vez de encolher a fileira — botão que muda de lugar obriga a ler a barra a cada vez; com o lugar fixo o polegar aprende o caminho.
@@ -86,7 +86,7 @@ src/
     │   ├── GameStorageService.ts    # localStorage versionado com migrações
     │   ├── AudioManager.ts          # Howler.js central (música + SFX)
     │   └── sfxSynth.ts              # SFX sintetizados em runtime (zero assets binários)
-    ├── scene/               # Cenário: mesa Emerald + dealer animada (docs/scenario.md)
+    ├── scene/               # Cenário: mesa Emerald + dealer animada (docs/animacaodealer.md)
     │   ├── TableScene.tsx           # Compositor: mesa + dealer atrás do jogo
     │   ├── ambient/ · table/        # Ambiente global e feltro/trilho em CSS/SVG
     │   └── dealer/                  # Rig SVG com 10 reações por evento (plugável p/ Rive)
