@@ -84,11 +84,22 @@ cotovelo resolvido no próprio desenho, até o vinco:
 
 | Pose        | Arte                                                   | Quando entra                     |
 | ----------- | ------------------------------------------------------ | -------------------------------- |
-| `repouso`   | As quatro peças de sempre, mãos cruzadas no ventre     | Todas as reações neutras — e a **derrota**, de propósito: postura recolhida com as lágrimas por cima |
-| `apresenta` | Antebraço estendido nascendo no cotovelo direito, palma aberta | `present` (confirmação de duelo e apostas) — o convite para o jogador agir, sorrindo |
+| `repouso`   | As quatro peças de sempre, mãos cruzadas no ventre     | **Nove das dez reações** — inclusive a confirmação de duelo e a **derrota**, esta de propósito: postura recolhida com as lágrimas por cima |
 | `palmas`    | Dois antebraços de palma erguida, um por lado          | `celebrate` (lucro) — **batem de verdade**: cada mão afasta e volta ao contato, girando no cotovelo (2,5°, 0,4 s), somada ao pulo do corpo |
 
-**O que a pose troca é o ANTEBRAÇO.** As três artes de `varantebraco/` são
+> **A pose `apresenta` foi retirada.** A mão estendida
+> (`varantebraco/braco-dir-vari.svg`) entrava no `present` — a tela
+> "PARTIDA CONFIRMADA" e as apostas — e **não cabia no quadro**: o encaixe
+> pedia x=1603,2 numa peça de 201,8 de largura, terminando em 1805, quase
+> 100 unidades além da borda direita do `RIG_VIEWBOX` (1709). Em cena, a
+> mão aparecia cortada rente ao quadro e o braço superior daquele lado
+> ficava solto, sem nada ligando o ombro à mão. O `present` voltou ao
+> **repouso**, onde o encaixe é perfeito; o convite ao jogador continua
+> existindo, mas no **rosto** (a reação segue sorrindo) e na respiração
+> mais longa. O arquivo do designer segue em `public/dealernova/`: o que
+> falta é arte que caiba no quadro — números de volta em `antebraco.md`.
+
+**O que a pose troca é o ANTEBRAÇO.** As artes de `varantebraco/` são
 antebraços — a pasta diz isso no nome —, e todas se penduram no mesmo pivô de
 cotovelo. Os **braços superiores ficam sempre em cena**: escondê-los para montar
 as palmas como braços inteiros deixava o ombro solto, sem nada ligando o corpo à
@@ -96,11 +107,11 @@ mão. Nas palmas a ordem de desenho é **invertida** em relação ao repouso —
 da direita da tela entra primeiro e fica atrás da esquerda, como no desenho de
 referência —, e o repouso mantém a ordem original, que já tinha o encaixe certo.
 
-A troca é crossfade de 200 ms (o mesmo `blendMs` do rosto). A pose `apresenta`
-ganha uma flutuação lenta da mão (±2,5° em 3,2 s), de quem sustenta o gesto. O
-repouso — único que ainda articula — fica **pinado**: cotovelo preso à pose de
-encaixe perfeito (clamp de ±1,5°, a micro-flexão que o idle provou ser
-invisível), com os gestos restantes morando no ombro.
+A troca é crossfade de 200 ms (o mesmo `blendMs` do rosto), e com duas poses ela
+é uma só: os dois antebraços de repouso saem juntos, num único grupo, quando as
+palmas entram. O repouso — único que ainda articula — fica **pinado**: cotovelo
+preso à pose de encaixe perfeito (clamp de ±1,5°, a micro-flexão que o idle
+provou ser invisível), com os gestos restantes morando no ombro.
 
 O mapa reação → pose vive em `bracosForReaction` (`dealerExpression.ts`),
 coberto por teste, e o rig expõe `data-bracos` para inspeção.
@@ -171,15 +182,32 @@ pupilas e boca** de uma vez.
 | Reação       | Quando entra em cena                                            | O que a crupiê faz                                                                                            |
 | ------------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `idle`       | Menu, busca, mesa parada, fase `completed`                        | Respiração de 4,4 s, cabeça oscilando em 9 s, braços em 5,5 s — ciclos **de durações primas entre si**, para o conjunto não repetir. É a única reação que recebe os beats do §3. |
-| `greet`      | Fase `found` (rival encontrado)                                   | **Acena**: um braço sobe e desce duas vezes em 1,25 s, cabeça inclinada, corpo sobe 6 — e o **rosto fica feliz**. |
-| `present`    | Fases `confirm` e `betting`                                       | Apresenta a mesa: braços abertos 7°, respiração mais longa (4,8 s).                                              |
-| `anticipate` | `countdown`                                                       | Tensão: respiração curta de 0,9 s, braços recolhidos, sobrancelhas baixas, olhos semicerrados (0,86).            |
+| `greet`      | Fase `found` — a tela **"PARTIDA CONFIRMADA"**                    | Recebe o jogador **sem gesticular**: braços na pose padrão (mãos cruzadas no ventre), cabeça inclinada −5°, corpo sobe 6 e o **rosto fica feliz**. O aceno que havia aqui foi retirado — ver a nota logo abaixo da tabela. |
+| `present`    | Fases `confirm` e `betting`                                       | Convida sem gesticular: **braços na pose padrão** (mãos no ventre, encaixe perfeito), respiração mais longa (4,8 s) e **rosto feliz** — o convite está no sorriso. |
+| `anticipate` | `countdown`                                                       | Tensão: respiração curta de 0,9 s, braços na pose padrão, sobrancelhas baixas, olhos semicerrados (0,86).        |
 | `shake`      | `dealing` e `handover` (distribuindo / recolhendo o pote)          | **É o antebraço que trabalha**, em 0,42 s, com o corpo balançando de leve — não o corpo inteiro sacudindo.       |
 | `reveal`     | `settle` (showdown)                                               | Inclina-se para a frente (desce 10), cabeça virada 3,5°, olhos **mais abertos** (1,1).                           |
 | `celebrate`  | **Lucro na mesa** — desfecho `win` da mão e do caixa da sessão     | Ver §2.1.                                                                                                       |
 | `console`    | **Prejuízo na mesa** — desfecho `lose`                            | Ver §2.2.                                                                                                       |
 | `shrug`      | Empate (`tie`)                                                    | Dá de ombros: braços abrem 12° numa mola rápida, corpo sobe 10 e volta em 0,6 s, cabeça de lado.                 |
 | `apologize`  | Fase `error`                                                      | Cabeça baixa, corpo pesado (desce 16), **olhos fechados** (0,12) e rosto triste — sem lágrima.                   |
+
+> **O aceno da recepção foi retirado.** Na tela "PARTIDA CONFIRMADA" o ombro
+> abria até 15° e assentava em 6°, num gesto que devia ler como aceno. Não lia:
+> **não existe peça de braço acenando**. O que o ombro fazia era girar o braço
+> INTEIRO, rígido — e o efeito colateral disso são as MÃOS. Na pose de repouso
+> elas se encontram cruzadas no ventre, e é esse encontro que faz a figura ler
+> como uma crupiê de pé à mesa; girando o ombro, cada mão vai junto com o seu
+> braço, e **a partir de uns 5° já se vê um vão entre as duas**. Em cena a
+> crupiê não parecia acenar: parecia ter descruzado as mãos. O `greet` voltou ao
+> repouso, e o calor da recepção ficou onde ele de fato se lê — no rosto feliz,
+> na cabeça inclinada e no corpo subindo.
+>
+> É a mesma regra que já valia para o lado de fechar, agora provada para o de
+> abrir: **os ângulos de ombro são pequenos, e quase sempre zero**. Sobraram
+> três exceções, todas de propósito — `shake` (as mãos trabalhando, amplitude
+> curta e em movimento), `reveal` (o corpo indo à frente) e `shrug` (cujo gesto
+> É abrir).
 
 ### 2.1 Comemoração (lucro)
 
@@ -191,8 +219,10 @@ O ciclo tem **1,15 s** e repete enquanto a tela do lucro estiver em cena:
 - **Agacha antes de subir** (`scaleY` 0,94 no impulso, 1,045 no ar): é o
   squash & stretch, ancorado no quadril, que faz o pulo ter peso em vez de parecer
   a figura deslizando para cima.
-- **Braços abertos no ar**, oscilando entre 20° e 30° no ombro, com o **cotovelo
-  esticando** (0° → −10°) — o braço abre inteiro, não dobrado.
+- **Palmas batendo**: é a única reação que troca a pose dos braços — os dois
+  antebraços de palma erguida entram no lugar dos de repouso, e cada mão afasta e
+  volta ao contato (2,5° no cotovelo, 0,4 s). O ombro fica neutro, para o
+  crossfade não misturar um gesto pela metade.
 - **Cabeça balançando** ±4° e **corpo girando** ±2,2°, ambos em contratempo com o
   pulo (meio ciclo), que é o que dá a sensação de solavanco alegre.
 - **Rosto feliz** (boca aberta com dentes), sobrancelhas erguidas 3, olhos
@@ -205,8 +235,9 @@ O oposto exato da curva acima, e de propósito:
 
 - **Corpo desce e fica pesado**: repousa 12 abaixo e respira longo entre 12 e 16
   em **2,8 s** (contra 1,15 s da comemoração), com `scaleY` 0,985 — encolhida.
-- **Ombros caídos** (braços fecham 4°), **cotovelos recolhidos** (12°) —
-  as mãos se juntam à frente.
+- **Braços na pose padrão, EXATA** — as mãos já ficam cruzadas no ventre, que é
+  a postura recolhida que a cena pede. O ombro não fecha: fechar quebra a
+  montagem (ver o `abre()` mais abaixo), e a tristeza não precisa disso.
 - **Cabeça baixa e virada** 4,5°, pupilas descendo 2,5, pálpebras a 0,72.
 - **Rosto triste completo**: boca, pupila e sobrancelha trocadas pelas peças de
   `vartriste`.

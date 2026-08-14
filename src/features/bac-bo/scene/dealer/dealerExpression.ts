@@ -19,8 +19,9 @@ export type DealerFace = 'neutra' | 'feliz' | 'triste';
 const FACE_BY_REACTION: Record<DealerReaction, DealerFace> = {
   idle: 'neutra',
   greet: 'feliz',
-  // O convite de mão estendida vem SORRINDO no mock do designer — o
-  // gesto é de boas-vindas, e cara neutra com braço aberto lê como tédio.
+  // Confirmação de duelo e apostas: o convite é de boas-vindas, e é o
+  // ROSTO que o faz. Cara neutra ao lado de um "PARTIDA CONFIRMADA" lê
+  // como tédio.
   present: 'feliz',
   anticipate: 'neutra',
   shake: 'neutra',
@@ -51,19 +52,27 @@ export function tearsForReaction(reaction: DealerReaction): boolean {
  * designer com o encaixe já resolvido no desenho:
  *
  * - `repouso`: mãos cruzadas no ventre (as quatro peças de sempre);
- * - `apresenta`: mão estendida, convidando o jogador a agir — é a pose
- *   da confirmação de duelo e das apostas;
  * - `palmas`: mãos erguidas batendo palmas — a pose do LUCRO.
  *
- * A derrota fica no `repouso` de propósito: postura recolhida, mãos no
- * ventre, com as lágrimas por cima (ver tearsForReaction).
+ * O `repouso` é o PADRÃO, e não um fallback: é a única montagem em que o
+ * encaixe das peças é perfeito. Toda reação que não tem um gesto de
+ * braço próprio a serviço dela fica aqui, e a emoção vem do corpo, do
+ * rosto e das lágrimas — inclusive a derrota (postura recolhida, mãos no
+ * ventre, lágrimas por cima; ver tearsForReaction) e a confirmação de
+ * duelo (o convite mora no sorriso).
+ *
+ * Houve uma terceira pose, `apresenta` (mão estendida), usada pelo
+ * `present`. Foi RETIRADA: a arte não cabe no quadro do rig — a mão caía
+ * fora do viewBox e o braço superior ficava solto, sem nada ligando o
+ * ombro à mão. O diagnóstico e os números de volta estão em
+ * docs/antebraco.md.
  */
-export type BracoPose = 'repouso' | 'apresenta' | 'palmas';
+export type BracoPose = 'repouso' | 'palmas';
 
 const POSE_BY_REACTION: Record<DealerReaction, BracoPose> = {
   idle: 'repouso',
   greet: 'repouso',
-  present: 'apresenta',
+  present: 'repouso',
   anticipate: 'repouso',
   shake: 'repouso',
   reveal: 'repouso',

@@ -118,23 +118,31 @@ describe('rosto por reação', () => {
     }
   });
 
-  it('o convite de mão estendida vem sorrindo, como no mock do designer', () => {
+  it('o convite da confirmação de duelo vem sorrindo, como no mock do designer', () => {
     expect(faceForReaction('present')).toBe('feliz');
   });
 });
 
 describe('poses de braço por reação (docs/antebraco.md, solução B)', () => {
-  it('lucro bate palmas; confirmação estende a mão; derrota fica recolhida', () => {
+  it('só o LUCRO tira os braços do repouso', () => {
     expect(bracosForReaction('celebrate')).toBe('palmas');
-    expect(bracosForReaction('present')).toBe('apresenta');
-    // A derrota usa o REPOUSO de propósito: postura recolhida com as
-    // lágrimas por cima — não existe pose de braço triste.
-    expect(bracosForReaction('console')).toBe('repouso');
+    for (const reacao of DEALER_REACTIONS) {
+      if (reacao !== 'celebrate') expect(bracosForReaction(reacao)).toBe('repouso');
+    }
+  });
+
+  /* A pose `apresenta` (mão estendida) foi RETIRADA: a arte não cabe no
+     quadro do rig — a mão caía fora do viewBox e o braço superior ficava
+     solto. A confirmação de duelo voltou ao repouso, onde o encaixe das
+     peças é perfeito e as mãos ficam cruzadas no ventre; o convite mora
+     no sorriso (ver faceForReaction acima). */
+  it('a confirmação de duelo usa a pose padrão, de encaixe perfeito', () => {
+    expect(bracosForReaction('present')).toBe('repouso');
   });
 
   it('toda reação tem pose definida (o Record obriga, o teste documenta)', () => {
     for (const reacao of DEALER_REACTIONS) {
-      expect(['repouso', 'apresenta', 'palmas']).toContain(bracosForReaction(reacao));
+      expect(['repouso', 'palmas']).toContain(bracosForReaction(reacao));
     }
   });
 });

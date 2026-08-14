@@ -107,15 +107,18 @@ export const PARTS = {
      pasta varantebraco, desenhadas pelo designer JÁ MONTADAS, com o
      cotovelo resolvido dentro da própria arte (até o vinco do cotovelo
      vem desenhado). Os nomes de arquivo são do designer e não seguem a
-     convenção dir/esq da tela — o que manda é a geometria medida:
+     convenção dir/esq da tela — o que manda é a geometria medida.
 
-     - apresenta: ANTEBRAÇO+MÃO estendidos, nascendo no cotovelo DIREITO
-       da tela (o braço superior de repouso continua no lugar);
-     - palmas: dois BRAÇOS COMPLETOS (ombro→mão), um por lado, mãos
-       erguidas à frente do peito — substituem as quatro peças de
-       repouso por inteiro. */
-  bracoApresenta: part('varantebraco/braco-dir-vari.svg', 1603.2, 335.3, 201.76, 253.69),
-  /* As duas peças de palma são ANTEBRAÇOS (montá-las como braços
+     Sobrou UMA pose: as palmas. A da mão estendida (`braco-dir-vari.svg`,
+     usada pela confirmação de duelo) foi retirada porque NÃO CABE no
+     quadro — o encaixe pedia x=1603,2 e a peça tem 201,8 de largura, ou
+     seja, terminava em 1805, quase 100 unidades além da borda direita do
+     `RIG_VIEWBOX` (1709). A mão saía cortada rente ao quadro e o braço
+     superior daquele lado ficava solto. O arquivo continua em
+     `public/dealernova/varantebraco/`; o que falta é arte que caiba.
+     Diagnóstico completo em docs/antebraco.md.
+
+     As duas peças de palma são ANTEBRAÇOS (montá-las como braços
      inteiros, escondendo o braço superior, deixava o ombro sem conexão).
      O `y` das duas é o que faz a PONTA delas cair ~7 abaixo do fim da
      calota do braço superior (que termina em y≈587): assim o antebraço

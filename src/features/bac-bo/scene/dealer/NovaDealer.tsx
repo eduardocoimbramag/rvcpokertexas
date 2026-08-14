@@ -196,9 +196,21 @@ type Lado = keyof typeof ABRIR;
  * centro, então o topo continua coberto pelo deltoide desenhado no
  * corpo, e o braço só ganha mais pele à mostra.
  *
+ * Mas ABRIR TAMBÉM TEM PREÇO, e ele não está no ombro: está nas MÃOS.
+ * Na pose de repouso as duas se encontram cruzadas no ventre, e é esse
+ * encontro que faz a figura ler como uma crupiê de pé à mesa. Girar o
+ * ombro leva o braço inteiro junto, mão incluída — a partir de uns 5° já
+ * se vê um vão entre as duas, e o gesto lê como "descruzou as mãos", não
+ * como o gesto pretendido. Por isso os ângulos daqui são pequenos e
+ * quase sempre zero: os que passavam disso (o aceno da recepção, em 15°)
+ * foram retirados.
+ *
  * Com `abre(0)` a pose fica IDÊNTICA à de repouso, pixel a pixel — que
- * é o encaixe perfeito da arte. Toda reação sem gesto de braço próprio
- * usa esse zero, e a emoção vem do corpo, do rosto e das lágrimas.
+ * é o encaixe perfeito da arte, com as mãos no ventre. É o PADRÃO, e
+ * quase toda reação fica nele: a emoção vem do corpo, do rosto e das
+ * lágrimas. Sobraram três exceções, todas de propósito: `shake` (as mãos
+ * trabalhando, em amplitude curta), `reveal` (o corpo indo à frente) e
+ * `shrug` (o dar de ombros, cujo gesto É abrir).
  */
 function ombro(lado: Lado): Variants {
   const s = ABRIR[lado];
@@ -212,16 +224,19 @@ function ombro(lado: Lado): Variants {
         rotate: [abre(0), abre(1.5), abre(0)],
         transition: { duration: 5.5, repeat: Infinity, ease: 'easeInOut' },
       },
-      // Só um braço acena; o outro acompanha de leve, como um corpo real.
-      greet: acena
-        ? {
-            rotate: [abre(8), abre(15), abre(8), abre(15), abre(6)],
-            transition: { duration: 1.25 },
-          }
-        : { rotate: abre(2) },
-      // present/celebrate: os braços de REPOUSO saem de cena (troca de
-      // pose — ver bracosForReaction); ficam neutros para o crossfade
-      // não misturar um gesto pela metade.
+      /* "PARTIDA CONFIRMADA": braços na pose de repouso, EXATA.
+         Aqui houve um ACENO (o ombro abria até 15° e assentava em 6°), e
+         ele foi retirado. O motivo é a arte: não existe peça de braço
+         acenando — o que o ombro fazia era girar o braço INTEIRO, rígido,
+         e o efeito colateral disso é que as duas MÃOS, que na pose de
+         repouso se encontram cruzadas no ventre, eram AFASTADAS uma da
+         outra. Bastavam 6° para abrir um vão visível entre elas; a
+         crupiê não lia como quem acena, e sim como quem descruzou as
+         mãos. O calor da recepção mora no ROSTO (que fica feliz), na
+         cabeça inclinada e no corpo subindo — não no braço. */
+      greet: { rotate: abre(0) },
+      // Confirmação de duelo e apostas: braços na pose de repouso,
+      // EXATA — o convite vem do sorriso, não de torcer o braço.
       present: { rotate: abre(0) },
       // Tensão, choro e desculpa: braços na pose de repouso, EXATA. A
       // emoção está no corpo (mais baixo), no rosto e nas lágrimas.
@@ -236,6 +251,9 @@ function ombro(lado: Lado): Variants {
             transition: { duration: 0.42, repeat: Infinity },
           },
       reveal: { rotate: abre(8) },
+      // Comemoração: os antebraços de repouso saem de cena (troca de pose
+      // — ver bracosForReaction), e o ombro fica neutro para o crossfade
+      // não misturar um gesto pela metade.
       celebrate: { rotate: abre(0) },
       console: { rotate: abre(0) },
       shrug: { rotate: abre(12), transition: { type: 'spring', stiffness: 240, damping: 14 } },
@@ -250,12 +268,11 @@ function ombro(lado: Lado): Variants {
 
 /**
  * Cotovelo dos braços de REPOUSO — PINADO. A expressão dos braços vem
- * da TROCA DE POSE (docs/antebraco.md, solução B): `apresenta` e
- * `palmas` são artes prontas do designer com o cotovelo resolvido no
- * desenho. O repouso, único que articula, fica preso à pose em que o
- * encaixe das peças é perfeito — o clamp de ±1,5° (a micro-flexão que o
- * idle provou ser invisível) garante que nenhuma reação o mova por
- * engano.
+ * da TROCA DE POSE (docs/antebraco.md, solução B): `palmas` é arte
+ * pronta do designer, com o cotovelo resolvido no desenho. O repouso,
+ * único que articula, fica preso à pose em que o encaixe das peças é
+ * perfeito — o clamp de ±1,5° (a micro-flexão que o idle provou ser
+ * invisível) garante que nenhuma reação o mova por engano.
  */
 const FLEXAO_REPOUSO = 8;
 const PINO = 1.5;
@@ -471,11 +488,6 @@ const PALMA_DIR_BATE = { rotate: [0, -2.5, 0] };
 const PALMA_ESQ_BATE = { rotate: [0, 2.5, 0] };
 const PALMA_RITMO = { duration: 0.4, repeat: Infinity, ease: 'easeInOut' } as const;
 
-/** Apresenta: a mão estendida flutua de leve, como quem sustenta o gesto. */
-const APRESENTA_FLUTUA = { rotate: [0, 2.5, 0] };
-const APRESENTA_RITMO = { duration: 3.2, repeat: Infinity, ease: 'easeInOut' } as const;
-
-
 export function NovaDealer({ reaction, quality = 'high' }: Omit<DealerProps, 'variant'>) {
   const animado = quality === 'high';
   // Os dois recortes são referenciados por url(#id): precisam ser
@@ -547,37 +559,20 @@ export function NovaDealer({ reaction, quality = 'high' }: Omit<DealerProps, 'va
               <Peca part={PARTS.corpo} />
             </g>
 
-            {/* Antebraço da ESQUERDA da tela: a mão que repousa no ventre —
-                vale para repouso E apresenta. */}
-            <motion.g animate={{ opacity: bracos === 'palmas' ? 0 : 1 }} transition={BLEND}>
+            {/* POSE REPOUSO: os dois antebracos cruzando para o ventre,
+                que e a montagem de encaixe PERFEITO da arte. Saem de cena
+                juntos, num crossfade so, porque so existe uma pose que os
+                tira: as palmas. A ordem de desenho (esquerda da tela
+                primeiro) e a original, a que ja tinha o encaixe certo. */}
+            <motion.g animate={{ opacity: bracos === 'repouso' ? 1 : 0 }} transition={BLEND}>
               <Joint pivot={PIVOTS.ombroDir} variants={OMBRO_DIR}>
                 <Joint pivot={PIVOTS.cotoveloDir} variants={COTOVELO_DIR}>
                   <Peca part={PARTS.antebracoDir} />
                 </Joint>
               </Joint>
-            </motion.g>
-
-            {/* Antebraço da DIREITA da tela em repouso (cruza para o ventre). */}
-            <motion.g animate={{ opacity: bracos === 'repouso' ? 1 : 0 }} transition={BLEND}>
               <Joint pivot={PIVOTS.ombroEsq} variants={OMBRO_ESQ}>
                 <Joint pivot={PIVOTS.cotoveloEsq} variants={COTOVELO_ESQ}>
                   <Peca part={PARTS.antebracoEsq} />
-                </Joint>
-              </Joint>
-            </motion.g>
-
-            {/* POSE APRESENTA: a mão estendida, nascendo no MESMO cotovelo
-                direito (aninhada no ombro para acompanhar qualquer resto de
-                movimento dele), com uma flutuação lenta de quem sustenta o
-                convite. */}
-            <motion.g animate={{ opacity: bracos === 'apresenta' ? 1 : 0 }} transition={BLEND}>
-              <Joint pivot={PIVOTS.ombroEsq} variants={OMBRO_ESQ}>
-                <Joint
-                  pivot={PIVOTS.cotoveloEsq}
-                  animate={APRESENTA_FLUTUA}
-                  transition={APRESENTA_RITMO}
-                >
-                  <Peca part={PARTS.bracoApresenta} />
                 </Joint>
               </Joint>
             </motion.g>

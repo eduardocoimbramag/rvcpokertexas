@@ -9,6 +9,9 @@
 > poses vive em `NovaDealer.tsx` (camadas com crossfade) + `bracosForReaction`
 > (`dealerExpression.ts`); o repouso segue pinado. Detalhes na seção
 > correspondente de `animacaodealer.md`.
+>
+> **ADENDO — a mão estendida saiu de cena.** Das duas poses do designer,
+> só as palmas sobreviveram. Ver §4 abaixo.
 
 Este documento existe porque o encaixe braço/antebraço já passou por **quatro
 correções** e continua imperfeito. Antes de listar as soluções, ele explica o
@@ -212,6 +215,47 @@ movimento pleno.
 é reversível e ainda simplifica o código (remove o fecho). Se o cotovelo
 marcado incomodar no visual, o caminho seguinte natural é a B (poses prontas)
 — e a espec da C fica pronta neste documento para quando houver designer.
+
+---
+
+## 4. A pose `apresenta` (mão estendida) — retirada
+
+A solução B entregou duas poses do designer. **Uma delas nunca coube no
+quadro**, e foi removida do rig depois de vista em tela na confirmação de duelo
+("PARTIDA CONFIRMADA").
+
+**O defeito.** A peça é `varantebraco/braco-dir-vari.svg`, encaixada em
+x=1603,2 com 201,8 de largura — ou seja, terminando em **x=1805**. A borda
+direita do `RIG_VIEWBOX` está em **1709**. Quase 100 unidades da peça, a mão
+inteira incluída, ficavam **fora do quadro**. O que se via era:
+
+1. a mão cortada em reta, rente à borda direita da cena;
+2. o **braço superior daquele lado solto** — o antebraço de repouso saía para dar
+   lugar à mão estendida, e não sobrava nada ligando o ombro à mão;
+3. do outro lado, o antebraço de repouso continuava cruzando para o ventre, com
+   a mão sozinha, sem a outra para encontrar.
+
+**Por que não foi só reposicionar.** A peça é um antebraço estendido para FORA
+do corpo: ela precisa de espaço lateral que o enquadramento não tem. O
+`RIG_VIEWBOX` (`1269 6 440 880`) está calibrado por marcos da modelo — linha dos
+olhos a ~21% da altura, ombros a ~40% — e é o mesmo recorte 1:2 que o CSS da
+cena reserva (`RIG_ASPECT` nasce dele). Alargar o quadro para caber a mão
+encolheria a crupiê inteira e desfaria esse enquadramento; puxar a peça para
+dentro enfiaria o cotovelo no tronco, que é exatamente o defeito que o `abre()`
+existe para impedir.
+
+**O que ficou no lugar.** O `present` (confirmação de duelo e apostas) voltou ao
+**repouso**, a única montagem de encaixe perfeito: mãos cruzadas no ventre,
+ombro em `abre(0)` — idêntico ao repouso pixel a pixel. O convite ao jogador não
+sumiu, mudou de canal: o **rosto continua sorrindo** (`faceForReaction('present')
+=== 'feliz'`) e a respiração segue mais longa que a do idle (4,8 s contra 4,4 s).
+
+**Para trazer a pose de volta** seria preciso arte nova, não código: um
+antebraço estendido que caiba em **x ≤ 1709** partindo do pivô de cotovelo em
+(1633.1, 557.3) — na prática, um gesto mais fechado, com a mão à frente do corpo
+em vez de para fora. Os números do encaixe antigo, para referência:
+`part('varantebraco/braco-dir-vari.svg', 1603.2, 335.3, 201.76, 253.69)`,
+pendurada no pivô do cotovelo esquerdo da tela, com flutuação de ±2,5° em 3,2 s.
 
 ---
 
