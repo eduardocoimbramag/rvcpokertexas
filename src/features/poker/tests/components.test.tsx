@@ -9,77 +9,45 @@ import { ConfirmPanel } from '../components/ConfirmPanel';
 import { HistorySheet } from '../components/HistorySheet';
 import { SessionBanner } from '../components/SessionBanner';
 import { ResultStage } from '../components/ResultStage';
-import type { PokerHistoryEntry, PokerResult, PokerSession } from '../engine/poker/types';
+import type { PokerSession, TableHistoryEntry } from '../engine/poker/types';
 import type { Card, CardRank, CardSuit, Match } from '../engine/types';
 import { useGameStore } from '../store/gameStore';
 
 const card = (rank: CardRank, suit: CardSuit): Card => ({ rank, suit });
 
 /**
- * Uma mão de Hold'em resolvida no showdown: par de Ases contra par de
- * Reis, num board seco. Stack de 100, os dois com 50 no pote → vitória
- * paga 50 de volta + 45 (90% do que o rival pôs).
+ * UMA MESA no extrato da casa — o recibo do caixa, e não uma mão.
+ *
+ * Sentou com 500, levantou com 1.000: lucro de 500, dos quais a casa
+ * fica com 10% — 950 voltam ao saldo e o balanço da mesa é +450.
  */
-const samplePokerResult: PokerResult = {
-  id: 'p1',
-  matchId: 'm1',
-  playerHole: [card('A', 'spades'), card('A', 'hearts')],
-  opponentHole: [card('K', 'clubs'), card('K', 'diamonds')],
-  board: [
-    card('2', 'clubs'),
-    card('7', 'diamonds'),
-    card('9', 'hearts'),
-    card('J', 'spades'),
-    card('4', 'hearts'),
-  ],
-  playerRank: {
-    category: 'pair',
-    label: 'Par de Ases',
-    detail: 'de Ases',
-    cards: [
-      card('A', 'spades'),
-      card('A', 'hearts'),
-      card('J', 'spades'),
-      card('9', 'hearts'),
-      card('7', 'diamonds'),
-    ],
-  },
-  opponentRank: {
-    category: 'pair',
-    label: 'Par de Reis',
-    detail: 'de Reis',
-    cards: [
-      card('K', 'clubs'),
-      card('K', 'diamonds'),
-      card('J', 'spades'),
-      card('9', 'hearts'),
-      card('7', 'diamonds'),
-    ],
-  },
-  showdown: true,
-  opponentShown: true,
-  outcome: 'win',
-  stake: 100,
-  committed: { player: 50, opponent: 50 },
-  contested: 50,
-  pot: 100,
-  payout: 145,
-  netChange: 45,
-  session: {
-    matchId: 'm1',
-    buyIn: 100,
-    stacks: { player: 145, opponent: 55 },
-    handsPlayed: 1,
-    button: 'opponent' as const,
-    over: false,
-  },
-  completedAt: 1700000000000,
+const sampleEntry: TableHistoryEntry = {
+  id: 't1',
+  name: '1v1',
+  kind: 'duel',
+  seats: 2,
+  buyIn: 500,
+  finalStack: 1000,
+  cashedOut: 950,
+  hands: 8,
+  close: 'left',
+  startedAt: 1700000000000,
+  endedAt: 1700000600000,
 };
 
-const sampleEntry: PokerHistoryEntry = {
-  ...samplePokerResult,
-  kind: 'duel',
-  opponentName: 'Luna',
+/** Uma mesa de anel, com o nome da sala em que se jogou. */
+const sampleRoomEntry: TableHistoryEntry = {
+  id: 't2',
+  name: 'Copa da Casa',
+  kind: 'ring',
+  seats: 6,
+  buyIn: 1000,
+  finalStack: 0,
+  cashedOut: 0,
+  hands: 22,
+  close: 'busted',
+  startedAt: 1699990000000,
+  endedAt: 1699991000000,
 };
 
 afterEach(() => {
@@ -412,8 +380,8 @@ describe('acessibilidade: nenhum rótulo mudo', () => {
   });
 });
 
-describe('HistorySheet', () => {
-  it('mostra estado vazio sem rodadas', () => {
+describe('HistorySheet — o extrato é de MESAS', () => {
+  it('mostra estado vazio sem mesa nenhuma', () => {
     render(<HistorySheet open onClose={() => undefined} />);
     expect(screen.getByTestId('history-empty')).toBeInTheDocument();
     // O vazio deixou de ser um beco: tem o brasão da casa e uma saída.
@@ -430,13 +398,52 @@ describe('HistorySheet', () => {
     expect(useGameStore.getState().phase).toBe('search');
   });
 
-  it('lista rodadas persistidas com resultado e variação', () => {
-    useGameStore.setState({ history: [sampleEntry] });
+  it('o duelo entra como "1v1" e a sala com o NOME dela', () => {
+    useGameStore.setState({ history: [sampleEntry, sampleRoomEntry] });
     render(<HistorySheet open onClose={() => undefined} />);
 
     expect(screen.getByTestId('history-list')).toBeInTheDocument();
-    expect(screen.getByText(/vs Luna/)).toBeInTheDocument();
-    expect(screen.getByText('+45')).toBeInTheDocument();
+    // Uma linha por mesa — não uma por mão.
+    expect(screen.getAllByTestId('history-row')).toHaveLength(2);
+    expect(screen.getByText('1v1')).toBeInTheDocument();
+    expect(screen.getByText('Copa da Casa')).toBeInTheDocument();
+  });
+
+  it('a linha traz o BALANÇO da mesa, já sem a comissão da casa', () => {
+    /* Levantou com 1.000 sobre uma compra de 500: o feltro diz +500, mas
+       o saldo recebeu 950 — e o extrato é do saldo. */
+    useGameStore.setState({ history: [sampleEntry] });
+    render(<HistorySheet open onClose={() => undefined} />);
+
+    const linha = screen.getByTestId('history-row');
+    expect(linha).toHaveTextContent('+450');
+    expect(linha).toHaveTextContent('8 mãos');
+    // A compra dá tamanho ao balanço.
+    expect(linha).toHaveTextContent('compra 500');
+  });
+
+  it('quem QUEBROU leva selo, e quem só levantou não', () => {
+    /* Só as duas portas fora do comum ganham marca: carimbar "levantou"
+       seria um selo em toda linha da lista. */
+    useGameStore.setState({ history: [sampleRoomEntry] });
+    const { rerender } = render(<HistorySheet open onClose={() => undefined} />);
+    expect(screen.getByTestId('history-row')).toHaveTextContent('quebrou');
+    expect(screen.getByTestId('history-row')).toHaveTextContent('mesa de 6');
+
+    useGameStore.setState({ history: [sampleEntry] });
+    rerender(<HistorySheet open onClose={() => undefined} />);
+    expect(screen.getByTestId('history-row')).not.toHaveTextContent('quebrou');
+  });
+
+  it('o balanço de TUDO vem em cima, com a conta das mesas', () => {
+    useGameStore.setState({ history: [sampleEntry, sampleRoomEntry] });
+    render(<HistorySheet open onClose={() => undefined} />);
+
+    // +450 da primeira, −1.000 da segunda.
+    const resumo = screen.getByTestId('history-net');
+    expect(resumo).toHaveTextContent('−550');
+    expect(resumo).toHaveTextContent('2 mesas');
+    expect(resumo).toHaveTextContent('1 no positivo');
   });
 });
 

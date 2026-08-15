@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import { pokerHistoryRecordSchema } from '../engine/poker/types';
+import { tableHistoryEntrySchema } from '../engine/poker/types';
+import { foldHandsIntoTables } from './historyMigration';
 
 /**
  * Persistência do jogo em localStorage, com envelope versionado.
@@ -28,7 +29,7 @@ import { pokerHistoryRecordSchema } from '../engine/poker/types';
  * é invisível.
  */
 const STORAGE_KEY = 'bacbo-arena:state';
-const CURRENT_VERSION = 3;
+const CURRENT_VERSION = 4;
 
 export const audioSettingsSchema = z.object({
   muted: z.boolean(),
@@ -74,12 +75,28 @@ export const openTableSchema = z.object({
   buyIn: z.number().int().positive(),
   /** O montante do jogador na última mão que fechou. */
   stack: z.number().int().nonnegative(),
+  /**
+   * Mãos que já fecharam nesta mesa, e QUANDO ela abriu.
+   *
+   * Eles não têm nada a ver com o dinheiro — o canhoto os carrega porque
+   * a mesa liquidada no carregamento seguinte também vira uma linha do
+   * extrato (ver `tableHistoryEntrySchema`), e uma linha sem quantas mãos
+   * correram nem quando aquilo começou seria um recibo sem data.
+   *
+   * `openedAt` é OPCIONAL e é essa ausência que faz o trabalho: um
+   * canhoto gravado antes desta mudança não vira linha nenhuma, porque a
+   * migração v3 → v4 já escreveu a linha daquela mesa a partir das mãos
+   * dela. Sem isso, a mesa aberta no dia da atualização apareceria duas
+   * vezes no extrato.
+   */
+  hands: z.number().int().nonnegative().default(0),
+  openedAt: z.number().int().nonnegative().optional(),
 });
 export type OpenTable = z.infer<typeof openTableSchema>;
 
 export const persistedStateSchema = z.object({
   balance: z.number().int().nonnegative(),
-  history: z.array(pokerHistoryRecordSchema),
+  history: z.array(tableHistoryEntrySchema),
   settings: gameSettingsSchema,
   /* `.default(null)` mantém compatibilidade com estados gravados antes
      do canhoto existir — sem exigir migração de versão. */
@@ -114,6 +131,11 @@ const MIGRATIONS: Record<number, (state: unknown) => unknown> = {
   // tradução no jogo novo, mas o SALDO e as preferências têm — e são
   // eles que pertencem à pessoa, não à modalidade.
   2: dropHistory,
+  /* v3 → v4: o extrato deixa de contar MÃOS e passa a contar MESAS. É a
+     primeira migração de histórico que NÃO descarta nada — aqui existe
+     tradução, e ela mora em `historyMigration.ts` com os schemas do
+     formato velho. */
+  3: foldHandsIntoTables,
 };
 
 /** Atravessa saldo e preferências, descarta um histórico de outro jogo. */

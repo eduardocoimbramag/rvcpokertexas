@@ -9,14 +9,6 @@ import { CHIP_DENOMINATIONS } from './pot';
 import type { HandLog } from './handLog';
 import { handLog } from './handLog';
 
-export interface TableToolsProps {
-  /**
-   * A mesa em cena: `matchId` no duelo, `tableId` na mesa de anel. É a
-   * chave que separa esta sessão da anterior (ver `handLog`).
-   */
-  table: string;
-}
-
 /**
  * AS DUAS FERRAMENTAS DA MESA — o valor das fichas à esquerda, o extrato
  * da sessão à direita.
@@ -36,11 +28,14 @@ export interface TableToolsProps {
  * é pequena porque não deve chamar, não porque deva ser difícil de
  * acertar.
  */
-export function TableTools({ table }: TableToolsProps) {
-  const history = useGameStore((state) => state.history);
+export function TableTools() {
+  /* A MESA EM CENA é a única que existe para este painel: a lista viva da
+     sessão já é só dela, então não há chave a passar nem lista a filtrar
+     (ver `handLog`). */
+  const hands = useGameStore((state) => state.tableHands);
   const [aberto, setAberto] = useState<'fichas' | 'maos' | null>(null);
 
-  const log = handLog(history, table);
+  const log = handLog(hands);
 
   return (
     <div className="table-tools">
@@ -58,7 +53,7 @@ export function TableTools({ table }: TableToolsProps) {
         type="button"
         className="table-tool"
         onClick={() => setAberto('maos')}
-        aria-label="Ver o histórico da mesa"
+        aria-label="Ver as mãos desta mesa"
         data-testid="table-history"
       >
         <Icon name="scroll" size={17} />
@@ -134,8 +129,12 @@ function HandLogSheet({
 }) {
   const tom = log.net > 0 ? 'win' : log.net < 0 ? 'lose' : 'flat';
 
+  /* "MÃOS DESTA MESA", e não "histórico da mesa": desde que o extrato da
+     casa passou a listar MESAS, a palavra "histórico" tem dono na
+     interface — é a folha do menu. Dois painéis com o mesmo nome e
+     unidades diferentes fariam a pessoa procurar mãos onde há mesas. */
   return (
-    <Sheet open={open} title="Histórico da mesa" onClose={onClose}>
+    <Sheet open={open} title="Mãos desta mesa" onClose={onClose}>
       <div className={`hand-log__sum hand-log__sum--${tom}`} data-testid="hand-log-net">
         <span className="hand-log__sum-value">
           <Icon name="chip" size="0.8em" /> {formatDelta(log.net)}

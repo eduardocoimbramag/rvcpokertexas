@@ -303,119 +303,100 @@ export const pokerRoundStateSchema = z
   });
 export type PokerRoundState = z.infer<typeof pokerRoundStateSchema>;
 
-/**
- * Entrada do histórico persistido (resultado + nome do rival).
- *
- * O histórico guarda a mão INTEIRA — as duas mãos fechadas e o board —
- * porque é isso que se revisita depois de um duelo: não o número, e sim
- * o que cada um tinha.
- */
-export const pokerHistoryEntrySchema = pokerResultSchema.extend({
-  /**
-   * A marca do DUELO no extrato.
-   *
-   * `.default('duel')` porque o histórico gravado antes de existir mesa
-   * de 6 é todo de duelo — e essa é a informação verdadeira sobre
-   * aquelas mãos, não uma conveniência de schema. Ver
-   * `pokerHistoryRecordSchema`.
-   */
-  kind: z.literal('duel').default('duel'),
-  opponentName: z.string().min(1),
-  /**
-   * Ausente nos registros gravados antes de a mesa virar SESSÃO. Não é
-   * migração pendente: o retrato da mesa é informação de mesa aberta, e
-   * uma mão de 2024 não tem como inventar a sessão que não existia. O
-   * histórico mostra a mão, e a mão está toda aqui.
-   */
-  session: pokerSessionSchema.optional(),
-});
-export type PokerHistoryEntry = z.infer<typeof pokerHistoryEntrySchema>;
-
-/* ---------------- O extrato da mesa de 6 ---------------- */
-
-/** Um assento no registro de uma mão de anel. */
-export const ringSeatRecordSchema = z.object({
-  seat: z.number().int().nonnegative(),
-  name: z.string().min(1),
-  isYou: z.boolean(),
-  /** O que ele pôs na mão inteira. */
-  putIn: z.number().int().nonnegative(),
-  /** Quanto recebeu do meio. Zero para quem correu. */
-  won: z.number().int().nonnegative(),
-  folded: z.boolean(),
-  /**
-   * As duas fechadas — SÓ de quem as mostrou.
-   *
-   * O sigilo do extrato é o mesmo da mesa: quem correu não abre, e o que
-   * a mesa nunca viu o histórico não inventa. É por isso que este campo
-   * é opcional em vez de um par vazio: um par vazio seria uma mão sem
-   * cartas, e o que houve foi uma mão que não se mostrou.
-   */
-  hole: holeCardsSchema.optional(),
-  /** A leitura, quando houve showdown. */
-  rank: handRankSummarySchema.optional(),
-});
-export type RingSeatRecord = z.infer<typeof ringSeatRecordSchema>;
-
-/** Uma camada do pote, no registro. */
-export const potRecordSchema = z.object({
-  amount: z.number().int().nonnegative(),
-  eligible: z.array(z.number().int().nonnegative()),
-});
+/* ==================== O EXTRATO DA CASA ==================== */
 
 /**
- * UMA MÃO DA MESA DE 6 no extrato.
+ * UMA LINHA DO EXTRATO É UMA MESA — não uma mão.
  *
- * Ela não cabe no registro do duelo, e não por preguiça de modelagem: o
- * registro do duelo tem `playerHole` e `opponentHole`, `playerRank` e
- * `opponentRank`, `committed` de dois lados. Uma mesa de seis não tem
- * "os dois lados" — tem cadeiras, e tem POTES no plural.
+ * Ela já foi uma mão, e por uma razão que valia na época: a mesa era de
+ * mão única, então mesa e mão eram a mesma coisa e o extrato podia contar
+ * qualquer uma das duas. No dia em que a mesa virou SESSÃO essa
+ * equivalência acabou, e o extrato ficou contando a história errada: uma
+ * noite de quarenta mãos entrava como quarenta linhas de ±40 créditos, o
+ * teto da lista (`HISTORY_LIMIT`) engolia a mesa anterior inteira, e a
+ * única pergunta que alguém faz ao abrir o histórico — "como eu fui
+ * naquela mesa?" — não tinha onde ser respondida. Estava repartida em
+ * quarenta pedaços que só somavam de cabeça.
  *
- * O extrato passa então a guardar DOIS FORMATOS, distinguidos por `kind`
- * (ver `pokerHistoryRecordSchema`). Nada foi migrado e nada foi
- * descartado: as mãos de duelo já gravadas continuam válidas exatamente
- * como estão, e ganham `kind: 'duel'` por padrão ao serem lidas. Um
- * `dropHistory` para a versão 4 teria sido mais simples de escrever e
- * teria apagado o extrato de quem já jogou — que é dado da pessoa, não
- * do formato.
+ * Agora a linha nasce quando a mesa FECHA, e é o canhoto do caixa: com
+ * quanto se sentou, com quanto se levantou, e o que isso fez com o saldo.
+ * O que se perdeu no caminho — as fechadas de cada mão, os potes, o board
+ * — não é dado que se revisita meia hora depois; é dado da MESA EM CENA,
+ * e lá ele continua inteiro, no extrato da sessão (ver `handLog`).
+ *
+ * As duas mesas escrevem no MESMO formato — e é uma mudança de fundo, não
+ * de arrumação. O extrato guardava dois schemas em união justamente
+ * porque uma mão de duelo e uma mão de anel não cabem no mesmo objeto
+ * (uma tem dois lados, a outra tem cadeiras e potes no plural). O CAIXA
+ * não tem esse problema: sentar, jogar e levantar é a mesma cerimônia nas
+ * duas mesas, e o recibo dela é o mesmo papel. O `kind` sobrevive à
+ * união que o criou, agora como informação e não como discriminante: é
+ * ele que diz à tela que selo desenhar.
  */
-export const ringHistoryEntrySchema = z.object({
-  kind: z.literal('ring'),
+
+/** De que mesa é a linha: o duelo 1v1 ou uma sala de anel. */
+export const tableKindSchema = z.enum(['duel', 'ring']);
+export type TableKind = z.infer<typeof tableKindSchema>;
+
+/**
+ * POR QUE A MESA FECHOU — e ela fecha por quatro portas, não por uma.
+ *
+ * O balanço sozinho não distingue quem levantou no lucro de quem foi
+ * levantado pela falta de fichas, e são coisas diferentes de se lembrar:
+ * a primeira é uma decisão, a segunda é o fim da linha.
+ *
+ * `abandoned` é a porta que ninguém escolhe: a aba fechou, o aparelho
+ * descartou a página, a ligação entrou. Os créditos voltam no
+ * carregamento seguinte (ver `openTableSchema`), e a linha diz o que de
+ * fato houve — não "você levantou", que seria a mesa inventando uma
+ * decisão que ninguém tomou.
+ */
+export const tableCloseSchema = z.enum(['left', 'busted', 'closed', 'abandoned']);
+export type TableClose = z.infer<typeof tableCloseSchema>;
+
+/** O NOME DA MESA no extrato do duelo — todo duelo é a mesma mesa. */
+export const DUEL_TABLE_NAME = '1v1';
+
+export const tableHistoryEntrySchema = z.object({
   id: z.string().min(1),
-  /** A mesa em que a mão aconteceu. */
-  tableId: z.string().min(1),
-  tableName: z.string().min(1),
-  seats: z.array(ringSeatRecordSchema).min(2),
-  board: z.array(cardSchema).max(5),
-  pots: z.array(potRecordSchema),
-  /** A cadeira que tinha o botão nesta mão. */
-  button: z.number().int().nonnegative(),
-  /** A SUA cadeira — a régua de todo lucro e prejuízo do registro. */
-  yourSeat: z.number().int().nonnegative(),
-  smallBlind: z.number().int().positive(),
-  bigBlind: z.number().int().positive(),
-  showdown: z.boolean(),
-  /** O que ESTA mão fez com o seu stack, com sinal. */
-  netChange: z.number().int(),
-  /** O seu stack depois de a mão fechar. */
-  stack: z.number().int().nonnegative(),
-  completedAt: z.number().int().nonnegative(),
+  /** `1v1` no duelo; o nome da SALA na mesa de anel. */
+  name: z.string().min(1),
+  kind: tableKindSchema,
+  /** Cadeiras que a mesa tinha — duas no duelo. */
+  seats: z.number().int().nonnegative(),
+  /** As fichas que você comprou para sentar. */
+  buyIn: z.number().int().nonnegative(),
+  /** As fichas na sua frente no instante em que a mesa fechou. */
+  finalStack: z.number().int().nonnegative(),
+  /**
+   * O que o CAIXA devolveu ao saldo — já sem a comissão da casa.
+   *
+   * Ele é gravado, e não recalculado na leitura, porque é um RECIBO: o
+   * `cashOutValue` de hoje pode não ser o de amanhã, e uma linha que
+   * recomputasse o próprio valor mudaria retroativamente o que a pessoa
+   * recebeu numa mesa de três semanas atrás.
+   */
+  cashedOut: z.number().int().nonnegative(),
+  /** Mãos que fecharam com você sentado. */
+  hands: z.number().int().nonnegative(),
+  close: tableCloseSchema,
+  /** Quando você sentou e quando levantou. */
+  startedAt: z.number().int().nonnegative(),
+  endedAt: z.number().int().nonnegative(),
 });
-export type RingHistoryEntry = z.infer<typeof ringHistoryEntrySchema>;
+export type TableHistoryEntry = z.infer<typeof tableHistoryEntrySchema>;
 
 /**
- * UMA LINHA DO EXTRATO: uma mão de duelo ou uma mão de mesa de 6.
+ * O BALANÇO DA MESA: o que ela fez com o seu saldo, com sinal.
  *
- * A ordem da união importa. O registro de anel é testado PRIMEIRO porque
- * ele tem discriminante literal (`kind: 'ring'`), enquanto o do duelo
- * aceita `kind` ausente — sem essa ordem, uma linha de anel entraria no
- * schema do duelo e falharia por falta de `playerHole`, e o extrato
- * inteiro seria descartado como corrompido.
+ * É a diferença entre o que o caixa devolveu e o que a compra custou — e
+ * não `finalStack - buyIn`, que é o placar em FICHAS e ignora a comissão
+ * da casa. Quem subiu 1.000 no feltro levou 900 para o saldo, e o extrato
+ * é do saldo.
+ *
+ * Derivado, e não gravado: dois números que precisam bater são dois
+ * números que um dia não batem.
  */
-export const pokerHistoryRecordSchema = z.union([ringHistoryEntrySchema, pokerHistoryEntrySchema]);
-export type PokerHistoryRecord = z.infer<typeof pokerHistoryRecordSchema>;
-
-/** A linha é de uma mesa de 6. */
-export function isRingEntry(entry: PokerHistoryRecord): entry is RingHistoryEntry {
-  return entry.kind === 'ring';
+export function tableBalance(entry: TableHistoryEntry): number {
+  return entry.cashedOut - entry.buyIn;
 }

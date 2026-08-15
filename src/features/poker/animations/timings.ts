@@ -225,5 +225,11 @@ export const TIMINGS = {
 /** Valor inicial do countdown falado (5 → 1) antes da distribuição. */
 export const COUNTDOWN_START = 5;
 
-/** Máximo de partidas mantidas no histórico persistido. */
+/**
+ * Máximo de MESAS mantidas no histórico persistido.
+ *
+ * O teto já contou mãos, e as cinquenta cabiam numa sessão só — uma noite
+ * comprida apagava do extrato tudo o que veio antes dela. Contando mesas,
+ * as mesmas cinquenta linhas guardam meses de jogo.
+ */
 export const HISTORY_LIMIT = 50;

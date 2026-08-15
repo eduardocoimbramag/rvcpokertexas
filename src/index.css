@@ -8273,3 +8273,244 @@ body.is-street-cut #root {
   text-align: center;
   color: rgba(203, 169, 138, 0.8);
 }
+
+/* ==================== O extrato da casa ==================== */
+
+/* Ver components/HistorySheet.tsx: uma linha por MESA em que se jogou.
+   Ele é IRMÃO do extrato da mesa (`.hand-log`) e o desenho diz isso: o
+   mesmo bloco de saldo em cima, a mesma lista de linhas embaixo, os
+   mesmos ouro e vermelho. O que muda é a unidade — lá são as mãos de uma
+   sessão, aqui são as sessões de um mês. */
+
+/* O SALDO VEM ANTES, e grande: é a única linha que resume a folha
+   inteira. Mesma peça do `.hand-log__sum`, e de propósito — dois
+   extratos com dois desenhos para a mesma pergunta seriam duas casas. */
+.ledger__sum {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  margin-bottom: 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(48, 12, 20, 0.9), rgba(22, 5, 10, 0.94));
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.18);
+}
+
+.ledger__sum-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-lavender);
+}
+
+.ledger__sum--win .ledger__sum-value {
+  color: var(--color-gold-bright);
+}
+
+.ledger__sum--lose .ledger__sum-value {
+  color: var(--color-opponent-soft, #f0a0a0);
+}
+
+.ledger__sum--win {
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.42);
+}
+
+.ledger__sum--lose {
+  box-shadow: inset 0 0 0 1px rgba(220, 90, 90, 0.38);
+}
+
+.ledger__sum-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(203, 169, 138, 0.8);
+}
+
+/* A LISTA ROLA, e o saldo NÃO: um extrato de trinta mesas não pode
+   empurrar para fora da tela a única linha que o resume. */
+.ledger {
+  display: flex;
+  max-height: min(52dvh, 26rem);
+  flex-direction: column;
+  gap: 1.1rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ledger__day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* O CABEÇALHO DO DIA é uma régua, não um título: filete de metal, o dia
+   à esquerda e o que ele deu à direita, os dois em corpo miúdo. Ele
+   compete de propósito com nada — quem grita na lista é o balanço de
+   cada mesa. */
+.ledger__day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(252, 217, 160, 0.14);
+}
+
+.ledger__day-name {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(203, 169, 138, 0.85);
+}
+
+.ledger__day-net {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: rgba(203, 169, 138, 0.7);
+}
+
+.ledger__day-net.is-win {
+  color: rgba(252, 217, 160, 0.85);
+}
+
+.ledger__day-net.is-lose {
+  color: rgba(240, 160, 160, 0.85);
+}
+
+.ledger__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* A LINHA DA MESA. O filete de cor à esquerda é o desfecho lido de
+   relance: a lista inteira se varre pela borda, sem passar por número
+   nenhum. */
+.ledger__row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 244, 232, 0.035);
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.1);
+}
+
+.ledger__row.is-win {
+  box-shadow:
+    inset 2px 0 0 rgba(252, 217, 160, 0.55),
+    inset 0 0 0 1px rgba(252, 217, 160, 0.16);
+}
+
+.ledger__row.is-lose {
+  box-shadow:
+    inset 2px 0 0 rgba(220, 90, 90, 0.5),
+    inset 0 0 0 1px rgba(220, 90, 90, 0.16);
+}
+
+/* O SELO diz de que mesa se trata sem gastar palavra: o naipe de paus é
+   o duelo (o mesmo do botão da Home), as silhuetas são a sala. */
+.ledger__seal {
+  display: grid;
+  width: 2.15rem;
+  height: 2.15rem;
+  flex: none;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(20, 4, 8, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(252, 217, 160, 0.22);
+  color: var(--color-gold);
+}
+
+.ledger__seal--ring {
+  color: var(--color-copper);
+}
+
+/* `min-width: 0` é o que deixa o nome da sala ser cortado com
+   reticências: sem ele o miolo se recusa a encolher e empurra o balanço
+   para fora da linha. */
+.ledger__body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.ledger__name {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ivory);
+}
+
+.ledger__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: rgba(203, 169, 138, 0.75);
+}
+
+/* O SELO DO FIM FORA DO COMUM — quebrou, ou a sessão foi interrompida.
+   É o mesmo carimbo do "correu" do extrato da mesa, e existe pela mesma
+   razão: sem ele, dois números negativos iguais contam a mesma história
+   quando não contam. */
+.ledger__flag {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(220, 90, 90, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(220, 90, 90, 0.3);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f0a0a0;
+}
+
+.ledger__value {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.05rem;
+}
+
+.ledger__delta {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 244, 232, 0.72);
+}
+
+.ledger__row.is-win .ledger__delta {
+  color: var(--color-gold-bright);
+}
+
+.ledger__row.is-lose .ledger__delta {
+  color: var(--color-opponent-soft, #f0a0a0);
+}
+
+/* A COMPRA dá TAMANHO ao balanço: "+300" sobre uma compra de 500 é uma
+   noite; sobre uma de 5.000, um empate com sorte. */
+.ledger__stake {
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: rgba(203, 169, 138, 0.6);
+}

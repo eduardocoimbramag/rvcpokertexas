@@ -1,5 +1,4 @@
-import type { PokerHistoryRecord } from '../../engine/poker/types';
-import { isRingEntry } from '../../engine/poker/types';
+import type { SessionHand } from '../../store/gameStore';
 
 /** Uma mão da sessão, como o extrato da mesa a mostra. */
 export interface HandLogRow {
@@ -22,37 +21,31 @@ export interface HandLog {
 /**
  * O EXTRATO DA MESA QUE ESTÁ EM CENA — as mãos desta sessão, e só elas.
  *
- * Ele é DERIVADO do histórico que a casa já grava mão a mão, e não uma
- * segunda lista mantida em paralelo. A diferença importa: o histórico é
- * gravado no instante em que o pote fecha, pelas duas mesas, e é ele que
- * sobrevive a um recarregamento da página. Uma lista de sessão à parte
- * seria um segundo lugar para a mesma verdade — e o segundo lugar é
- * sempre o que sai de sincronia.
+ * Ele já foi DERIVADO do histórico da casa: filtrava a lista global pela
+ * chave da mesa (`matchId` no duelo, `tableId` no anel) e invertia a
+ * ordem. Era o desenho certo enquanto a casa gravava mão a mão, e caiu
+ * junto com isso: o extrato da casa passou a guardar MESAS (ver
+ * `tableHistoryEntrySchema`), e uma mesa não tem de onde tirar as mãos
+ * dela.
  *
- * A CHAVE é a mesa: `matchId` no duelo, `tableId` na mesa de anel. É por
- * ela que uma sessão não vê as mãos da anterior.
+ * A fonte agora é a lista viva da sessão (`tableHands`), e a troca
+ * conserta de graça o defeito que a derivação tinha: o histórico
+ * persistido tem TETO, então uma sessão longa perdia as próprias mãos
+ * mais antigas para as mesas anteriores. A lista da sessão é da sessão —
+ * ela nasce vazia quando a mesa abre e não disputa espaço com ninguém.
  *
- * O histórico é gravado da mais NOVA para a mais velha (ver
- * `pushHistory`), e aqui ele é invertido: quem lê o extrato de uma mesa
- * procura "como cheguei até aqui", e essa leitura começa na primeira mão.
- *
- * Ele tem TETO (`HISTORY_LIMIT`), e o teto é da casa inteira: uma sessão
- * mais longa que ele perde as mãos mais antigas. O `no` continua honesto
- * sobre o que a lista TEM — ele numera o que sobrou, e não inventa as que
- * já saíram.
+ * A ORDEM É A DE QUEM JOGOU, da primeira mão para a última: quem lê este
+ * painel procura "como cheguei até aqui", e essa leitura começa no
+ * começo. É por isso que o número da mão é atribuído AQUI, e não gravado
+ * junto — ele é a posição na lista, e uma posição que se guarda é uma
+ * posição que um dia mente.
  */
-export function handLog(history: readonly PokerHistoryRecord[], table: string): HandLog {
-  const rows = history
-    .filter((entry) => (isRingEntry(entry) ? entry.tableId === table : entry.matchId === table))
-    .slice()
-    .reverse()
-    .map((entry, index) => ({
-      no: index + 1,
-      delta: entry.netChange,
-      folded: isRingEntry(entry)
-        ? (entry.seats.find((seat) => seat.isYou)?.folded ?? false)
-        : entry.foldedBy === 'player',
-    }));
+export function handLog(hands: readonly SessionHand[]): HandLog {
+  const rows = hands.map((hand, index) => ({
+    no: index + 1,
+    delta: hand.netChange,
+    folded: hand.folded,
+  }));
 
   return { rows, net: rows.reduce((soma, row) => soma + row.delta, 0) };
 }

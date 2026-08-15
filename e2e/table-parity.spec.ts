@@ -28,7 +28,7 @@ import { TOURNAMENT_ENABLED } from '../src/features/poker/tournament/availabilit
 test.skip(!TOURNAMENT_ENABLED, 'modo torneio desligado');
 
 const SEEDED_STATE = {
-  version: 3,
+  version: 4,
   state: {
     balance: 10000,
     history: [],

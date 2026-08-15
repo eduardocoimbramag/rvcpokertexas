@@ -19,7 +19,7 @@ import {
 import type { HandCategory } from '../engine/poker/handRank';
 import { categoryLevel, categoryStrength, decidingHand, readHand } from '../engine/poker/handRank';
 import { botShowsHand, timeoutAction } from '../engine/poker/rules';
-import type { PokerAction, Street } from '../engine/poker/types';
+import type { PokerAction, Street, TableClose } from '../engine/poker/types';
 import type { Card } from '../engine/types';
 import type { CashTableView } from './cashTable';
 import { dealDurationMs } from './cashTable';
@@ -479,6 +479,13 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
      `setTimeout`. Perder essa distinção deixaria um relógio correndo
      depois de a mesa fechar. */
   let clockTimer: ReturnType<typeof setInterval> | null = null;
+  /* QUANDO A MESA ABRIU e quantas mãos já fecharam nela — os dois dados
+     que o recibo do caixa precisa e que nenhuma tela mostra. Moram aqui,
+     ao lado da engine, pela mesma razão que ela: são do MOTOR da mesa, e
+     publicá-los no estado seria oferecer ao React uma coisa que ele não
+     desenha. */
+  let tableOpenedAt = 0;
+  let handsClosed = 0;
 
   const schedule = (fn: () => void, ms: number): void => {
     const t = setTimeout(() => {
@@ -653,6 +660,12 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
         button: randomInt(TABLE_RNG, 0, cur.seats.length - 1),
         rng: TABLE_RNG,
       });
+      /* A MESA ABRE AQUI, e é este instante que o recibo do caixa carimba
+         como começo. O extrato da sessão começa em branco junto — as mãos
+         da mesa anterior não têm o que fazer no painel desta. */
+      tableOpenedAt = Date.now();
+      handsClosed = 0;
+      useGameStore.getState().clearHands();
 
       const view = engine.beginHand();
       set({
@@ -1022,58 +1035,26 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
   };
 
   /**
-   * GRAVA A MÃO NO EXTRATO.
+   * ANOTA A MÃO NO EXTRATO DA SESSÃO.
    *
-   * O sigilo do registro é o mesmo da mesa: só entra carta que a mesa
-   * VIU. Quem correu não abre, e quem levou o pote sem showdown também
-   * não — o extrato não inventa o que ninguém mostrou (ver
-   * `ringSeatRecordSchema`).
+   * O extrato da CASA passou a ser de mesas, e é escrito uma vez só, no
+   * caixa (ver `closeCashTable`). O que se anota mão a mão é o extrato da
+   * MESA EM CENA — o painel que responde "como cheguei a este stack?",
+   * que só existe com a mesa na frente e por isso não precisa de disco.
+   *
+   * Aqui morava o registro completo de cada mão de anel: as cadeiras, o
+   * que cada uma pôs, as fechadas de quem abriu, os potes laterais e o
+   * board. Nada disso tinha leitor — o extrato da casa mostrava o
+   * balanço, e o painel da mesa mostra o balanço —, e guardar em disco as
+   * doze cartas de quarenta mãos para desenhar dois números era o tipo de
+   * dado que existe só porque um dia foi fácil de gravar.
    */
   const recordCashHand = (fim: CashHandResult, view: CashTableView): void => {
-    const s = get();
-    const { settlement } = fim;
-
-    useGameStore.getState().pushHistory({
-      kind: 'ring',
-      id: createId(),
-      tableId: s.lobbyCode || s.lobbyName,
-      tableName: s.lobbyName || 'Mesa de cash',
-      seats: view.seats
-        .filter((seat) => seat.player.id.startsWith('vaga-') === false)
-        .map((seat) => {
-          const rank = settlement.ranks.get(seat.seatIndex);
-          const [primeira, segunda] = seat.cards;
-          const abriu = primeira != null && segunda != null;
-          return {
-            seat: seat.seatIndex,
-            name: seat.player.isYou ? 'Você' : seat.player.name,
-            isYou: seat.player.isYou,
-            putIn: settlement.putIn[seat.seatIndex] ?? 0,
-            won: settlement.payouts[seat.seatIndex] ?? 0,
-            folded: seat.folded,
-            ...(abriu ? { hole: [primeira, segunda] as [typeof primeira, typeof segunda] } : {}),
-            ...(rank
-              ? {
-                  rank: {
-                    category: rank.category,
-                    label: rank.label,
-                    detail: rank.detail,
-                    cards: [...rank.cards],
-                  },
-                }
-              : {}),
-          };
-        }),
-      board: [...view.board],
-      pots: settlement.potes.map((p) => ({ amount: p.amount, eligible: [...p.eligible] })),
-      button: view.button,
-      yourSeat: s.cashSeat,
-      smallBlind: view.smallBlind,
-      bigBlind: view.bigBlind,
-      showdown: settlement.showdown,
+    const eu = get().cashSeat;
+    handsClosed = fim.handNo;
+    useGameStore.getState().pushHand({
       netChange: fim.netChange,
-      stack: engine?.yourStack() ?? 0,
-      completedAt: Date.now(),
+      folded: view.seats[eu]?.folded ?? false,
     });
   };
 
@@ -1330,7 +1311,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
    * bruto e voltava direto para o salão — a sessão inteira terminava sem
    * uma linha sobre ela.
    */
-  const closeCashTable = (): void => {
+  const closeCashTable = (close: TableClose): void => {
     const s = get();
     if (s.stage !== 'cash') return;
     const finalStack = engine?.yourStack() ?? 0;
@@ -1338,6 +1319,26 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
 
     const levou = cashOutValue(buyIn, finalStack);
     if (levou > 0) useGameStore.getState().applyBalanceDelta(levou);
+
+    /* A MESA VIRA UMA LINHA DO EXTRATO DA CASA, pela mesma porta do duelo
+       e no mesmo formato — o recibo de quem sentou, jogou e levantou. O
+       nome da linha é o NOME DA SALA: é assim que quem abre o histórico
+       reconhece a mesa em que esteve.
+       Sem fichas na frente não se levanta, se é levantado: `busted` vale
+       mais que o motivo que o chamador trouxe. */
+    useGameStore.getState().pushHistory({
+      id: createId(),
+      name: s.lobbyName || 'Mesa de cash',
+      kind: 'ring',
+      seats: s.cashTable?.seats.length ?? s.size,
+      buyIn,
+      finalStack,
+      cashedOut: levou,
+      hands: handsClosed,
+      close: finalStack <= 0 ? 'busted' : close,
+      startedAt: tableOpenedAt || Date.now(),
+      endedAt: Date.now(),
+    });
 
     engine = null;
     clearTimers();
@@ -1394,7 +1395,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
          e quem estava na frente tinha de descobrir por conta própria que
          não ia acontecer mais nada. */
       set({ cashShow: { open: false, seconds: 0 }, cashCanLeave: true });
-      closeCashTable();
+      closeCashTable('closed');
       return;
     }
     const nova = cur.beginHand();
@@ -1777,7 +1778,7 @@ export const useTournamentStore = create<TournamentState>()((set, get) => {
     },
 
     leaveCashTable: () => {
-      closeCashTable();
+      closeCashTable('left');
     },
 
     releaseSeat: () => {

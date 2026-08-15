@@ -7,7 +7,6 @@ import { SeededRng } from '@/shared/lib/random';
 import { COUNTDOWN_START, TIMINGS } from '../animations/timings';
 import type { FindMatchParams, SetStakeParams } from '../engine/GameEngine';
 import { LocalPokerEngine } from '../engine/poker/LocalPokerEngine';
-import { isRingEntry } from '../engine/poker/types';
 import type {
   ActParams,
   AdvanceParams,
@@ -630,11 +629,53 @@ describe('fluxo completo da sessão', () => {
     expect(store.getState().session?.stacks.player).toBe(1000);
     expect(store.getState().balance).toBe(950);
     expect(store.getState().result?.outcome).toBe('win');
-    // Uma mão jogada, UMA entrada no histórico — e ela é de DUELO.
+
+    /* UMA MESA, UMA LINHA — e ela nasce no caixa, não a cada mão. O
+       balanço da linha é o do SALDO (950 de volta sobre uma compra de
+       500), e não o do feltro (+500): a comissão da casa é parte do que
+       a mesa fez com você. */
     expect(store.getState().history).toHaveLength(1);
     const linha = store.getState().history[0];
     expect(linha?.kind).toBe('duel');
-    expect(linha && !isRingEntry(linha) ? linha.opponentName : null).toBe('Stub');
+    expect(linha?.name).toBe('1v1');
+    expect(linha?.buyIn).toBe(500);
+    expect(linha?.finalStack).toBe(1000);
+    expect(linha?.cashedOut).toBe(950);
+    expect(linha?.hands).toBe(1);
+    // O rival ficou sem fichas para a entrada: a mesa acabou por ela.
+    expect(linha?.close).toBe('closed');
+    expect(linha?.startedAt).toBeGreaterThan(0);
+  });
+
+  it('as mãos da sessão ficam no extrato da MESA, não no da casa', async () => {
+    /* Os dois extratos respondem a perguntas diferentes: o da casa diz o
+       que cada MESA fez com o saldo, o da mesa em cena diz como se
+       chegou ao stack que está na frente. Enquanto a mesa corre, só o
+       segundo existe. */
+    const store = createTestStore('tie');
+    await reachCountdown(store);
+    await passDealing(store);
+    await callDownToHandover(store);
+
+    expect(store.getState().history).toHaveLength(0);
+    expect(store.getState().tableHands).toHaveLength(1);
+    expect(store.getState().tableHands[0]?.netChange).toBe(0);
+  });
+
+  it('LEVANTAR e QUEBRAR deixam linhas diferentes no extrato', async () => {
+    const saiu = createTestStore('tie');
+    await reachCountdown(saiu);
+    await passDealing(saiu);
+    await callDownToHandover(saiu);
+    saiu.getState().leaveTable();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saiu.getState().history[0]?.close).toBe('left');
+
+    const quebrou = createTestStore('lose');
+    await playUntilCompleted(quebrou);
+    expect(quebrou.getState().history[0]?.close).toBe('busted');
+    // Sem fichas na frente, o caixa não devolve nada.
+    expect(quebrou.getState().history[0]?.cashedOut).toBe(0);
   });
 
   it('quebrar na mesa zera o stack, e o caixa não cobra de quem perdeu', async () => {
@@ -1484,9 +1525,19 @@ describe('persistência', () => {
     // O dinheiro voltou: a mesa nunca foi fechada, então é liquidada.
     expect(afterReload.getState().balance).toBe(500);
 
+    /* E ELA VIRA LINHA NO EXTRATO. O saldo voltar sem registro nenhum
+       deixava um buraco na leitura da noite; a linha diz o que houve —
+       `abandoned`, e não "você levantou", que seria a mesa inventando
+       uma decisão que ninguém tomou. */
+    const linha = afterReload.getState().history[0];
+    expect(linha?.close).toBe('abandoned');
+    expect(linha?.name).toBe('1v1');
+    expect(linha?.buyIn).toBe(500);
+
     // E o canhoto foi rasgado: recarregar de novo não paga duas vezes.
     const afterSecondReload = createTestStore('win', storage);
     expect(afterSecondReload.getState().balance).toBe(500);
+    expect(afterSecondReload.getState().history).toHaveLength(1);
   });
 
   it('a liquidação paga o ÚLTIMO PLACAR, não o buy-in cheio', async () => {

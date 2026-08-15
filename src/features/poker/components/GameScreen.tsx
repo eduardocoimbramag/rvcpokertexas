@@ -92,7 +92,7 @@ export function GameScreen() {
              tela que não disputa com nada — o feltro é do jogo e a faixa
              de baixo é do polegar —, e é justamente onde o saldo deixou
              de estar quando a sessão começou. */
-          <TableTools table={match.id} />
+          <TableTools />
         ) : (
           <>
             <span className="h-11 w-11" aria-hidden="true" />

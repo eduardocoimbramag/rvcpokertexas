@@ -375,6 +375,35 @@ describe('a economia da mesa de cash', () => {
     expect(cashOutValue(1000, 400)).toBe(400);
   });
 
+  it('a mesa vira UMA linha no extrato, com o NOME DA SALA', async () => {
+    /* O extrato da casa é de MESAS, e a linha nasce no caixa — pela
+       mesma porta do duelo e no mesmo formato. O que a sala traz de seu
+       é o nome: é assim que quem abre o histórico reconhece onde esteve.
+       As mãos que correram ficam no extrato da MESA EM CENA, que morre
+       com ela. */
+    await abreMesa(1000);
+    await jogaAlgumasMaos();
+    const maos = useGameStore.getState().tableHands.length;
+    expect(maos).toBeGreaterThan(0);
+    expect(useGameStore.getState().history).toHaveLength(0);
+
+    const fichas = useTournamentStore.getState().cashTable?.seats[0];
+    const stack = (fichas?.stack ?? 0) + (fichas?.bet ?? 0);
+    useTournamentStore.getState().leaveCashTable();
+
+    const linha = useGameStore.getState().history[0];
+    expect(useGameStore.getState().history).toHaveLength(1);
+    expect(linha?.name).toBe('Mesa Do Teste');
+    expect(linha?.kind).toBe('ring');
+    expect(linha?.seats).toBe(CASH_SEATS);
+    expect(linha?.buyIn).toBe(1000);
+    expect(linha?.finalStack).toBe(stack);
+    expect(linha?.cashedOut).toBe(cashOutValue(1000, stack));
+    expect(linha?.hands).toBe(maos);
+    expect(linha?.close).toBe(stack > 0 ? 'left' : 'busted');
+    expect(linha?.startedAt).toBeGreaterThan(0);
+  });
+
   it('levantar DUAS vezes não paga duas vezes', async () => {
     await abreMesa(1000);
     useTournamentStore.getState().leaveCashTable();

@@ -41,7 +41,6 @@ export function CashTableScreen() {
   const view = useTournamentStore((s) => s.cashTable);
   const youSeat = useTournamentStore((s) => s.cashSeat);
   const lobbyName = useTournamentStore((s) => s.lobbyName);
-  const lobbyCode = useTournamentStore((s) => s.lobbyCode);
   const legal = useTournamentStore((s) => s.cashLegal);
   const toCall = useTournamentStore((s) => s.cashToCall);
   const raise = useTournamentStore((s) => s.cashRaise);
@@ -112,7 +111,7 @@ export function CashTableScreen() {
           Elas são a MESMA peça do duelo: o valor das fichas à esquerda,
           o extrato da sessão à direita. */}
       <header className="cash-screen__head">
-        <TableTools table={lobbyCode || lobbyName} />
+        <TableTools />
         <h1 className="cash-screen__title" data-testid="cash-room-name">
           {lobbyName}
         </h1>

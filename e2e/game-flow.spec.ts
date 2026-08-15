@@ -27,7 +27,7 @@ import { expect, test } from '@playwright/test';
 
 /** Estado persistido com tutorial já visto e sons desligados. */
 const SEEDED_STATE = {
-  version: 3,
+  version: 4,
   state: {
     balance: 1000,
     history: [],
@@ -505,9 +505,12 @@ test('persistência: saldo e histórico sobrevivem ao reload', async ({ page }) 
   await expect(page.getByTestId('play-button')).toBeVisible();
   expect(await saldo(page)).toBe(ganho);
   await page.getByTestId('history-button').click();
+  /* O extrato é de MESAS: uma sessão inteira, por mais mãos que ela
+     tenha tido, deixa UMA linha — e ela nasce no caixa, com o nome da
+     mesa e o balanço que entrou no saldo. */
   await expect(page.getByTestId('history-list').locator('li')).toHaveCount(1);
-  // O extrato conta a MÃO que decidiu o pote, não um total.
-  await expect(page.getByTestId('history-list')).toContainText(/Ases/i);
+  await expect(page.getByTestId('history-list')).toContainText('1v1');
+  await expect(page.getByTestId('history-net')).toBeVisible();
 });
 
 test('a mesa abre com a ENTRADA fixa, sem nada a combinar', async ({ page }) => {

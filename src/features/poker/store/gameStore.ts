@@ -12,15 +12,16 @@ import { timeoutAction } from '../engine/poker/rules';
 import type {
   ForcedPokerDeal,
   PokerAction,
-  PokerHistoryEntry,
-  PokerHistoryRecord,
   PokerMove,
   PokerOutcome,
   PokerResult,
   PokerRoundState,
   PokerSession,
   Street,
+  TableClose,
+  TableHistoryEntry,
 } from '../engine/poker/types';
+import { DUEL_TABLE_NAME } from '../engine/poker/types';
 import type { Duelist, Match } from '../engine/types';
 import { audioManager } from '../services/AudioManager';
 import type {
@@ -109,6 +110,22 @@ export function canTransition(from: GamePhase, to: GamePhase): boolean {
   return PHASE_TRANSITIONS[from].includes(to);
 }
 
+/**
+ * POR QUE A MESA FECHOU, para o extrato — lido da própria sessão.
+ *
+ * A ordem responde pelo que a pessoa lembra: ficar sem fichas é o fim da
+ * linha e vale mais que qualquer outra leitura, mesmo quando o pedido de
+ * levantar chegou junto (levantar no meio de uma mão CORRE a mão, e essa
+ * mão pode ser a que te quebrou — ver `leaveTable`). Depois vem a
+ * decisão de sair, e por último a mesa que acabou sozinha: o rival ficou
+ * sem fichas para a entrada.
+ */
+function closeOf(session: PokerSession): TableClose {
+  if (session.bustedBy === 'player') return 'busted';
+  if (session.leftBy === 'player') return 'left';
+  return 'closed';
+}
+
 /** Quem já confirmou o duelo na fase Confirm (ambos travam o início). */
 export interface MatchConfirmations {
   player: boolean;
@@ -124,6 +141,28 @@ const NO_CONFIRMATIONS: MatchConfirmations = { player: false, opponent: false };
  */
 export interface MoveAnnounce extends PokerMove {
   id: string;
+}
+
+/**
+ * UMA MÃO DA MESA EM CENA, no mínimo que o extrato da sessão precisa.
+ *
+ * É a contraparte viva do extrato da casa: uma linha do histórico é uma
+ * MESA inteira (ver `tableHistoryEntrySchema`), e a pergunta "como cheguei
+ * a este stack?" — que só se faz com a mesa na frente — se responde mão a
+ * mão. As duas listas não são a mesma verdade em dois lugares: uma é o
+ * recibo do caixa, a outra é o que aconteceu dentro da mesa que ainda
+ * está aberta.
+ *
+ * Ela NÃO É PERSISTIDA, e não precisa ser: a mesa não sobrevive a um
+ * recarregamento — ela é liquidada no carregamento seguinte (ver
+ * `openTableSchema`) —, então um extrato de sessão gravado em disco só
+ * poderia descrever uma mesa que não existe mais.
+ */
+export interface SessionHand {
+  /** O que ela fez com o seu stack, com sinal. */
+  netChange: number;
+  /** Você largou a mão. */
+  folded: boolean;
 }
 
 /** Segundos que o jogador tem para decidir o lance dele. */
@@ -267,7 +306,19 @@ export interface GameStoreState {
    * mão.
    */
   streetAnnounce: Street | null;
-  history: PokerHistoryRecord[];
+  /**
+   * O EXTRATO DA CASA: uma linha por MESA em que se jogou, da mais
+   * recente para a mais antiga. Persistido.
+   */
+  history: TableHistoryEntry[];
+  /**
+   * O EXTRATO DA MESA EM CENA: as mãos desta sessão, da primeira para a
+   * última. Zerado quando uma mesa abre e vivo só enquanto ela existir.
+   *
+   * As duas mesas escrevem aqui — o duelo por dentro (ver `closeHand`), a
+   * sala de anel pela porta pública (`pushHand`).
+   */
+  tableHands: SessionHand[];
   /**
    * Segundo beat da fase `found`: a apresentação já passou e o letreiro
    * HORA DO DUELO está no feltro. É o que separa as duas cenas de uma
@@ -308,15 +359,19 @@ export interface GameStoreState {
       buy-in e pelo prêmio do modo Torneio. */
   applyBalanceDelta: (delta: number) => void;
   /**
-   * Grava uma linha no extrato e persiste.
+   * Grava uma MESA no extrato e persiste.
    *
    * Existe porque o extrato deixou de ser só do duelo: a mesa de cash de
    * 6 escreve nele pela mesma porta, e o duelo continua escrevendo pela
-   * dele (ver `closeHand`). O corte de saldo NÃO acontece aqui — num
-   * cash as fichas ficam no feltro entre as mãos, e o caixa só abre
-   * quando alguém levanta.
+   * dele (ver `cashOut`). O corte de saldo NÃO acontece aqui — quem
+   * levanta de uma mesa já passou pelo caixa antes de a linha ser
+   * escrita.
    */
-  pushHistory: (entry: PokerHistoryRecord) => void;
+  pushHistory: (entry: TableHistoryEntry) => void;
+  /** Anota uma mão no extrato da mesa em cena (ver `SessionHand`). */
+  pushHand: (hand: SessionHand) => void;
+  /** Zera o extrato da mesa em cena — uma mesa nova abriu. */
+  clearHands: () => void;
   markTutorialSeen: () => void;
   updateAudioSettings: (patch: Partial<AudioSettings>) => void;
   setVibrationEnabled: (enabled: boolean) => void;
@@ -364,11 +419,37 @@ export function createGameStore(deps: GameStoreDeps = {}) {
      porque o saldo inicial do store já tem de nascer com o dinheiro
      dentro. */
   const abandoned = persisted?.openTable ?? null;
-  const openingBalance =
-    (persisted?.balance ?? initialBalance) +
-    (abandoned ? cashOutValue(abandoned.buyIn, abandoned.stack) : 0);
+  const abandonedCashOut = abandoned ? cashOutValue(abandoned.buyIn, abandoned.stack) : 0;
+  const openingBalance = (persisted?.balance ?? initialBalance) + abandonedCashOut;
+  /* E ELA VIRA LINHA NO EXTRATO. O dinheiro voltar sem registro nenhum
+     deixava um buraco na leitura da noite: a pessoa via o saldo certo e
+     uma mesa de vinte mãos que simplesmente não existiu. A linha diz o
+     que houve — `abandoned`, e não "você levantou", que seria a mesa
+     inventando uma decisão que ninguém tomou. */
+  let openingHistory = persisted?.history ?? [];
   if (abandoned && persisted) {
-    storage.save({ ...persisted, balance: openingBalance, openTable: null });
+    if (abandoned.openedAt !== undefined) {
+      const linha: TableHistoryEntry = {
+        id: createId(),
+        name: DUEL_TABLE_NAME,
+        kind: 'duel',
+        seats: 2,
+        buyIn: abandoned.buyIn,
+        finalStack: abandoned.stack,
+        cashedOut: abandonedCashOut,
+        hands: abandoned.hands,
+        close: 'abandoned',
+        startedAt: abandoned.openedAt,
+        endedAt: Date.now(),
+      };
+      openingHistory = [linha, ...openingHistory].slice(0, HISTORY_LIMIT);
+    }
+    storage.save({
+      ...persisted,
+      balance: openingBalance,
+      history: openingHistory,
+      openTable: null,
+    });
   }
 
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -517,8 +598,10 @@ export function createGameStore(deps: GameStoreDeps = {}) {
          duas coisas fossem gravadas em momentos diferentes existiria uma
          janela — curta, mas real — em que o saldo já saiu e nada registra
          para onde ele foi. */
-      openTable = { buyIn: match.stake, stack: match.stake };
-      set({ balance: nextBalance, duelAnnounce: false });
+      openTable = { buyIn: match.stake, stack: match.stake, hands: 0, openedAt: Date.now() };
+      /* MESA NOVA, extrato de sessão do zero: as mãos da mesa anterior
+         não têm o que fazer no painel desta. */
+      set({ balance: nextBalance, duelAnnounce: false, tableHands: [] });
       persist();
       runCountdown(COUNTDOWN_START);
     };
@@ -616,7 +699,14 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       schedule(() => runCountdown(value - 1), TIMINGS.countdownTickMs);
     };
 
-    /** Falha de engine no meio da rodada: o stake volta antes do erro. */
+    /**
+     * Falha de engine no meio da rodada: o stake volta antes do erro.
+     *
+     * E NÃO ENTRA NO EXTRATO. A mesa não fechou, foi ANULADA: o buy-in
+     * volta inteiro, ninguém levantou de lugar nenhum e não houve balanço
+     * a registrar. Uma linha de "0" aqui seria a casa cobrando do
+     * histórico da pessoa um defeito que foi dela.
+     */
     const refundAndFail = (): void => {
       const { match } = get();
       if (match) {
@@ -969,21 +1059,29 @@ export function createGameStore(deps: GameStoreDeps = {}) {
      * caixa só abre quando a pessoa se levanta (ver `cashOut`).
      */
     const closeHand = (): void => {
-      const { result, match, history } = get();
+      const { result, match, tableHands } = get();
       if (!result || !match || !transitionTo('handover')) return;
 
-      const entry: PokerHistoryEntry = {
-        ...result,
-        kind: 'duel',
-        opponentName: match.opponent.name,
-      };
       /* O canhoto acompanha o placar: cada mão que fecha atualiza o
-         montante gravado. É por isso que recarregar a página devolve o
-         que a pessoa tinha na frente dela, e não o buy-in cheio. */
-      if (openTable) openTable = { ...openTable, stack: result.session.stacks.player };
+         montante gravado e a conta de mãos. É por isso que recarregar a
+         página devolve o que a pessoa tinha na frente dela, e não o
+         buy-in cheio — e é daqui que sai o recibo da mesa abandonada. */
+      if (openTable) {
+        openTable = {
+          ...openTable,
+          stack: result.session.stacks.player,
+          hands: result.session.handsPlayed,
+        };
+      }
       set({
         session: result.session,
-        history: [entry, ...history].slice(0, HISTORY_LIMIT),
+        /* A MÃO ENTRA NO EXTRATO DA SESSÃO, e não no da casa: o extrato
+           da casa é de MESAS, e esta mesa ainda está aberta. Ela vira uma
+           linha lá no caixa (ver `cashOut`). */
+        tableHands: [
+          ...tableHands,
+          { netChange: result.netChange, folded: result.foldedBy === 'player' },
+        ],
         // A mão empilhada do DevTools vale uma mão — e morre com ela.
         devForcedDeal: null,
       });
@@ -1097,13 +1195,32 @@ export function createGameStore(deps: GameStoreDeps = {}) {
     };
 
     const cashOut = (): void => {
-      const { session, balance } = get();
+      const { session, balance, history } = get();
       if (!session || !transitionTo('completed')) return;
+      const cashed = cashOutValue(session.buyIn, session.stacks.player);
+      /* A MESA VIRA UMA LINHA DO EXTRATO AQUI, e não em cada mão que
+         fecha: o extrato da casa conta MESAS, e uma mesa só tem balanço
+         quando o caixa fecha a conta dela. O `startedAt` sai do canhoto,
+         que é quem sabe a que horas a pessoa sentou. */
+      const linha: TableHistoryEntry = {
+        id: createId(),
+        name: DUEL_TABLE_NAME,
+        kind: 'duel',
+        seats: 2,
+        buyIn: session.buyIn,
+        finalStack: session.stacks.player,
+        cashedOut: cashed,
+        hands: session.handsPlayed,
+        close: closeOf(session),
+        startedAt: openTable?.openedAt ?? Date.now(),
+        endedAt: Date.now(),
+      };
       // A mesa fechou pelo caminho normal: o canhoto é rasgado ANTES de
       // gravar, senão o próximo carregamento pagaria a mesma mesa de novo.
       openTable = null;
       set({
-        balance: creditPayout(balance, cashOutValue(session.buyIn, session.stacks.player)),
+        balance: creditPayout(balance, cashed),
+        history: [linha, ...history].slice(0, HISTORY_LIMIT),
         showPrompt: null,
       });
       persist();
@@ -1162,7 +1279,8 @@ export function createGameStore(deps: GameStoreDeps = {}) {
       actionClock: NO_ACTION_CLOCK,
       announce: null,
       streetAnnounce: null,
-      history: persisted?.history ?? [],
+      history: openingHistory,
+      tableHands: [],
       duelAnnounce: false,
       countdown: COUNTDOWN_START,
       error: null,
@@ -1305,6 +1423,17 @@ export function createGameStore(deps: GameStoreDeps = {}) {
         persist();
       },
 
+      /* O extrato da sessão NÃO É PERSISTIDO — ele morre com a mesa (ver
+         `SessionHand`), e gravar em disco a cada mão de uma sala de seis
+         seria escrever para ninguém ler. */
+      pushHand: (hand) => {
+        set({ tableHands: [...get().tableHands, hand] });
+      },
+
+      clearHands: () => {
+        set({ tableHands: [] });
+      },
+
       markTutorialSeen: () => {
         set({ settings: { ...get().settings, tutorialSeen: true } });
         persist();
@@ -1360,6 +1489,7 @@ export function createGameStore(deps: GameStoreDeps = {}) {
           streetAnnounce: null,
           duelAnnounce: false,
           history: [],
+          tableHands: [],
           countdown: COUNTDOWN_START,
           error: null,
           settings: DEFAULT_SETTINGS,
