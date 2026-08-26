@@ -804,7 +804,7 @@ h2 {
   /* A distância de perspectiva acompanha a escala (365px de largura ↔
      715px de perspectiva): o trapézio mantém EXATAMENTE a mesma
      proporção — a marca só cresce, a pose não muda. */
-  transform: translate(-50%, -50%) perspective(715px) rotateX(52deg);
+  transform: translate(-50%, -50%) ;
 }
 
 .table-crest--front .table-crest__shadow {
@@ -847,7 +847,7 @@ h2 {
   max-width: 328px;
   /* Perspectiva proporcional à largura (5×), como na câmera frontal.
      A centragem vem junto na lista — ver a nota da câmera frontal. */
-  transform: translate(-50%, -50%) perspective(1640px) rotateX(16deg);
+  transform: translate(-50%, -50%) ;
 }
 
 .table-crest--overhead .table-crest__shadow {
